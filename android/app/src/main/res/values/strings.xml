@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FarmHand</string>
+    <string name="title_activity_main">FarmHand</string>
+    <string name="package_name">com.farmhand.app</string>
+    <string name="custom_url_scheme">com.farmhand.app</string>
+</resources>

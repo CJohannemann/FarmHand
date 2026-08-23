@@ -14,6 +14,7 @@
     "verify:roundtrip": "node --experimental-strip-types db/test/verify-roundtrip.ts"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
     "@capacitor/core": "^8.5.0",
     "@electric-sql/pglite": "^0.2.17",
     "@supabase/supabase-js": "^2.112.3",
