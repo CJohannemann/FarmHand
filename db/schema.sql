@@ -213,3 +213,38 @@ create policy log_asset_access on log_asset for all
 -- Soft deletes only. Hard deletes and offline sync do not mix: a device that
 -- has been offline for a week must be *told* a record died, not simply find it
 -- missing. updated_at drives the incremental pull and wants a trigger.
+
+-- ------------------------------------------------------ farm creation --
+
+create or replace function create_farm(farm_name text, wanted_id uuid default null)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $fn$
+declare
+  new_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+
+  insert into farm (id, name)
+  values (coalesce(wanted_id, gen_random_uuid()), farm_name)
+  on conflict (id) do nothing
+  returning id into new_id;
+
+  -- Someone already owns a farm with this id.
+  if new_id is null then
+    raise exception 'farm already exists';
+  end if;
+
+  insert into farm_member (farm_id, user_id, role)
+  values (new_id, auth.uid(), 'owner');
+
+  return new_id;
+end
+$fn$;
+
+revoke all on function create_farm(text, uuid) from public;
+grant execute on function create_farm(text, uuid) to authenticated;

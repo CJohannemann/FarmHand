@@ -15,7 +15,9 @@ const check = (label, actual, expected) => {
               (ok ? '' : ` (expected ${expected})`))
 }
 
-await db.exec(`create schema auth; create table auth.users (id uuid primary key);
+await db.exec(`do $r$ begin if not exists (select 1 from pg_roles where rolname='authenticated')
+    then create role authenticated; end if; end $r$;
+  create schema auth; create table auth.users (id uuid primary key);
   create function auth.uid() returns uuid language sql stable as $q$ select null::uuid $q$;`)
 await db.exec(fs.readFileSync(R + 'schema.sql', 'utf8').replace(/create extension[^;]*;/, ''))
 await db.exec(fs.readFileSync(R + 'seed.sql', 'utf8'))

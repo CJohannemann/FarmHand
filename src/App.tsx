@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAsync } from './lib/useAsync'
+import { useSession } from './lib/useSession'
+import { supabase, supabaseConfigured } from './lib/supabase'
+import { linkFarm, type FarmLink } from './lib/farm'
 import { db } from './db/client'
-import { assetCounts } from './db/queries'
 import { Today } from './screens/Today'
 import { Animals } from './screens/Animals'
 import { Records } from './screens/Records'
+import { SignIn } from './screens/SignIn'
 
 type Tab = 'today' | 'animals' | 'records'
 
@@ -16,12 +19,17 @@ const TABS: { id: Tab; label: string; glyph: string }[] = [
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('today')
+  const { session, checking } = useSession()
+  const [link, setLink] = useState<FarmLink | null>(null)
+  const [linkError, setLinkError] = useState<string | null>(null)
 
-  // Opening the database also runs the schema on first launch.
-  const ready = useAsync(async () => {
-    await db()
-    return assetCounts()
-  }, [])
+  const ready = useAsync(async () => { await db(); return true }, [])
+
+  // Once signed in, make the local and remote farm identities agree.
+  useEffect(() => {
+    if (!session || !ready.data) return
+    linkFarm().then(setLink, (e: Error) => setLinkError(e.message))
+  }, [session, ready.data])
 
   if (ready.error) {
     return (
@@ -34,7 +42,7 @@ export default function App() {
     )
   }
 
-  if (ready.loading) {
+  if (ready.loading || checking) {
     return (
       <main className="screen boot">
         <h1>FarmHand</h1>
@@ -43,13 +51,37 @@ export default function App() {
     )
   }
 
+  if (supabaseConfigured && !session) return <SignIn />
+
   return (
     <div className="app">
+      {!supabaseConfigured && (
+        <div className="banner">
+          Local only — no account. Add Supabase keys to <code>.env</code> to sync.
+        </div>
+      )}
+      {linkError && <div className="banner warn">Sync setup failed: {linkError}</div>}
+      {link?.state === 'conflict' && (
+        <div className="banner warn">
+          This device has records under a different farm. Nothing was changed —
+          syncing them is not built yet.
+        </div>
+      )}
+
       <main className="content">
         {tab === 'today' && <Today />}
         {tab === 'animals' && <Animals />}
         {tab === 'records' && <Records />}
       </main>
+
+      {session && (
+        <p className="account">
+          {session.user.email}
+          <button className="linkish" onClick={() => supabase?.auth.signOut()}>
+            Sign out
+          </button>
+        </p>
+      )}
 
       <nav className="tabbar">
         {TABS.map((t) => (

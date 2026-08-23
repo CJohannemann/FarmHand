@@ -5,6 +5,8 @@ import seedSql from '../../db/seed.sql?raw'
 // schema.sql targets Supabase, which provides auth.users and auth.uid().
 // Locally we stand those up ourselves so one schema file serves both.
 const AUTH_STUB = `
+  do $r$ begin if not exists (select 1 from pg_roles where rolname='authenticated')
+    then create role authenticated; end if; end $r$;
   create schema if not exists auth;
   create table if not exists auth.users (id uuid primary key);
   create or replace function auth.uid() returns uuid

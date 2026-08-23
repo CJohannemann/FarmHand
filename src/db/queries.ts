@@ -314,3 +314,40 @@ export async function assetCosts(assetId: string): Promise<CostSummary> {
     costPerUnit: outputAmount > 0 ? inputCost / outputAmount : null,
   }
 }
+
+// ------------------------------------------------------------ farm identity
+
+export async function getFarmName(): Promise<string> {
+  const pg = await db()
+  const { rows } = await pg.query<{ name: string }>(`select name from farm limit 1`)
+  return rows[0]?.name ?? 'My farm'
+}
+
+export async function localIsEmpty(): Promise<boolean> {
+  const pg = await db()
+  const { rows } = await pg.query<{ n: number }>(
+    `select ((select count(*) from asset) +
+             (select count(*) from log) +
+             (select count(*) from location))::int as n`,
+  )
+  return (rows[0]?.n ?? 0) === 0
+}
+
+/**
+ * Point the local database at an existing remote farm. Only safe while there
+ * is no local data, since farm_id is stamped on every row; returns false and
+ * changes nothing otherwise, leaving the conflict for the sync work to solve.
+ */
+export async function adoptFarmId(id: string, name: string): Promise<boolean> {
+  if (!(await localIsEmpty())) return false
+  const pg = await db()
+  await pg.exec(`delete from farm`)
+  await pg.query(`insert into farm (id, name) values ($1, $2)`, [id, name])
+  farmId = null
+  return true
+}
+
+export async function renameFarm(name: string) {
+  const pg = await db()
+  await pg.query(`update farm set name = $1, updated_at = now()`, [name])
+}
