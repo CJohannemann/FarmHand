@@ -98,7 +98,9 @@ check('meat yield', yield_.lb, 240)
 check('cost per lb', cost.input_cost / yield_.lb, 0.71)
 
 const [terms] = await q(`select count(*)::int n from term`)
-check('seeded vocabulary terms', terms.n, 90)
+check('seeded vocabulary terms', terms.n, 133)
+const [crops] = await q(`select count(*)::int n from term where vocabulary='crop'`)
+check('crop vocabulary present', crops.n, 43)
 
 // --- what is left of each lot, matching queries.ts:lotBalances -------------
 // Took 20 lb of the meat home, and 300 of the 600 lb of feed was eaten.
@@ -145,6 +147,54 @@ const byName = Object.fromEntries(balances.map((b) => [b.name, b.remaining]))
 console.log('\nWhat is left')
 check('meat left after taking 20 lb', byName['Broiler meat'], 220)
 check('feed left after feeding 300 lb', byName['Grower feed'], 300)
+
+// --- a producer is harvested repeatedly and survives it --------------------
+const cow = await id(`insert into asset (farm_id,type,name,attributes)
+  values ($1,'animal','Bluebell','{"species":"Cattle"}') returning id`, [farm])
+const hayLot = await id(`insert into asset (farm_id,type,name,attributes)
+  values ($1,'lot','Hay','{"origin":"purchased"}') returning id`, [farm])
+
+const hayBuy = await id(`insert into log (farm_id,type,timestamp,name)
+  values ($1,'purchase','2026-05-01','Hay') returning id`, [farm])
+await q(`insert into log_asset (log_id,asset_id,role) values ($1,$2,'subject')`,
+  [hayBuy, hayLot])
+await q(`insert into quantity (farm_id,log_id,measure,value,unit) values
+  ($1,$2,'price',200,'USD'), ($1,$2,'weight',400,'lb')`, [farm, hayBuy])
+
+const hayFed = await id(`insert into log (farm_id,type,timestamp,name)
+  values ($1,'input_application','2026-05-05','Fed hay') returning id`, [farm])
+await q(`insert into log_asset (log_id,asset_id,role,amount,unit)
+  values ($1,$2,'input',200,'lb'),($1,$3,'subject',null,null)`, [hayFed, hayLot, cow])
+
+// Two milkings, each producing its own lot. The cow is NOT archived.
+for (const [when, gal] of [['2026-05-06', 20], ['2026-05-07', 25]]) {
+  const milk = await id(`insert into asset (farm_id,type,name,attributes)
+    values ($1,'lot',$2,'{"origin":"produced","material":"Milk"}') returning id`,
+    [farm, `Milk ${when}`])
+  const milking = await id(`insert into log (farm_id,type,timestamp,name)
+    values ($1,'harvest',$2,'Milking') returning id`, [farm, when])
+  await q(`insert into log_asset (log_id,asset_id,role)
+    values ($1,$2,'subject'),($1,$3,'output')`, [milking, cow, milk])
+  await q(`insert into quantity (farm_id,log_id,measure,value,unit,asset_id)
+    values ($1,$2,'weight',$3,'gal',$4)`, [farm, milking, gal, milk])
+}
+
+const [cowState] = await q(
+  `select status, terminal_event from asset where id=$1`, [cow])
+const [milkTotal] = await q(`
+  select coalesce(sum(qt.value),0)::float total
+    from log_asset subj
+    join log h on h.id=subj.log_id and h.type='harvest' and h.deleted_at is null
+    join log_asset o on o.log_id=h.id and o.role='output'
+    join quantity qt on qt.log_id=h.id and qt.asset_id=o.asset_id
+         and qt.measure='weight'
+   where subj.asset_id=$1 and subj.role='subject'`, [cow])
+
+console.log('\nRepeat harvest — a dairy cow milked twice')
+check('the cow is still active', cowState.status === 'active' ? 1 : 0, 1)
+check('she was not marked harvested', cowState.terminal_event === null ? 1 : 0, 1)
+check('both milkings counted', milkTotal.total, 45)
+check('cost per gallon spreads over both', 100 / milkTotal.total, 2.22)
 
 // --- planned work is a task, not history ----------------------------------
 const task = await id(`insert into log (farm_id,type,timestamp,status,name)

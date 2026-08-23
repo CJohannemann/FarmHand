@@ -347,3 +347,6 @@ button.task-drop {
   flex: none; border: 0; background: none; color: var(--muted);
   font-size: 0.85rem; cursor: pointer; padding: 0.3rem;
 }
+
+.pair { display: flex; gap: 0.75rem; }
+.pair .field { flex: 1; }

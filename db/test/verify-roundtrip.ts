@@ -151,10 +151,10 @@ check('server has the link', await count(server,
 check('server has the quantity', await count(server,
   `select count(*)::int n from quantity where log_id=$1`, [log]) === 1)
 check("A's outbox is now empty", await count(A, `select count(*)::int n from sync_outbox`) === 0)
-// The server seeded its own 90 terms. If A had pushed its copies too we would
-// see 180, and every species would appear twice in the app's dropdowns.
+// The server seeded its own vocabulary. If A had pushed its copies too the
+// count would double, and every species would appear twice in the dropdowns.
 const serverTerms = await count(server, `select count(*)::int n from term`)
-check('shared vocabulary was not duplicated', serverTerms === 90, `${serverTerms} terms`)
+check('shared vocabulary was not duplicated', serverTerms === 133, `${serverTerms} terms`)
 
 console.log('\nDevice B syncs down')
 await B.exec(`delete from farm`)          // B adopts A's farm, as linkFarm does

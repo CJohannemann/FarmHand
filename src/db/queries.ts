@@ -172,13 +172,22 @@ export async function createPurchase(input: {
 
 // ---------------------------------------------------------------- harvest
 
-/** Slaughter or harvest: consumes an asset, produces a lot, archives source. */
+/**
+ * A harvest turns something the farm keeps into product it holds.
+ *
+ * Most harvests do NOT end their source: a cow is milked daily, a hive gives
+ * honey every season, a bed of lettuce is cut repeatedly. Only slaughter and
+ * pulling a crop finish the thing off, so `endsSource` must be asked for
+ * rather than assumed — an earlier version archived unconditionally and
+ * silently retired every dairy cow and beehive on first harvest.
+ */
 export async function createHarvest(input: {
   sourceId: string
   outputName: string
   material: string
   amount: number
   unit?: string
+  endsSource?: boolean
 }): Promise<string> {
   const pg = await db()
   const farm = await getFarmId()
@@ -201,8 +210,34 @@ export async function createHarvest(input: {
      values ($1, $2, 'weight', $3, $4, $5)`,
     [farm, logId, input.amount, input.unit ?? 'lb', outId],
   )
-  await archiveAsset(input.sourceId, 'harvested')
+  if (input.endsSource) await archiveAsset(input.sourceId, 'harvested')
   return outId
+}
+
+/** A crop in a place for a season. */
+export async function createPlanting(input: {
+  name: string
+  crop: string
+  variety?: string
+  where?: string
+  planted?: Date
+}): Promise<string> {
+  const id = await createAsset({
+    type: 'planting',
+    name: input.name,
+    attributes: {
+      crop: input.crop,
+      ...(input.variety ? { variety: input.variety } : {}),
+      ...(input.where ? { where: input.where } : {}),
+    },
+  })
+  await createLog({
+    type: 'seeding',
+    name: `Planted ${input.name}`,
+    timestamp: input.planted ?? new Date(),
+    assets: [{ id, role: 'subject' }],
+  })
+  return id
 }
 
 // ------------------------------------------------------------ asset detail

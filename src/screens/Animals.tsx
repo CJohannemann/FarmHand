@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
-import { createAsset, listAssets, listTerms } from '../db/queries'
+import { createAsset, createPlanting, listAssets, listTerms } from '../db/queries'
 import type { Asset, AssetType } from '../db/types'
 import { Sheet } from './Sheet'
 import { AssetDetail } from './AssetDetail'
@@ -8,6 +8,7 @@ import { AssetDetail } from './AssetDetail'
 const GROUPS: { type: AssetType; heading: string; blurb: string }[] = [
   { type: 'animal',    heading: 'Animals',   blurb: 'Tracked one by one' },
   { type: 'group',     heading: 'Groups',    blurb: 'Flocks, batches, herds' },
+  { type: 'planting',  heading: 'Plantings', blurb: 'A crop in a place, this season' },
   { type: 'lot',       heading: 'Lots',      blurb: 'Feed, seed, meat, produce' },
   { type: 'land',      heading: 'Land',      blurb: 'Fields, paddocks, beds' },
   { type: 'equipment', heading: 'Equipment', blurb: '' },
@@ -60,7 +61,7 @@ export function Animals() {
                   <button className="assetrow" onClick={() => setSelected(a)}>
                     <span className="asset-name">{a.name}</span>
                     <span className="asset-meta">
-                      {String(a.attributes?.species ?? '')}
+                      {String(a.attributes?.species ?? a.attributes?.crop ?? '')}
                       {a.attributes?.headcount
                         ? ` · ${String(a.attributes.headcount)} head` : ''}
                       {a.status === 'archived'
@@ -88,11 +89,26 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
   const [name, setName] = useState('')
   const [species, setSpecies] = useState('')
   const [headcount, setHeadcount] = useState('')
+  const [crop, setCrop] = useState('')
+  const [variety, setVariety] = useState('')
+  const [where, setWhere] = useState('')
   const { data: speciesList } = useAsync(() => listTerms('species'), [])
+  const { data: cropList } = useAsync(() => listTerms('crop'), [])
 
   const wantsSpecies = type === 'animal' || type === 'group'
+  const isPlanting = type === 'planting'
 
   const save = async () => {
+    if (isPlanting) {
+      await createPlanting({
+        name: name.trim(),
+        crop,
+        variety: variety.trim() || undefined,
+        where: where.trim() || undefined,
+      })
+      onDone()
+      return
+    }
     const attributes: Record<string, unknown> = {}
     if (wantsSpecies && species) attributes.species = species
     if (type === 'group' && Number(headcount) > 0)
@@ -138,7 +154,39 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
         </label>
       )}
 
-      <button className="primary" disabled={!name.trim()} onClick={save}>Save</button>
+      {isPlanting && (
+        <>
+          <label className="field">
+            <span>Crop</span>
+            <select value={crop} onChange={(e) => setCrop(e.target.value)}>
+              <option value="">— pick one —</option>
+              {(cropList ?? []).map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>Variety (optional)</span>
+            <input value={variety} onChange={(e) => setVariety(e.target.value)}
+              placeholder="Salanova" />
+          </label>
+          <label className="field">
+            <span>Where (optional)</span>
+            <input value={where} onChange={(e) => setWhere(e.target.value)}
+              placeholder="Bed 7" />
+          </label>
+          <p className="hint">
+            Saving also records that you planted it today, so the season has a
+            start date to measure from.
+          </p>
+        </>
+      )}
+
+      <button
+        className="primary"
+        disabled={!name.trim() || (isPlanting && !crop)}
+        onClick={save}
+      >
+        Save
+      </button>
     </Sheet>
   )
 }
