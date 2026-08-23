@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "verify:db": "node db/test/verify.mjs",
     "verify:sync": "node db/test/verify-sync.mjs",
-    "verify": "npm run verify:db && npm run verify:sync"
+    "verify": "npm run verify:db && npm run verify:sync && npm run verify:roundtrip",
+    "verify:roundtrip": "node --experimental-strip-types db/test/verify-roundtrip.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",

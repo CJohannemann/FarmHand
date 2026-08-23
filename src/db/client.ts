@@ -14,10 +14,9 @@ const AUTH_STUB = `
     language sql stable as $q$ select null::uuid $q$;
 `
 
-/** Tables that sync, in an order that satisfies their foreign keys. */
-export const SYNCED_TABLES = [
-  'farm', 'term', 'location', 'asset', 'log', 'log_asset', 'quantity',
-] as const
+// Table list lives with the algorithm that uses it.
+import { SYNCED_TABLES } from '../lib/syncCore'
+export { SYNCED_TABLES }
 
 let pending: Promise<PGlite> | null = null
 
