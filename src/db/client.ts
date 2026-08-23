@@ -1,6 +1,7 @@
 import { PGlite } from '@electric-sql/pglite'
 import schemaSql from '../../db/schema.sql?raw'
 import seedSql from '../../db/seed.sql?raw'
+import syncLocalSql from '../../db/sync-local.sql?raw'
 
 // schema.sql targets Supabase, which provides auth.users and auth.uid().
 // Locally we stand those up ourselves so one schema file serves both.
@@ -13,6 +14,11 @@ const AUTH_STUB = `
     language sql stable as $q$ select null::uuid $q$;
 `
 
+/** Tables that sync, in an order that satisfies their foreign keys. */
+export const SYNCED_TABLES = [
+  'farm', 'term', 'location', 'asset', 'log', 'log_asset', 'quantity',
+] as const
+
 let pending: Promise<PGlite> | null = null
 
 export function db(): Promise<PGlite> {
@@ -22,12 +28,14 @@ export function db(): Promise<PGlite> {
 
 async function open(): Promise<PGlite> {
   // idb:// persists to IndexedDB, so records survive a page reload —
-  // the same mechanism that will let the app work with no signal.
+  // the same mechanism that lets the app work with no signal.
   const pg = new PGlite('idb://farmhand')
   const { rows } = await pg.query<{ t: string | null }>(
     `select to_regclass('public.farm') as t`,
   )
   if (!rows[0]?.t) await migrate(pg)
+  // Cheap and idempotent, so it also upgrades databases made before sync.
+  await installSync(pg)
   return pg
 }
 
@@ -39,9 +47,43 @@ async function migrate(pg: PGlite) {
   await pg.exec(`insert into farm (name) values ('My farm')`)
 }
 
+/** Outbox table and the triggers that fill it. Safe to run repeatedly. */
+export async function installSync(pg: PGlite) {
+  await pg.exec(syncLocalSql)
+}
+
+/** Suppress outbox writes while applying rows pulled from the server. */
+export async function applying<T>(fn: () => Promise<T>): Promise<T> {
+  const pg = await db()
+  await pg.query(`select set_config('farmhand.applying', 'on', false)`)
+  try {
+    return await fn()
+  } finally {
+    await pg.query(`select set_config('farmhand.applying', 'off', false)`)
+  }
+}
+
+export async function getSyncState(key: string): Promise<string | null> {
+  const pg = await db()
+  const { rows } = await pg.query<{ value: string }>(
+    `select value from sync_state where key = $1`, [key],
+  )
+  return rows[0]?.value ?? null
+}
+
+export async function setSyncState(key: string, value: string) {
+  const pg = await db()
+  await pg.query(
+    `insert into sync_state (key, value) values ($1, $2)
+     on conflict (key) do update set value = excluded.value`,
+    [key, value],
+  )
+}
+
 /** Wipe local data and rebuild. Development convenience. */
 export async function resetDb() {
   const pg = await db()
   await pg.exec(`drop schema public cascade; create schema public;`)
   await migrate(pg)
+  await installSync(pg)
 }

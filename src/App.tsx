@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAsync } from './lib/useAsync'
 import { useSession } from './lib/useSession'
+import { useSync } from './lib/useSync'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import { linkFarm, type FarmLink } from './lib/farm'
 import { db } from './db/client'
@@ -8,6 +9,7 @@ import { Today } from './screens/Today'
 import { Animals } from './screens/Animals'
 import { Records } from './screens/Records'
 import { SignIn } from './screens/SignIn'
+import { SyncBar } from './screens/SyncBar'
 
 type Tab = 'today' | 'animals' | 'records'
 
@@ -25,11 +27,15 @@ export default function App() {
 
   const ready = useAsync(async () => { await db(); return true }, [])
 
-  // Once signed in, make the local and remote farm identities agree.
+  // Once signed in, make the local and remote farm identities agree. Syncing
+  // before that would push records into the wrong farm.
   useEffect(() => {
     if (!session || !ready.data) return
     linkFarm().then(setLink, (e: Error) => setLinkError(e.message))
   }, [session, ready.data])
+
+  const linked = link?.state === 'linked' || link?.state === 'created'
+  const sync = useSync(Boolean(session) && linked)
 
   if (ready.error) {
     return (
@@ -64,8 +70,17 @@ export default function App() {
       {link?.state === 'conflict' && (
         <div className="banner warn">
           This device has records under a different farm. Nothing was changed —
-          syncing them is not built yet.
+          they will not sync.
         </div>
+      )}
+      {linked && (
+        <SyncBar
+          status={sync.status}
+          pending={sync.pending}
+          last={sync.last}
+          error={sync.error}
+          onSync={sync.sync}
+        />
       )}
 
       <main className="content">

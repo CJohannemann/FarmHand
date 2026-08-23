@@ -8,7 +8,9 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "verify:db": "node db/test/verify.mjs"
+    "verify:db": "node db/test/verify.mjs",
+    "verify:sync": "node db/test/verify-sync.mjs",
+    "verify": "npm run verify:db && npm run verify:sync"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
