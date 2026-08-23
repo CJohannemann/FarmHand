@@ -189,3 +189,46 @@ button.icon {
 
 .tabbar button.on { color: var(--accent); font-weight: 600; }
 .tabbar .glyph { font-size: 1.15rem; }
+
+/* -------------------------------------------------------- asset detail */
+
+button.back {
+  border: 0; background: none; color: var(--accent);
+  font: inherit; font-size: 0.95rem; cursor: pointer;
+  padding: 0 0 0.75rem; margin-left: -0.15rem;
+}
+
+.assetrow {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 1rem; width: 100%; padding: 0; border: 0; background: none;
+  color: var(--fg); font: inherit; text-align: left; cursor: pointer;
+}
+
+.chev { color: var(--muted); margin-left: 0.5rem; }
+
+.costbox {
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  padding: 0.35rem 0.9rem;
+  background: var(--card);
+}
+
+.costrow {
+  display: flex; justify-content: space-between; gap: 1rem;
+  padding: 0.55rem 0; font-size: 0.92rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.costrow:last-child { border-bottom: 0; }
+.costrow span:last-child { font-variant-numeric: tabular-nums; }
+.costrow.strong { font-weight: 700; font-size: 1rem; color: var(--accent); }
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.25rem; }
+
+.actions button {
+  flex: 1; min-width: 9rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line); border-radius: 0.5rem;
+  background: var(--card); color: var(--fg);
+  font: inherit; font-size: 0.88rem; cursor: pointer;
+}

@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import { createAsset, listAssets, listTerms } from '../db/queries'
-import type { AssetType } from '../db/types'
+import type { Asset, AssetType } from '../db/types'
 import { Sheet } from './Sheet'
+import { AssetDetail } from './AssetDetail'
 
 const GROUPS: { type: AssetType; heading: string; blurb: string }[] = [
   { type: 'animal',    heading: 'Animals',   blurb: 'Tracked one by one' },
@@ -14,8 +15,21 @@ const GROUPS: { type: AssetType; heading: string; blurb: string }[] = [
 
 export function Animals() {
   const [adding, setAdding] = useState(false)
+  const [selected, setSelected] = useState<Asset | null>(null)
   const { data, loading, reload } = useAsync(() => listAssets(), [])
   const assets = data ?? []
+
+  if (selected) {
+    // Re-read from the list so the header reflects any change just made.
+    const fresh = assets.find((a) => a.id === selected.id) ?? selected
+    return (
+      <AssetDetail
+        asset={fresh}
+        onBack={() => setSelected(null)}
+        onChanged={reload}
+      />
+    )
+  }
 
   return (
     <div className="screen">
@@ -43,14 +57,17 @@ export function Animals() {
             <ul className="assetlist">
               {mine.map((a) => (
                 <li key={a.id} className={a.status === 'archived' ? 'gone' : ''}>
-                  <span className="asset-name">{a.name}</span>
-                  <span className="asset-meta">
-                    {String(a.attributes?.species ?? '')}
-                    {a.attributes?.headcount
-                      ? ` · ${String(a.attributes.headcount)} head` : ''}
-                    {a.status === 'archived'
-                      ? ` · ${a.terminal_event ?? 'archived'}` : ''}
-                  </span>
+                  <button className="assetrow" onClick={() => setSelected(a)}>
+                    <span className="asset-name">{a.name}</span>
+                    <span className="asset-meta">
+                      {String(a.attributes?.species ?? '')}
+                      {a.attributes?.headcount
+                        ? ` · ${String(a.attributes.headcount)} head` : ''}
+                      {a.status === 'archived'
+                        ? ` · ${a.terminal_event ?? 'archived'}` : ''}
+                      <span className="chev">›</span>
+                    </span>
+                  </button>
                 </li>
               ))}
             </ul>

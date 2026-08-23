@@ -1,16 +1,17 @@
 import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
-import { createLog, recentLogs } from '../db/queries'
+import { createLog, createPurchase, listTerms, recentLogs } from '../db/queries'
 import { Sheet } from './Sheet'
 import { AssetSelect } from './AssetSelect'
 import { LogList } from './LogList'
 
-type Kind = 'eggs' | 'weight' | 'feed' | 'note'
+type Kind = 'eggs' | 'weight' | 'feed' | 'buy' | 'note'
 
 const TILES: { kind: Kind; label: string; glyph: string }[] = [
   { kind: 'eggs',   label: 'Eggs',   glyph: '🥚' },
   { kind: 'weight', label: 'Weigh',  glyph: '⚖️' },
   { kind: 'feed',   label: 'Feed',   glyph: '🌾' },
+  { kind: 'buy',    label: 'Buy',    glyph: '🧾' },
   { kind: 'note',   label: 'Note',   glyph: '📝' },
 ]
 
@@ -43,6 +44,7 @@ export function Today() {
       {open === 'eggs'   && <EggForm    onDone={done} onClose={() => setOpen(null)} />}
       {open === 'weight' && <WeightForm onDone={done} onClose={() => setOpen(null)} />}
       {open === 'feed'   && <FeedForm   onDone={done} onClose={() => setOpen(null)} />}
+      {open === 'buy'    && <BuyForm    onDone={done} onClose={() => setOpen(null)} />}
       {open === 'note'   && <NoteForm   onDone={done} onClose={() => setOpen(null)} />}
     </div>
   )
@@ -120,7 +122,8 @@ function FeedForm({ onDone, onClose }: FormProps) {
   const save = async () => {
     const assets = [
       ...(subject ? [{ id: subject, role: 'subject' as const }] : []),
-      ...(lot ? [{ id: lot, role: 'input' as const }] : []),
+      ...(lot ? [{ id: lot, role: 'input' as const,
+            amount: Number(amount) > 0 ? Number(amount) : undefined, unit: 'lb' }] : []),
     ]
     await createLog({
       type: 'input_application',
@@ -173,6 +176,65 @@ function NoteForm({ onDone, onClose }: FormProps) {
       </label>
       <AssetSelect value={asset} onChange={setAsset} label="About what? (optional)" />
       <button className="primary" disabled={!text.trim()} onClick={save}>Save</button>
+    </Sheet>
+  )
+}
+
+function BuyForm({ onDone, onClose }: FormProps) {
+  const [material, setMaterial] = useState('Feed')
+  const [name, setName] = useState('')
+  const [amount, setAmount] = useState('')
+  const [cost, setCost] = useState('')
+  const [supplier, setSupplier] = useState('')
+  const { data: materials } = useAsync(() => listTerms('material'), [])
+
+  const save = async () => {
+    await createPurchase({
+      material,
+      name: name.trim() || material,
+      amount: Number(amount) || undefined,
+      unit: 'lb',
+      cost: Number(cost) || undefined,
+      supplier: supplier.trim() || undefined,
+    })
+    onDone()
+  }
+
+  return (
+    <Sheet title="Bought something" onClose={onClose}>
+      <p className="hint">
+        Recording what you paid is what lets the app work out cost per pound
+        later.
+      </p>
+      <label className="field">
+        <span>What kind?</span>
+        <select value={material} onChange={(e) => setMaterial(e.target.value)}>
+          {(materials ?? []).map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+      </label>
+      <label className="field">
+        <span>Name it</span>
+        <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
+          placeholder="Grower feed — April" />
+      </label>
+      <label className="field">
+        <span>How much (lb)</span>
+        <input type="number" inputMode="decimal" value={amount}
+          onChange={(e) => setAmount(e.target.value)} placeholder="600" />
+      </label>
+      <label className="field">
+        <span>What did it cost ($)</span>
+        <input type="number" inputMode="decimal" value={cost}
+          onChange={(e) => setCost(e.target.value)} placeholder="340" />
+      </label>
+      <label className="field">
+        <span>Supplier (optional)</span>
+        <input value={supplier} onChange={(e) => setSupplier(e.target.value)}
+          placeholder="Co-op" />
+      </label>
+      <button className="primary" disabled={!(Number(cost) > 0)} onClick={save}>
+        Save
+      </button>
     </Sheet>
   )
 }
