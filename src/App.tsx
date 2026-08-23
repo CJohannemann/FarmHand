@@ -4,13 +4,14 @@ import { useSession } from './lib/useSession'
 import { useSync } from './lib/useSync'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import { linkFarm, type FarmLink } from './lib/farm'
-import { db } from './db/client'
+import { db, getSyncState, setSyncState } from './db/client'
 import { Today } from './screens/Today'
 import { Animals } from './screens/Animals'
 import { Records } from './screens/Records'
 import { Stores } from './screens/Stores'
 import { SignIn } from './screens/SignIn'
 import { SyncBar } from './screens/SyncBar'
+import { Setup, FarmName } from './screens/Setup'
 
 type Tab = 'today' | 'animals' | 'stores' | 'records'
 
@@ -39,6 +40,13 @@ export default function App() {
   const linked = link?.state === 'linked' || link?.state === 'created'
   const sync = useSync(Boolean(session) && linked)
 
+  // Setup runs once, and only for a farm this sign-in actually created.
+  // A second device adopts an existing farm — state 'linked' — and skips it.
+  const setupDone = useAsync(async () => (await getSyncState('setup')) === 'done', [])
+  const [justSetUp, setJustSetUp] = useState(false)
+  const needsSetup =
+    link?.state === 'created' && setupDone.data === false && !justSetUp
+
   if (ready.error) {
     return (
       <main className="screen">
@@ -60,6 +68,15 @@ export default function App() {
   }
 
   if (supabaseConfigured && !session) return <SignIn />
+
+  if (needsSetup) {
+    return (
+      <Setup onDone={async () => {
+        await setSyncState('setup', 'done')
+        setJustSetUp(true)
+      }} />
+    )
+  }
 
   return (
     <div className="app">
@@ -94,6 +111,8 @@ export default function App() {
 
       {session && (
         <p className="account">
+          <FarmName />
+          <span className="account-sep">·</span>
           {session.user.email}
           <button className="linkish" onClick={() => supabase?.auth.signOut()}>
             Sign out

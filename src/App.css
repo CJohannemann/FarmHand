@@ -400,3 +400,51 @@ button.task-drop {
 .warn-advice { margin: 0.3rem 0 0 2.7rem; font-size: 0.85rem; color: var(--muted); }
 
 h3.section { margin-top: 1.5rem; }
+
+/* ------------------------------------------------------------------ setup */
+
+.screen.setup { max-width: 26rem; padding-top: 3rem; }
+
+.steps {
+  display: flex; gap: 0.4rem; list-style: none; margin: 0 0 2rem; padding: 0;
+}
+
+.steps li {
+  height: 3px; flex: 1; border-radius: 2px; background: var(--line);
+}
+
+.steps li.on   { background: var(--accent); }
+.steps li.done { background: var(--accent); opacity: 0.45; }
+
+.setup .tagline { margin-bottom: 2rem; }
+
+.setup-foot {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 0.5rem;
+}
+
+.countlist { list-style: none; margin: 0 0 1rem; padding: 0; }
+
+.countlist li {
+  display: flex; align-items: center; gap: 1rem;
+  padding: 0.4rem 0; border-bottom: 1px solid var(--line);
+}
+
+.countlist label { flex: 1; font-size: 0.95rem; }
+
+.countlist input {
+  width: 5rem; padding: 0.45rem 0.6rem; text-align: right;
+  border: 1px solid var(--line); border-radius: 0.45rem;
+  background: var(--bg); color: var(--fg);
+  font: inherit; font-size: 1rem; font-variant-numeric: tabular-nums;
+}
+
+button.farmname {
+  border: 0; background: none; color: var(--muted);
+  font: inherit; font-size: 0.8rem; font-weight: 600;
+  cursor: pointer; padding: 0; text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
+.account-sep { color: var(--line); }
+.account { flex-wrap: wrap; }
