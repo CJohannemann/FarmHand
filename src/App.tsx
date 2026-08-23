@@ -8,14 +8,16 @@ import { db } from './db/client'
 import { Today } from './screens/Today'
 import { Animals } from './screens/Animals'
 import { Records } from './screens/Records'
+import { Stores } from './screens/Stores'
 import { SignIn } from './screens/SignIn'
 import { SyncBar } from './screens/SyncBar'
 
-type Tab = 'today' | 'animals' | 'records'
+type Tab = 'today' | 'animals' | 'stores' | 'records'
 
 const TABS: { id: Tab; label: string; glyph: string }[] = [
   { id: 'today',   label: 'Today',   glyph: '☀️' },
   { id: 'animals', label: 'Stock',   glyph: '🐄' },
+  { id: 'stores',  label: 'Stores',  glyph: '📦' },
   { id: 'records', label: 'Records', glyph: '📋' },
 ]
 
@@ -86,6 +88,7 @@ export default function App() {
       <main className="content">
         {tab === 'today' && <Today />}
         {tab === 'animals' && <Animals />}
+        {tab === 'stores' && <Stores />}
         {tab === 'records' && <Records />}
       </main>
 

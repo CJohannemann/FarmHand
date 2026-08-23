@@ -443,3 +443,113 @@ export async function deleteAsset(id: string) {
     `update asset set deleted_at = now(), updated_at = now() where id = $1`, [id],
   )
 }
+
+// -------------------------------------------------------------- inventory
+
+export interface LotBalance {
+  id: string
+  name: string
+  material: string | null
+  origin: string | null
+  came_in: number
+  went_out: number
+  remaining: number
+  unit: string | null
+}
+
+/**
+ * What is left of each lot.
+ *
+ * In: what a purchase brought, or what a harvest or processing produced.
+ * Out: what dispositions took (freezer withdrawals, sales, gifts) plus what
+ * other logs consumed of it — feed applied to a flock, tomatoes canned into
+ * sauce. The consumed amount lives on log_asset, not on a quantity, because
+ * it describes how much of *that lot* a log used.
+ */
+export async function lotBalances(): Promise<LotBalance[]> {
+  const pg = await db()
+  const { rows } = await pg.query<LotBalance>(
+    `with came as (
+       select la.asset_id as lot_id,
+              sum(q.value)::float as amount,
+              max(q.unit) as unit
+         from log_asset la
+         join log l on l.id = la.log_id and l.deleted_at is null
+         join quantity q on q.log_id = l.id and q.deleted_at is null
+              and q.measure in ('weight','count','volume')
+        where (l.type = 'purchase' and la.role = 'subject')
+           or (l.type in ('harvest','processing') and la.role = 'output')
+        group by la.asset_id
+     ),
+     taken as (
+       select la.asset_id as lot_id, sum(q.value)::float as amount
+         from log_asset la
+         join log l on l.id = la.log_id and l.deleted_at is null
+              and l.type = 'disposition' and la.role = 'subject'
+         join quantity q on q.log_id = l.id and q.deleted_at is null
+              and q.measure in ('weight','count','volume')
+        group by la.asset_id
+     ),
+     consumed as (
+       select la.asset_id as lot_id, sum(la.amount)::float as amount
+         from log_asset la
+         join log l on l.id = la.log_id and l.deleted_at is null
+        where la.role = 'input' and la.amount is not null
+        group by la.asset_id
+     )
+     select a.id, a.name,
+            a.attributes->>'material' as material,
+            a.attributes->>'origin'   as origin,
+            coalesce(c.amount, 0)                                as came_in,
+            coalesce(t.amount, 0) + coalesce(u.amount, 0)        as went_out,
+            coalesce(c.amount, 0) - coalesce(t.amount, 0)
+              - coalesce(u.amount, 0)                            as remaining,
+            c.unit
+       from asset a
+       left join came     c on c.lot_id = a.id
+       left join taken    t on t.lot_id = a.id
+       left join consumed u on u.lot_id = a.id
+      where a.type = 'lot' and a.deleted_at is null
+      order by (coalesce(c.amount,0) - coalesce(t.amount,0)
+                - coalesce(u.amount,0)) > 0 desc, a.name`,
+  )
+  return rows
+}
+
+export async function lotBalance(id: string): Promise<LotBalance | null> {
+  const all = await lotBalances()
+  return all.find((l) => l.id === id) ?? null
+}
+
+/** Take from a lot: eaten at home, sold, given away, fed back, or lost. */
+export async function recordDisposition(input: {
+  lotId: string
+  kind: 'home_use' | 'sold' | 'given' | 'traded' | 'lost' | 'fed_back'
+  amount: number
+  unit?: string
+  value?: number
+  notes?: string
+}): Promise<string> {
+  const quantities: QuantityInput[] = [
+    { measure: 'weight', value: input.amount, unit: input.unit ?? 'lb' },
+  ]
+  if (input.value && input.value > 0) {
+    quantities.push({ measure: 'price', value: input.value, unit: 'USD' })
+  }
+  return createLog({
+    type: 'disposition',
+    name: LABEL[input.kind],
+    notes: input.notes,
+    assets: [{ id: input.lotId, role: 'subject' }],
+    quantities,
+  })
+}
+
+const LABEL: Record<string, string> = {
+  home_use: 'Used at home',
+  sold: 'Sold',
+  given: 'Given away',
+  traded: 'Traded',
+  lost: 'Lost or spoiled',
+  fed_back: 'Fed to livestock',
+}

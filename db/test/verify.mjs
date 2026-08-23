@@ -100,5 +100,51 @@ check('cost per lb', cost.input_cost / yield_.lb, 0.71)
 const [terms] = await q(`select count(*)::int n from term`)
 check('seeded vocabulary terms', terms.n, 90)
 
+// --- what is left of each lot, matching queries.ts:lotBalances -------------
+// Took 20 lb of the meat home, and 300 of the 600 lb of feed was eaten.
+const eat = await id(`insert into log (farm_id,type,timestamp,name)
+  values ($1,'disposition','2026-08-01','Freezer') returning id`, [farm])
+await q(`insert into log_asset (log_id,asset_id,role) values ($1,$2,'subject')`, [eat, meat])
+await q(`insert into quantity (farm_id,log_id,measure,value,unit)
+  values ($1,$2,'weight',20,'lb')`, [farm, eat])
+
+const balances = await q(`
+  with came as (
+    select la.asset_id lot_id, sum(q.value)::float amount
+      from log_asset la
+      join log l on l.id=la.log_id and l.deleted_at is null
+      join quantity q on q.log_id=l.id and q.deleted_at is null
+           and q.measure in ('weight','count','volume')
+     where (l.type='purchase' and la.role='subject')
+        or (l.type in ('harvest','processing') and la.role='output')
+     group by la.asset_id
+  ), taken as (
+    select la.asset_id lot_id, sum(q.value)::float amount
+      from log_asset la
+      join log l on l.id=la.log_id and l.deleted_at is null
+           and l.type='disposition' and la.role='subject'
+      join quantity q on q.log_id=l.id and q.deleted_at is null
+           and q.measure in ('weight','count','volume')
+     group by la.asset_id
+  ), consumed as (
+    select la.asset_id lot_id, sum(la.amount)::float amount
+      from log_asset la
+      join log l on l.id=la.log_id and l.deleted_at is null
+     where la.role='input' and la.amount is not null
+     group by la.asset_id
+  )
+  select a.name,
+         coalesce(c.amount,0) - coalesce(t.amount,0) - coalesce(u.amount,0) remaining
+    from asset a
+    left join came c on c.lot_id=a.id
+    left join taken t on t.lot_id=a.id
+    left join consumed u on u.lot_id=a.id
+   where a.type='lot'`)
+
+const byName = Object.fromEntries(balances.map((b) => [b.name, b.remaining]))
+console.log('\nWhat is left')
+check('meat left after taking 20 lb', byName['Broiler meat'], 220)
+check('feed left after feeding 300 lb', byName['Grower feed'], 300)
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)

@@ -314,3 +314,6 @@ button.danger {
 @media (prefers-color-scheme: dark) {
   button.danger { color: #e88b7d; }
 }
+
+.remaining { color: var(--accent); font-variant-numeric: tabular-nums; }
+.hint.warn { color: #a4571c; }
