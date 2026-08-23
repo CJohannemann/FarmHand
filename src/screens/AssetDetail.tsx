@@ -5,6 +5,7 @@ import {
 } from '../db/queries'
 import type { Asset } from '../db/types'
 import { Sheet } from './Sheet'
+import { EditAsset } from './EditAsset'
 
 const EVENT_LABELS: Record<string, string> = {
   harvest: 'Harvest', weight: 'Weight', input_application: 'Fed',
@@ -15,7 +16,7 @@ const EVENT_LABELS: Record<string, string> = {
 export function AssetDetail({
   asset, onBack, onChanged,
 }: { asset: Asset; onBack: () => void; onChanged: () => void }) {
-  const [sheet, setSheet] = useState<'harvest' | 'archive' | null>(null)
+  const [sheet, setSheet] = useState<'harvest' | 'archive' | 'edit' | null>(null)
   const events = useAsync(() => logsForAsset(asset.id), [asset.id])
   const costs = useAsync(() => assetCosts(asset.id), [asset.id])
 
@@ -59,16 +60,16 @@ export function AssetDetail({
         </>
       )}
 
-      {asset.status === 'active' && (
-        <div className="actions">
-          {(asset.type === 'animal' || asset.type === 'group') && (
-            <>
-              <button onClick={() => setSheet('harvest')}>Slaughter / harvest</button>
-              <button onClick={() => setSheet('archive')}>Sold or died</button>
-            </>
-          )}
-        </div>
-      )}
+      <div className="actions">
+        <button onClick={() => setSheet('edit')}>Edit</button>
+        {asset.status === 'active'
+          && (asset.type === 'animal' || asset.type === 'group') && (
+          <>
+            <button onClick={() => setSheet('harvest')}>Slaughter / harvest</button>
+            <button onClick={() => setSheet('archive')}>Sold or died</button>
+          </>
+        )}
+      </div>
 
       <h2 className="section">History</h2>
       {events.loading && <p className="muted">Loading…</p>}
@@ -96,6 +97,14 @@ export function AssetDetail({
       )}
       {sheet === 'archive' && (
         <ArchiveForm asset={asset} onClose={() => setSheet(null)} onDone={refresh} />
+      )}
+      {sheet === 'edit' && (
+        <EditAsset
+          asset={asset}
+          onClose={() => setSheet(null)}
+          onChanged={refresh}
+          onDeleted={() => { onChanged(); onBack() }}
+        />
       )}
     </div>
   )

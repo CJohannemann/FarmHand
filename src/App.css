@@ -284,3 +284,33 @@ button.linkish {
 .syncbar.syncing span { color: var(--accent); }
 .syncbar.error   span { color: #c0392b; }
 .syncbar.offline span { color: #a4571c; }
+
+/* --------------------------------------------------------- edit & delete */
+
+.logrow {
+  position: relative; display: block; width: 100%;
+  padding: 0; border: 0; background: none;
+  color: var(--fg); font: inherit; text-align: left; cursor: pointer;
+}
+
+button.danger {
+  width: 100%; margin-top: 0.75rem;
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--line); border-radius: 0.5rem;
+  background: none; color: #c0392b;
+  font: inherit; font-size: 0.9rem; cursor: pointer;
+}
+
+.confirm {
+  margin-top: 0.75rem; padding: 0.9rem 1rem;
+  border: 1px solid #c0392b40; border-radius: 0.55rem;
+  background: var(--card);
+}
+
+.confirm p { margin: 0 0 0.75rem; font-size: 0.88rem; }
+.confirm .actions { margin-top: 0; }
+.confirm .actions button { margin-top: 0; }
+
+@media (prefers-color-scheme: dark) {
+  button.danger { color: #e88b7d; }
+}

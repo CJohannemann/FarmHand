@@ -184,6 +184,31 @@ const nameOnA = (await A.query<{ name: string }>(
   `select name from asset where id=$1`, [flock])).rows[0].name
 check('A received the rename', nameOnA === 'Spring broilers (2026)', nameOnA)
 
+console.log('\nA deletes a record, B must learn it died')
+await A.query(
+  `update log set deleted_at = now(), updated_at = now() where id = $1`, [log])
+await A.query(
+  `update quantity set deleted_at = now(), updated_at = now() where log_id = $1`, [log])
+await runSync(asLocal(A), remote)
+await runSync(asLocal(B), remote)
+
+const goneOnB = await count(B,
+  `select count(*)::int n from log where id=$1 and deleted_at is not null`, [log])
+check('B sees the log as deleted', goneOnB === 1)
+
+const visibleOnB = await count(B,
+  `select count(*)::int n from log where id=$1 and deleted_at is null`, [log])
+check('B would not list it', visibleOnB === 0)
+
+const qtyGoneOnB = await count(B,
+  `select count(*)::int n from quantity where log_id=$1 and deleted_at is not null`, [log])
+check('its quantities died with it', qtyGoneOnB === 1)
+
+// The row must still exist — a hard delete would leave other devices unable
+// to tell "deleted" from "never seen".
+const stillThere = await count(B, `select count(*)::int n from log where id=$1`, [log])
+check('the row itself is retained', stillThere === 1)
+
 console.log('\nRepeat sync is quiet')
 const again = await runSync(asLocal(A), remote)
 check('nothing left to push', again.pushed === 0, `${again.pushed}`)

@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import { createLog, createPurchase, listTerms, recentLogs } from '../db/queries'
+import type { LogWithDetail } from '../db/types'
 import { Sheet } from './Sheet'
 import { AssetSelect } from './AssetSelect'
 import { LogList } from './LogList'
+import { EditLog } from './EditLog'
 
 type Kind = 'eggs' | 'weight' | 'feed' | 'buy' | 'note'
 
@@ -17,6 +19,7 @@ const TILES: { kind: Kind; label: string; glyph: string }[] = [
 
 export function Today() {
   const [open, setOpen] = useState<Kind | null>(null)
+  const [editing, setEditing] = useState<LogWithDetail | null>(null)
   const recent = useAsync(() => recentLogs(8), [])
 
   const done = () => { setOpen(null); recent.reload() }
@@ -39,7 +42,12 @@ export function Today() {
       </div>
 
       <h2 className="section">Recent</h2>
-      <LogList logs={recent.data ?? []} loading={recent.loading} />
+      <LogList logs={recent.data ?? []} loading={recent.loading} onSelect={setEditing} />
+
+      {editing && (
+        <EditLog log={editing} onClose={() => setEditing(null)}
+          onChanged={() => { setEditing(null); recent.reload() }} />
+      )}
 
       {open === 'eggs'   && <EggForm    onDone={done} onClose={() => setOpen(null)} />}
       {open === 'weight' && <WeightForm onDone={done} onClose={() => setOpen(null)} />}

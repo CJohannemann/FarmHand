@@ -1,5 +1,7 @@
 import { db } from './client'
-import type { Asset, AssetRole, AssetType, LogWithDetail, QuantityInput } from './types'
+import type {
+  Asset, AssetRole, AssetType, LogWithDetail, Measure, QuantityInput,
+} from './types'
 
 let farmId: string | null = null
 
@@ -350,4 +352,94 @@ export async function adoptFarmId(id: string, name: string): Promise<boolean> {
 export async function renameFarm(name: string) {
   const pg = await db()
   await pg.query(`update farm set name = $1, updated_at = now()`, [name])
+}
+
+// ----------------------------------------------------------- edit & delete
+
+export async function updateAsset(id: string, input: {
+  name?: string
+  attributes?: Record<string, unknown>
+}) {
+  const pg = await db()
+  if (input.name !== undefined) {
+    await pg.query(
+      `update asset set name = $2, updated_at = now() where id = $1`,
+      [id, input.name],
+    )
+  }
+  if (input.attributes !== undefined) {
+    await pg.query(
+      `update asset set attributes = $2, updated_at = now() where id = $1`,
+      [id, JSON.stringify(input.attributes)],
+    )
+  }
+}
+
+export async function updateLog(id: string, input: {
+  name?: string | null
+  notes?: string | null
+  timestamp?: Date
+}) {
+  const pg = await db()
+  const sets: string[] = []
+  const vals: unknown[] = [id]
+  if (input.name !== undefined) { sets.push(`name = $${vals.push(input.name)}`) }
+  if (input.notes !== undefined) { sets.push(`notes = $${vals.push(input.notes)}`) }
+  if (input.timestamp !== undefined) {
+    sets.push(`timestamp = $${vals.push(input.timestamp.toISOString())}`)
+  }
+  if (sets.length === 0) return
+  await pg.query(
+    `update log set ${sets.join(', ')}, updated_at = now() where id = $1`, vals,
+  )
+}
+
+export async function setQuantity(logId: string, measure: Measure, value: number) {
+  const pg = await db()
+  const { rows } = await pg.query<{ id: string }>(
+    `select id from quantity
+      where log_id = $1 and measure = $2 and deleted_at is null limit 1`,
+    [logId, measure],
+  )
+  if (rows[0]) {
+    await pg.query(
+      `update quantity set value = $2, updated_at = now() where id = $1`,
+      [rows[0].id, value],
+    )
+  }
+}
+
+export async function quantitiesFor(logId: string) {
+  const pg = await db()
+  const { rows } = await pg.query<{
+    id: string; measure: Measure; value: number; unit: string; label: string | null
+  }>(
+    `select id, measure, value::float as value, unit, label
+       from quantity where log_id = $1 and deleted_at is null order by measure`,
+    [logId],
+  )
+  return rows
+}
+
+/**
+ * Soft delete. Rows are never removed: a device that has been offline must be
+ * told a record died rather than simply find it missing, and the deleted_at
+ * update is what syncs that fact.
+ */
+export async function deleteLog(id: string) {
+  const pg = await db()
+  await pg.query(
+    `update log set deleted_at = now(), updated_at = now() where id = $1`, [id],
+  )
+  await pg.query(
+    `update quantity set deleted_at = now(), updated_at = now()
+      where log_id = $1 and deleted_at is null`, [id],
+  )
+}
+
+export async function deleteAsset(id: string) {
+  const pg = await db()
+  await pg.query(
+    `update asset set deleted_at = now(), updated_at = now() where id = $1`, [id],
+  )
 }
