@@ -9,6 +9,7 @@ import { AssetSelect } from './AssetSelect'
 import { LogList } from './LogList'
 import { EditLog } from './EditLog'
 import { TaskList } from './TaskList'
+import { WeatherStrip } from './Weather'
 
 type Kind = 'eggs' | 'weight' | 'feed' | 'buy' | 'note' | 'plan'
 
@@ -36,6 +37,8 @@ export function Today() {
         {new Date().toLocaleDateString(undefined,
           { weekday: 'long', month: 'long', day: 'numeric' })}
       </p>
+
+      <WeatherStrip />
 
       <div className="tiles">
         {TILES.map((t) => (

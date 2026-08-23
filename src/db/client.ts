@@ -3,6 +3,7 @@ import schemaSql from '../../db/schema.sql?raw'
 import seedSql from '../../db/seed.sql?raw'
 import syncLocalSql from '../../db/sync-local.sql?raw'
 import cropSeedSql from '../../db/migrations/002_crop_vocabulary.sql?raw'
+import farmLocationSql from '../../db/migrations/003_farm_location.sql?raw'
 
 // schema.sql targets Supabase, which provides auth.users and auth.uid().
 // Locally we stand those up ourselves so one schema file serves both.
@@ -37,6 +38,7 @@ async function open(): Promise<PGlite> {
   // Both are cheap and idempotent, so they also upgrade databases created
   // before these existed — which is the whole migration story for now.
   await installSync(pg)
+  await pg.exec(farmLocationSql)
   await pg.exec(cropSeedSql)
   return pg
 }

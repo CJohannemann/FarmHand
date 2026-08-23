@@ -13,6 +13,9 @@ create table farm (
   timezone     text not null default 'UTC',
   unit_system  text not null default 'imperial'
                  check (unit_system in ('imperial','metric')),
+  latitude     numeric,          -- for weather; see migrations/003
+  longitude    numeric,
+  place_name   text,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
   deleted_at   timestamptz

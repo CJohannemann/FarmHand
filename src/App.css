@@ -350,3 +350,53 @@ button.task-drop {
 
 .pair { display: flex; gap: 0.75rem; }
 .pair .field { flex: 1; }
+
+/* ---------------------------------------------------------------- weather */
+
+.weatherstrip {
+  display: flex; align-items: center; gap: 0.75rem; width: 100%;
+  margin-bottom: 1.25rem; padding: 0.7rem 0.9rem;
+  border: 1px solid var(--line); border-radius: 0.6rem;
+  background: var(--card); color: var(--fg);
+  font: inherit; font-size: 0.88rem; text-align: left; cursor: pointer;
+}
+
+.weatherstrip.empty { color: var(--muted); justify-content: center; }
+.weatherstrip.watch  { border-color: #b8a03060; }
+.weatherstrip.warn   { border-color: #a4571c60; }
+.weatherstrip.severe { border-color: #c0392b60; }
+
+.wx-now { font-size: 1.3rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.wx-msg { flex: 1; }
+
+.wxdays { list-style: none; margin: 0; padding: 0; }
+
+.wxdays li {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.45rem 0; border-bottom: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+
+.wx-day { flex: 1; }
+.wx-temps { font-variant-numeric: tabular-nums; }
+.wx-low { color: var(--muted); margin-left: 0.4rem; }
+.wx-precip { width: 3rem; text-align: right; color: var(--accent); font-size: 0.85rem; }
+
+.warnlist { list-style: none; margin: 0; padding: 0; }
+
+.warnlist li {
+  padding: 0.7rem 0.85rem; margin-bottom: 0.5rem;
+  border-left: 3px solid var(--line); border-radius: 0 0.4rem 0.4rem 0;
+  background: var(--card);
+}
+
+.warnlist li.watch  { border-left-color: #b8a030; }
+.warnlist li.warn   { border-left-color: #a4571c; }
+.warnlist li.severe { border-left-color: #c0392b; }
+
+.warn-head { display: flex; gap: 0.5rem; align-items: baseline; }
+.warn-when { color: var(--muted); font-size: 0.8rem; min-width: 2.2rem; }
+.warn-title { font-weight: 600; font-size: 0.9rem; }
+.warn-advice { margin: 0.3rem 0 0 2.7rem; font-size: 0.85rem; color: var(--muted); }
+
+h3.section { margin-top: 1.5rem; }
