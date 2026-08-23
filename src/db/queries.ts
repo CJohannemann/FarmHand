@@ -116,7 +116,7 @@ export async function recentLogs(limit = 50): Promise<LogWithDetail[]> {
                from quantity q where q.log_id = l.id
                  and q.deleted_at is null) as summary
        from log l
-      where l.deleted_at is null
+      where l.deleted_at is null and l.status <> 'planned'
       order by l.timestamp desc, l.created_at desc
       limit $1`,
     [limit],
@@ -552,4 +552,59 @@ const LABEL: Record<string, string> = {
   traded: 'Traded',
   lost: 'Lost or spoiled',
   fed_back: 'Fed to livestock',
+}
+
+// ------------------------------------------------------------------ tasks
+
+/** Things not done yet, soonest first. Overdue sorts to the top naturally. */
+export async function plannedLogs(): Promise<LogWithDetail[]> {
+  const pg = await db()
+  const { rows } = await pg.query<LogWithDetail>(
+    `select l.id, l.type, l.timestamp, l.status, l.name, l.notes,
+            (select string_agg(a.name, ', ' order by a.name)
+               from log_asset la join asset a on a.id = la.asset_id
+              where la.log_id = l.id and la.role = 'subject') as subjects,
+            null::text as summary
+       from log l
+      where l.deleted_at is null and l.status = 'planned'
+      order by l.timestamp asc`,
+  )
+  return rows
+}
+
+export async function planTask(input: {
+  name: string
+  due: Date
+  notes?: string
+  assetId?: string
+  type?: string
+}): Promise<string> {
+  return createLog({
+    type: input.type ?? 'activity',
+    name: input.name,
+    notes: input.notes,
+    timestamp: input.due,
+    status: 'planned',
+    assets: input.assetId ? [{ id: input.assetId, role: 'subject' }] : [],
+  })
+}
+
+/**
+ * Mark a task done. The timestamp moves to now rather than staying on the
+ * date it was planned for, because the history should record when the work
+ * actually happened.
+ */
+export async function completeTask(id: string) {
+  const pg = await db()
+  await pg.query(
+    `update log set status = 'done', timestamp = now(), updated_at = now()
+      where id = $1`, [id],
+  )
+}
+
+export async function cancelTask(id: string) {
+  const pg = await db()
+  await pg.query(
+    `update log set status = 'cancelled', updated_at = now() where id = $1`, [id],
+  )
 }

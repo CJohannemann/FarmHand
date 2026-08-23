@@ -146,5 +146,24 @@ console.log('\nWhat is left')
 check('meat left after taking 20 lb', byName['Broiler meat'], 220)
 check('feed left after feeding 300 lb', byName['Grower feed'], 300)
 
+// --- planned work is a task, not history ----------------------------------
+const task = await id(`insert into log (farm_id,type,timestamp,status,name)
+  values ($1,'activity','2026-09-01','planned','Worm the cattle') returning id`, [farm])
+
+const history = async () => (await q(
+  `select count(*)::int n from log
+    where deleted_at is null and status <> 'planned' and id=$1`, [task]))[0].n
+const todo = async () => (await q(
+  `select count(*)::int n from log
+    where deleted_at is null and status='planned' and id=$1`, [task]))[0].n
+
+console.log('\nPlanned work')
+check('a plan is on the to-do list', await todo(), 1)
+check('and stays out of history', await history(), 0)
+
+await q(`update log set status='done', timestamp=now() where id=$1`, [task])
+check('ticking it off clears the list', await todo(), 0)
+check('and writes it into history', await history(), 1)
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)

@@ -1,13 +1,16 @@
 import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
-import { createLog, createPurchase, listTerms, recentLogs } from '../db/queries'
+import {
+  createLog, createPurchase, listTerms, planTask, plannedLogs, recentLogs,
+} from '../db/queries'
 import type { LogWithDetail } from '../db/types'
 import { Sheet } from './Sheet'
 import { AssetSelect } from './AssetSelect'
 import { LogList } from './LogList'
 import { EditLog } from './EditLog'
+import { TaskList } from './TaskList'
 
-type Kind = 'eggs' | 'weight' | 'feed' | 'buy' | 'note'
+type Kind = 'eggs' | 'weight' | 'feed' | 'buy' | 'note' | 'plan'
 
 const TILES: { kind: Kind; label: string; glyph: string }[] = [
   { kind: 'eggs',   label: 'Eggs',   glyph: '🥚' },
@@ -15,14 +18,16 @@ const TILES: { kind: Kind; label: string; glyph: string }[] = [
   { kind: 'feed',   label: 'Feed',   glyph: '🌾' },
   { kind: 'buy',    label: 'Buy',    glyph: '🧾' },
   { kind: 'note',   label: 'Note',   glyph: '📝' },
+  { kind: 'plan',   label: 'Plan',   glyph: '📅' },
 ]
 
 export function Today() {
   const [open, setOpen] = useState<Kind | null>(null)
   const [editing, setEditing] = useState<LogWithDetail | null>(null)
   const recent = useAsync(() => recentLogs(8), [])
+  const tasks = useAsync(() => plannedLogs(), [])
 
-  const done = () => { setOpen(null); recent.reload() }
+  const done = () => { setOpen(null); recent.reload(); tasks.reload() }
 
   return (
     <div className="screen">
@@ -41,6 +46,16 @@ export function Today() {
         ))}
       </div>
 
+      {(tasks.data ?? []).length > 0 && (
+        <>
+          <h2 className="section">To do</h2>
+          <TaskList
+            tasks={tasks.data ?? []}
+            onChanged={() => { tasks.reload(); recent.reload() }}
+          />
+        </>
+      )}
+
       <h2 className="section">Recent</h2>
       <LogList logs={recent.data ?? []} loading={recent.loading} onSelect={setEditing} />
 
@@ -54,6 +69,7 @@ export function Today() {
       {open === 'feed'   && <FeedForm   onDone={done} onClose={() => setOpen(null)} />}
       {open === 'buy'    && <BuyForm    onDone={done} onClose={() => setOpen(null)} />}
       {open === 'note'   && <NoteForm   onDone={done} onClose={() => setOpen(null)} />}
+      {open === 'plan'   && <PlanForm   onDone={done} onClose={() => setOpen(null)} />}
     </div>
   )
 }
@@ -243,6 +259,51 @@ function BuyForm({ onDone, onClose }: FormProps) {
       <button className="primary" disabled={!(Number(cost) > 0)} onClick={save}>
         Save
       </button>
+    </Sheet>
+  )
+}
+
+function PlanForm({ onDone, onClose }: FormProps) {
+  const [name, setName] = useState('')
+  const [when, setWhen] = useState(() => {
+    const d = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  })
+  const [asset, setAsset] = useState('')
+  const [notes, setNotes] = useState('')
+
+  const save = async () => {
+    await planTask({
+      name: name.trim(),
+      due: new Date(`${when}T09:00:00`),
+      notes: notes.trim() || undefined,
+      assetId: asset || undefined,
+    })
+    onDone()
+  }
+
+  return (
+    <Sheet title="Plan something" onClose={onClose}>
+      <p className="hint">
+        Planned work lives in the same records as everything else, so ticking it
+        off writes the history for you.
+      </p>
+      <label className="field">
+        <span>What needs doing?</span>
+        <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
+          placeholder="Worm the cattle" />
+      </label>
+      <label className="field">
+        <span>When</span>
+        <input type="date" value={when} onChange={(e) => setWhen(e.target.value)} />
+      </label>
+      <AssetSelect value={asset} onChange={setAsset} label="What for? (optional)" />
+      <label className="field">
+        <span>Notes (optional)</span>
+        <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </label>
+      <button className="primary" disabled={!name.trim()} onClick={save}>Save</button>
     </Sheet>
   )
 }

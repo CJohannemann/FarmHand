@@ -317,3 +317,33 @@ button.danger {
 
 .remaining { color: var(--accent); font-variant-numeric: tabular-nums; }
 .hint.warn { color: #a4571c; }
+
+/* ------------------------------------------------------------------ tasks */
+
+.tiles { grid-template-columns: repeat(3, 1fr); }
+
+.tasklist { list-style: none; margin: 0; padding: 0; }
+
+.tasklist li {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.55rem 0; border-bottom: 1px solid var(--line);
+}
+
+.task-body { flex: 1; display: flex; flex-direction: column; }
+.task-name { font-size: 0.95rem; }
+.task-when { color: var(--muted); font-size: 0.8rem; }
+.tasklist li.late .task-when { color: #a4571c; font-weight: 600; }
+
+button.tick {
+  flex: none; width: 1.9rem; height: 1.9rem;
+  border: 1px solid var(--line); border-radius: 50%;
+  background: none; color: var(--muted);
+  font-size: 1rem; line-height: 1; cursor: pointer;
+}
+
+button.tick:active { background: var(--accent); color: #fff; }
+
+button.task-drop {
+  flex: none; border: 0; background: none; color: var(--muted);
+  font-size: 0.85rem; cursor: pointer; padding: 0.3rem;
+}
