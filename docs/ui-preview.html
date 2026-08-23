@@ -1,0 +1,814 @@
+<title>FarmHand Screens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   BOARD — the furniture around the phones. Deliberately quiet, and kept
+   in its own type family so it never gets mistaken for the app itself.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* board */
+  --board:      #e9ece7;
+  --board-2:    #f4f6f2;
+  --ink:        #23271f;
+  --ink-soft:   #5f6659;
+  --rule:       #d2d7cd;
+  --bezel:      #c9cfc4;
+
+  /* app tokens, mirrored from src/index.css */
+  --app-bg:     #ffffff;
+  --app-card:   #f7f9f7;
+  --app-fg:     #1a1c1a;
+  --app-muted:  #5c635c;
+  --app-line:   #dfe3df;
+  --app-accent: #3f7d3f;
+  --app-primary-ink: #ffffff;
+  --app-danger: #c0392b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --board:      #0e100d;
+    --board-2:    #171a15;
+    --ink:        #e4e8df;
+    --ink-soft:   #9aa393;
+    --rule:       #262b22;
+    --bezel:      #2c3228;
+
+    --app-bg:     #141714;
+    --app-card:   #1c201c;
+    --app-fg:     #e8ebe8;
+    --app-muted:  #9aa39a;
+    --app-line:   #2b302b;
+    --app-accent: #7cb87c;
+    --app-primary-ink: #10210f;
+    --app-danger: #e88b7d;
+  }
+}
+
+:root[data-theme="dark"] {
+  --board:      #0e100d;
+  --board-2:    #171a15;
+  --ink:        #e4e8df;
+  --ink-soft:   #9aa393;
+  --rule:       #262b22;
+  --bezel:      #2c3228;
+
+  --app-bg:     #141714;
+  --app-card:   #1c201c;
+  --app-fg:     #e8ebe8;
+  --app-muted:  #9aa39a;
+  --app-line:   #2b302b;
+  --app-accent: #7cb87c;
+  --app-primary-ink: #10210f;
+  --app-danger: #e88b7d;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--board);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
+
+.masthead {
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 1.5rem;
+}
+
+.eyebrow {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 0.6rem;
+}
+
+.masthead h1 {
+  margin: 0 0 0.6rem;
+  font-size: clamp(1.7rem, 4vw, 2.4rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.masthead p {
+  margin: 0;
+  max-width: 46ch;
+  color: var(--ink-soft);
+  font-size: 0.98rem;
+}
+
+.rail {
+  display: flex;
+  gap: 2.25rem;
+  padding: 1.5rem 1.5rem 4rem;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  align-items: start;
+}
+
+.plate { scroll-snap-align: start; flex: 0 0 auto; width: 390px; }
+
+.plate-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.15rem;
+}
+
+.plate-num {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.plate-head h2 {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.plate-note {
+  margin: 0 0 0.85rem;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  min-height: 2.6em;
+}
+
+/* ── device ───────────────────────────────────────────────────────────── */
+
+.phone {
+  position: relative;
+  width: 390px;
+  height: 780px;
+  overflow: hidden;
+  border: 9px solid var(--bezel);
+  border-radius: 2.2rem;
+  background: var(--app-bg);
+  box-shadow: 0 18px 40px -20px rgba(0,0,0,0.45);
+
+  /* app tokens, so src/App.css resolves exactly as it does in the app */
+  --bg: var(--app-bg);
+  --card: var(--app-card);
+  --fg: var(--app-fg);
+  --muted: var(--app-muted);
+  --line: var(--app-line);
+  --accent: var(--app-accent);
+
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+  color: var(--fg);
+  font-size: 16px;
+}
+
+.viewport { position: absolute; inset: 0; overflow-y: auto; }
+
+/* Two app rules pin themselves to the browser viewport. Inside a mock frame
+   they must pin to the frame instead — the only changes made to app CSS. */
+.phone .tabbar { position: absolute; }
+.phone .sheet-backdrop { position: absolute; }
+.phone .app { min-height: 100%; }
+
+@media (max-width: 900px) {
+  .rail { flex-direction: column; align-items: center; gap: 2.5rem; }
+  .plate { width: 100%; max-width: 390px; }
+  .phone { width: 100%; }
+}
+
+.footnote {
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: 0 1.5rem 4rem;
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+}
+
+.footnote strong { color: var(--ink); font-weight: 600; }
+.footnote code {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.92em;
+  background: var(--board-2);
+  padding: 0.1em 0.35em;
+  border-radius: 0.25rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   APP — verbatim from src/App.css. Do not edit here; edit the source.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.app { min-height: 100dvh; display: flex; flex-direction: column; }
+.content { flex: 1; padding-bottom: 5rem; }
+.screen { max-width: 34rem; margin: 0 auto; padding: 1.75rem 1.25rem 1rem; }
+.phone h1 { margin: 0 0 0.15rem; font-size: 1.6rem; letter-spacing: -0.02em; font-weight: 700; }
+.tagline { margin: 0 0 1.5rem; color: var(--muted); font-size: 0.95rem; }
+.section { margin: 2rem 0 0.6rem; font-size: 0.78rem; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+h3.section { margin-top: 1.5rem; }
+.muted { color: var(--muted); }
+.empty { padding: 1.5rem 1rem; border: 1px dashed var(--line); border-radius: 0.6rem;
+  color: var(--muted); text-align: center; font-size: 0.92rem; }
+.error { color: var(--app-danger); }
+
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; }
+.tile { display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
+  padding: 0.9rem 0.25rem; border: 1px solid var(--line); border-radius: 0.7rem;
+  background: var(--card); color: var(--fg); font: inherit; font-size: 0.78rem; cursor: pointer; }
+.glyph { font-size: 1.4rem; line-height: 1; }
+
+.loglist, .assetlist { list-style: none; margin: 0; padding: 0; }
+.loglist li { position: relative; padding: 0.8rem 4.5rem 0.8rem 0;
+  border-bottom: 1px solid var(--line); }
+.log-main { display: flex; align-items: baseline; gap: 0.5rem; }
+.log-type { font-weight: 600; font-size: 0.95rem; }
+.log-qty { color: var(--accent); font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.log-sub { color: var(--muted); font-size: 0.88rem; margin-top: 0.1rem; }
+.log-note { font-size: 0.9rem; margin-top: 0.25rem; }
+.log-time { position: absolute; top: 0.85rem; right: 0; color: var(--muted); font-size: 0.8rem; }
+
+.assetlist li { display: flex; justify-content: space-between; align-items: baseline;
+  gap: 1rem; padding: 0.7rem 0; border-bottom: 1px solid var(--line); }
+.assetlist li.gone { opacity: 0.55; }
+.asset-name { font-weight: 600; font-size: 0.95rem; }
+.asset-meta { color: var(--muted); font-size: 0.85rem; text-align: right; }
+
+.field { display: block; margin-bottom: 1rem; }
+.field > span { display: block; font-size: 0.85rem; margin-bottom: 0.3rem; }
+.field input, .field select, .field textarea { width: 100%; padding: 0.65rem 0.7rem;
+  border: 1px solid var(--line); border-radius: 0.5rem; background: var(--bg);
+  color: var(--fg); font: inherit; font-size: 1rem; }
+.hint { display: block; margin-top: 0.3rem; color: var(--muted); font-size: 0.8rem; }
+.hint.warn { color: #a4571c; }
+
+button.primary { width: 100%; padding: 0.8rem 1rem; border: 0; border-radius: 0.55rem;
+  background: var(--accent); color: var(--app-primary-ink); font: inherit;
+  font-weight: 600; cursor: pointer; }
+
+.sheet-backdrop { inset: 0; background: rgba(0,0,0,0.45); display: flex;
+  align-items: flex-end; justify-content: center; z-index: 20; }
+.sheet { width: 100%; max-width: 34rem; background: var(--bg);
+  border-radius: 1rem 1rem 0 0; padding: 1rem 1.25rem 1.75rem;
+  max-height: 88%; overflow-y: auto; }
+.sheet-head { display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1rem; }
+.sheet-head h2 { margin: 0; font-size: 1.1rem; }
+button.icon { border: 0; background: none; color: var(--muted); font-size: 1.1rem;
+  cursor: pointer; padding: 0.25rem 0.4rem; }
+
+.tabbar { bottom: 0; left: 0; right: 0; display: flex; border-top: 1px solid var(--line);
+  background: var(--bg); }
+.tabbar button { flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 0.2rem; padding: 0.6rem 0.25rem 0.7rem; border: 0; background: none;
+  color: var(--muted); font: inherit; font-size: 0.72rem; cursor: pointer; }
+.tabbar button.on { color: var(--accent); font-weight: 600; }
+.tabbar .glyph { font-size: 1.15rem; }
+
+button.back { border: 0; background: none; color: var(--accent); font: inherit;
+  font-size: 0.95rem; cursor: pointer; padding: 0 0 0.75rem; margin-left: -0.15rem; }
+.assetrow { display: flex; justify-content: space-between; align-items: baseline;
+  gap: 1rem; width: 100%; padding: 0; border: 0; background: none; color: var(--fg);
+  font: inherit; text-align: left; cursor: pointer; }
+.chev { color: var(--muted); margin-left: 0.5rem; }
+
+.costbox { border: 1px solid var(--line); border-radius: 0.6rem; padding: 0.35rem 0.9rem;
+  background: var(--card); }
+.costrow { display: flex; justify-content: space-between; gap: 1rem; padding: 0.55rem 0;
+  font-size: 0.92rem; border-bottom: 1px solid var(--line); }
+.costrow:last-child { border-bottom: 0; }
+.costrow span:last-child { font-variant-numeric: tabular-nums; }
+.costrow.strong { font-weight: 700; font-size: 1rem; color: var(--accent); }
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.25rem; }
+.actions button { flex: 1; min-width: 9rem; padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line); border-radius: 0.5rem; background: var(--card);
+  color: var(--fg); font: inherit; font-size: 0.88rem; cursor: pointer; }
+
+button.linkish { border: 0; background: none; color: var(--accent); font: inherit;
+  font-size: 0.88rem; cursor: pointer; padding: 0.75rem 0; text-decoration: underline; }
+.account { display: flex; align-items: center; justify-content: center; gap: 0.75rem;
+  margin: 0; padding: 0 1rem 1rem; color: var(--muted); font-size: 0.8rem; }
+.account button.linkish { padding: 0; font-size: 0.8rem; }
+
+.syncbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 0.4rem 1rem; background: var(--card); border-bottom: 1px solid var(--line);
+  color: var(--muted); font-size: 0.78rem; }
+.syncbar button.linkish { padding: 0; font-size: 0.78rem; }
+.syncbar.syncing span { color: var(--accent); }
+
+.logrow { position: relative; display: block; width: 100%; padding: 0; border: 0;
+  background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+button.danger { width: 100%; margin-top: 0.75rem; padding: 0.7rem 1rem;
+  border: 1px solid var(--line); border-radius: 0.5rem; background: none;
+  color: var(--app-danger); font: inherit; font-size: 0.9rem; cursor: pointer; }
+.remaining { color: var(--accent); font-variant-numeric: tabular-nums; }
+
+.tasklist { list-style: none; margin: 0; padding: 0; }
+.tasklist li { display: flex; align-items: center; gap: 0.75rem; padding: 0.55rem 0;
+  border-bottom: 1px solid var(--line); }
+.task-body { flex: 1; display: flex; flex-direction: column; }
+.task-name { font-size: 0.95rem; }
+.task-when { color: var(--muted); font-size: 0.8rem; }
+.tasklist li.late .task-when { color: #a4571c; font-weight: 600; }
+button.tick { flex: none; width: 1.9rem; height: 1.9rem; border: 1px solid var(--line);
+  border-radius: 50%; background: none; color: var(--muted); font-size: 1rem;
+  line-height: 1; cursor: pointer; }
+button.task-drop { flex: none; border: 0; background: none; color: var(--muted);
+  font-size: 0.85rem; cursor: pointer; padding: 0.3rem; }
+
+.pair { display: flex; gap: 0.75rem; }
+.pair .field { flex: 1; }
+
+.weatherstrip { display: flex; align-items: center; gap: 0.75rem; width: 100%;
+  margin-bottom: 1.25rem; padding: 0.7rem 0.9rem; border: 1px solid var(--line);
+  border-radius: 0.6rem; background: var(--card); color: var(--fg); font: inherit;
+  font-size: 0.88rem; text-align: left; cursor: pointer; }
+.weatherstrip.warn { border-color: #a4571c60; }
+.wx-now { font-size: 1.3rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.wx-msg { flex: 1; }
+
+.wxdays { list-style: none; margin: 0; padding: 0; }
+.wxdays li { display: flex; align-items: center; gap: 0.75rem; padding: 0.45rem 0;
+  border-bottom: 1px solid var(--line); font-size: 0.9rem; }
+.wx-day { flex: 1; }
+.wx-temps { font-variant-numeric: tabular-nums; }
+.wx-low { color: var(--muted); margin-left: 0.4rem; }
+.wx-precip { width: 3rem; text-align: right; color: var(--accent); font-size: 0.85rem; }
+
+.warnlist { list-style: none; margin: 0; padding: 0; }
+.warnlist li { padding: 0.7rem 0.85rem; margin-bottom: 0.5rem;
+  border-left: 3px solid var(--line); border-radius: 0 0.4rem 0.4rem 0; background: var(--card); }
+.warnlist li.watch { border-left-color: #b8a030; }
+.warnlist li.warn { border-left-color: #a4571c; }
+.warnlist li.severe { border-left-color: #c0392b; }
+.warn-head { display: flex; gap: 0.5rem; align-items: baseline; }
+.warn-when { color: var(--muted); font-size: 0.8rem; min-width: 2.2rem; }
+.warn-title { font-weight: 600; font-size: 0.9rem; }
+.warn-advice { margin: 0.3rem 0 0 2.7rem; font-size: 0.85rem; color: var(--muted); }
+
+:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<header class="masthead">
+  <p class="eyebrow">Interface preview</p>
+  <h1>FarmHand, screen by screen</h1>
+  <p>
+    Every frame below uses the app’s own stylesheet, so this is what it actually
+    looks like — not a redrawing of it. Filled with the real herd: five cattle,
+    four pigs, twenty layers and the spring broiler batch.
+  </p>
+</header>
+
+<div class="rail">
+
+  <!-- ── 1 ─────────────────────────────────────────────────────────────── -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">01</span><h2>Today</h2></div>
+    <p class="plate-note">Where you land. Weather first, then six taps to log
+      anything, then what still needs doing.</p>
+
+    <div class="phone"><div class="viewport">
+      <div class="app">
+        <div class="syncbar"><span>Synced just now</span><button class="linkish">Sync now</button></div>
+        <main class="content">
+          <div class="screen">
+            <h1>Today</h1>
+            <p class="tagline">Sunday, August 23</p>
+
+            <button class="weatherstrip warn">
+              <span class="wx-now">81°</span>
+              <span class="wx-msg">Heat — 94°F Wednesday</span>
+              <span class="chev">›</span>
+            </button>
+
+            <div class="tiles">
+              <button class="tile"><span class="glyph">🥚</span>Eggs</button>
+              <button class="tile"><span class="glyph">⚖️</span>Weigh</button>
+              <button class="tile"><span class="glyph">🌾</span>Feed</button>
+              <button class="tile"><span class="glyph">🧾</span>Buy</button>
+              <button class="tile"><span class="glyph">📝</span>Note</button>
+              <button class="tile"><span class="glyph">📅</span>Plan</button>
+            </div>
+
+            <h2 class="section">To do</h2>
+            <ul class="tasklist">
+              <li class="late">
+                <button class="tick">○</button>
+                <div class="task-body">
+                  <span class="task-name">Worm the cattle</span>
+                  <span class="task-when">3 days ago · Bluebell, Clover, Daisy</span>
+                </div>
+                <button class="task-drop">✕</button>
+              </li>
+              <li>
+                <button class="tick">○</button>
+                <div class="task-body">
+                  <span class="task-name">Move pigs to the back paddock</span>
+                  <span class="task-when">tomorrow · Spring pigs</span>
+                </div>
+                <button class="task-drop">✕</button>
+              </li>
+            </ul>
+
+            <h2 class="section">Recent</h2>
+            <ul class="loglist">
+              <li><button class="logrow">
+                <div class="log-main"><span class="log-type">Harvest</span>
+                  <span class="log-qty">18 each</span></div>
+                <div class="log-sub">Layers</div>
+                <time class="log-time">Aug 23</time>
+              </button></li>
+              <li><button class="logrow">
+                <div class="log-main"><span class="log-type">Feeding</span>
+                  <span class="log-qty">25 lb</span></div>
+                <div class="log-sub">Spring pigs</div>
+                <time class="log-time">Aug 22</time>
+              </button></li>
+              <li><button class="logrow">
+                <div class="log-main"><span class="log-type">Note</span></div>
+                <div class="log-sub">Hazel</div>
+                <div class="log-note">Off her feed this morning — watching her.</div>
+                <time class="log-time">Aug 22</time>
+              </button></li>
+              <li><button class="logrow">
+                <div class="log-main"><span class="log-type">Weight</span>
+                  <span class="log-qty">412 lb</span></div>
+                <div class="log-sub">Juniper</div>
+                <time class="log-time">Aug 20</time>
+              </button></li>
+            </ul>
+          </div>
+        </main>
+        <p class="account">cjjohannemann@gmail.com <button class="linkish">Sign out</button></p>
+        <nav class="tabbar">
+          <button class="on"><span class="glyph">☀️</span>Today</button>
+          <button><span class="glyph">🐄</span>Stock</button>
+          <button><span class="glyph">📦</span>Stores</button>
+          <button><span class="glyph">📋</span>Records</button>
+        </nav>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ── 2 ─────────────────────────────────────────────────────────────── -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">02</span><h2>Logging eggs</h2></div>
+    <p class="plate-note">The screen that decides whether the app survives week
+      three. A number, a save, done.</p>
+
+    <div class="phone"><div class="viewport">
+      <div class="app">
+        <main class="content">
+          <div class="screen">
+            <h1>Today</h1>
+            <p class="tagline">Sunday, August 23</p>
+            <button class="weatherstrip warn">
+              <span class="wx-now">81°</span>
+              <span class="wx-msg">Heat — 94°F Wednesday</span>
+              <span class="chev">›</span>
+            </button>
+            <div class="tiles">
+              <button class="tile"><span class="glyph">🥚</span>Eggs</button>
+              <button class="tile"><span class="glyph">⚖️</span>Weigh</button>
+              <button class="tile"><span class="glyph">🌾</span>Feed</button>
+              <button class="tile"><span class="glyph">🧾</span>Buy</button>
+              <button class="tile"><span class="glyph">📝</span>Note</button>
+              <button class="tile"><span class="glyph">📅</span>Plan</button>
+            </div>
+          </div>
+        </main>
+        <nav class="tabbar">
+          <button class="on"><span class="glyph">☀️</span>Today</button>
+          <button><span class="glyph">🐄</span>Stock</button>
+          <button><span class="glyph">📦</span>Stores</button>
+          <button><span class="glyph">📋</span>Records</button>
+        </nav>
+      </div>
+      <div class="sheet-backdrop">
+        <div class="sheet">
+          <header class="sheet-head"><h2>Eggs collected</h2><button class="icon">✕</button></header>
+          <label class="field"><span>How many?</span>
+            <input value="18" inputmode="numeric"></label>
+          <label class="field"><span>From which flock? (optional)</span>
+            <select><option>Layers</option></select></label>
+          <button class="primary">Save</button>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ── 3 ─────────────────────────────────────────────────────────────── -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">03</span><h2>Weather</h2></div>
+    <p class="plate-note">Farm thresholds, not forecast jargon — and each warning
+      says what to actually do about it.</p>
+
+    <div class="phone"><div class="viewport">
+      <div class="app">
+        <main class="content"><div class="screen"><h1>Today</h1>
+          <p class="tagline">Sunday, August 23</p></div></main>
+        <nav class="tabbar">
+          <button class="on"><span class="glyph">☀️</span>Today</button>
+          <button><span class="glyph">🐄</span>Stock</button>
+          <button><span class="glyph">📦</span>Stores</button>
+          <button><span class="glyph">📋</span>Records</button>
+        </nav>
+      </div>
+      <div class="sheet-backdrop">
+        <div class="sheet">
+          <header class="sheet-head"><h2>Independence, Missouri</h2><button class="icon">✕</button></header>
+
+          <h3 class="section">Worth planning for</h3>
+          <ul class="warnlist">
+            <li class="warn">
+              <div class="warn-head"><span class="warn-when">Wed</span>
+                <span class="warn-title">Heat — 94°F</span></div>
+              <p class="warn-advice">Check shade and water. Poultry stop laying and
+                pigs cannot sweat.</p>
+            </li>
+            <li class="watch">
+              <div class="warn-head"><span class="warn-when">Fri</span>
+                <span class="warn-title">Heavy rain — 2.3 in</span></div>
+              <p class="warn-advice">Move stock off low ground. Expect mud and
+                standing water in gateways.</p>
+            </li>
+          </ul>
+
+          <h3 class="section">Next seven days</h3>
+          <ul class="wxdays">
+            <li><span class="wx-day">Today</span><span class="wx-temps"><strong>81°</strong><span class="wx-low">65°</span></span><span class="wx-precip"></span></li>
+            <li><span class="wx-day">Mon</span><span class="wx-temps"><strong>86°</strong><span class="wx-low">67°</span></span><span class="wx-precip"></span></li>
+            <li><span class="wx-day">Tue</span><span class="wx-temps"><strong>90°</strong><span class="wx-low">71°</span></span><span class="wx-precip"></span></li>
+            <li><span class="wx-day">Wed</span><span class="wx-temps"><strong>94°</strong><span class="wx-low">73°</span></span><span class="wx-precip"></span></li>
+            <li><span class="wx-day">Thu</span><span class="wx-temps"><strong>88°</strong><span class="wx-low">70°</span></span><span class="wx-precip">0.4"</span></li>
+            <li><span class="wx-day">Fri</span><span class="wx-temps"><strong>79°</strong><span class="wx-low">66°</span></span><span class="wx-precip">2.3"</span></li>
+            <li><span class="wx-day">Sat</span><span class="wx-temps"><strong>77°</strong><span class="wx-low">61°</span></span><span class="wx-precip">0.1"</span></li>
+          </ul>
+
+          <h3 class="section">Your growing season</h3>
+          <div class="costbox">
+            <div class="costrow"><span>Hardiness zone</span><span>6b</span></div>
+            <div class="costrow"><span>Last spring frost</span><span>Apr 7</span></div>
+            <div class="costrow"><span>First fall frost</span><span>Nov 6</span></div>
+            <div class="costrow strong"><span>Frost-free days</span><span>213</span></div>
+          </div>
+          <p class="hint">Averaged from ten years of records for your coordinates,
+            not a lookup table. <strong>These are averages, not safe dates.</strong>
+            Plant on the last-frost date and roughly half of years will catch you.</p>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ── 4 ─────────────────────────────────────────────────────────────── -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">04</span><h2>Stock</h2></div>
+    <p class="plate-note">Everything the records hang off — animals one by one,
+      batches together, plus land, plantings and lots.</p>
+
+    <div class="phone"><div class="viewport">
+      <div class="app">
+        <div class="syncbar"><span>2 waiting to sync</span><button class="linkish">Sync now</button></div>
+        <main class="content">
+          <div class="screen">
+            <h1>Livestock &amp; land</h1>
+            <p class="tagline">Everything the records hang off.</p>
+            <button class="primary">+ Add something</button>
+
+            <h2 class="section">Animals</h2>
+            <ul class="assetlist">
+              <li><button class="assetrow"><span class="asset-name">Bluebell</span>
+                <span class="asset-meta">Cattle<span class="chev">›</span></span></button></li>
+              <li><button class="assetrow"><span class="asset-name">Clover</span>
+                <span class="asset-meta">Cattle<span class="chev">›</span></span></button></li>
+              <li><button class="assetrow"><span class="asset-name">Daisy</span>
+                <span class="asset-meta">Cattle<span class="chev">›</span></span></button></li>
+              <li><button class="assetrow"><span class="asset-name">Hazel</span>
+                <span class="asset-meta">Cattle<span class="chev">›</span></span></button></li>
+              <li><button class="assetrow"><span class="asset-name">Juniper</span>
+                <span class="asset-meta">Cattle<span class="chev">›</span></span></button></li>
+            </ul>
+
+            <h2 class="section">Groups</h2>
+            <ul class="assetlist">
+              <li><button class="assetrow"><span class="asset-name">Layers</span>
+                <span class="asset-meta">Chicken · 20 head<span class="chev">›</span></span></button></li>
+              <li><button class="assetrow"><span class="asset-name">Spring pigs</span>
+                <span class="asset-meta">Pig · 4 head<span class="chev">›</span></span></button></li>
+              <li class="gone"><button class="assetrow"><span class="asset-name">Spring broilers</span>
+                <span class="asset-meta">Chicken · 75 head · harvested<span class="chev">›</span></span></button></li>
+            </ul>
+
+            <h2 class="section">Plantings</h2>
+            <ul class="assetlist">
+              <li><button class="assetrow"><span class="asset-name">Salanova, April sowing</span>
+                <span class="asset-meta">Lettuce<span class="chev">›</span></span></button></li>
+            </ul>
+
+            <h2 class="section">Lots</h2>
+            <ul class="assetlist">
+              <li><button class="assetrow"><span class="asset-name">Grower feed — April</span>
+                <span class="asset-meta">Feed<span class="chev">›</span></span></button></li>
+              <li><button class="assetrow"><span class="asset-name">Broiler meat, spring batch</span>
+                <span class="asset-meta">Meat<span class="chev">›</span></span></button></li>
+            </ul>
+          </div>
+        </main>
+        <nav class="tabbar">
+          <button><span class="glyph">☀️</span>Today</button>
+          <button class="on"><span class="glyph">🐄</span>Stock</button>
+          <button><span class="glyph">📦</span>Stores</button>
+          <button><span class="glyph">📋</span>Records</button>
+        </nav>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ── 5 ─────────────────────────────────────────────────────────────── -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">05</span><h2>What it cost</h2></div>
+    <p class="plate-note">The number a spreadsheet makes you work for. Feed
+      followed through slaughter to a price per pound.</p>
+
+    <div class="phone"><div class="viewport">
+      <div class="app">
+        <main class="content">
+          <div class="screen">
+            <button class="back">‹ Back</button>
+            <h1>Spring broilers</h1>
+            <p class="tagline">Chicken · 75 head · harvested</p>
+
+            <h2 class="section">Cost</h2>
+            <div class="costbox">
+              <div class="costrow"><span>Inputs</span><span>$170.00</span></div>
+              <div class="costrow"><span>Broiler meat, spring batch</span><span>240 lb</span></div>
+              <div class="costrow strong"><span>Cost per lb</span><span>$0.71</span></div>
+            </div>
+
+            <div class="actions"><button>Edit</button></div>
+
+            <h2 class="section">History</h2>
+            <ul class="loglist">
+              <li>
+                <div class="log-main"><span class="log-type">Harvest</span>
+                  <span class="log-qty">240 lb</span></div>
+                <div class="log-note">Slaughter day</div>
+                <time class="log-time">Jun 14</time>
+              </li>
+              <li>
+                <div class="log-main"><span class="log-type">Fed</span>
+                  <span class="log-qty">300 lb</span></div>
+                <div class="log-note">Grower feed — April</div>
+                <time class="log-time">Apr 10</time>
+              </li>
+              <li>
+                <div class="log-main"><span class="log-type">Weight</span>
+                  <span class="log-qty">4.2 lb</span></div>
+                <div class="log-note">Average at six weeks</div>
+                <time class="log-time">Apr 02</time>
+              </li>
+            </ul>
+          </div>
+        </main>
+        <nav class="tabbar">
+          <button><span class="glyph">☀️</span>Today</button>
+          <button class="on"><span class="glyph">🐄</span>Stock</button>
+          <button><span class="glyph">📦</span>Stores</button>
+          <button><span class="glyph">📋</span>Records</button>
+        </nav>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ── 6 ─────────────────────────────────────────────────────────────── -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">06</span><h2>Stores</h2></div>
+    <p class="plate-note">What is actually left — freezer, feed bin, hay. Tap
+      one to take some out.</p>
+
+    <div class="phone"><div class="viewport">
+      <div class="app">
+        <main class="content">
+          <div class="screen">
+            <h1>Stores</h1>
+            <p class="tagline">Feed, meat, and everything else on hand.</p>
+            <ul class="assetlist">
+              <li><button class="assetrow"><span class="asset-name">Broiler meat, spring batch</span>
+                <span class="asset-meta"><strong class="remaining">220 lb</strong> · Meat<span class="chev">›</span></span></button></li>
+              <li><button class="assetrow"><span class="asset-name">Grower feed — April</span>
+                <span class="asset-meta"><strong class="remaining">300 lb</strong> · Feed<span class="chev">›</span></span></button></li>
+              <li><button class="assetrow"><span class="asset-name">Second-cut hay</span>
+                <span class="asset-meta"><strong class="remaining">42 bale</strong> · Hay<span class="chev">›</span></span></button></li>
+              <li><button class="assetrow"><span class="asset-name">Eggs, this week</span>
+                <span class="asset-meta"><strong class="remaining">7 dozen</strong> · Eggs<span class="chev">›</span></span></button></li>
+            </ul>
+
+            <h2 class="section">Used up</h2>
+            <ul class="assetlist">
+              <li class="gone"><button class="assetrow"><span class="asset-name">Starter feed — March</span>
+                <span class="asset-meta">200 lb in, none left<span class="chev">›</span></span></button></li>
+            </ul>
+          </div>
+        </main>
+        <nav class="tabbar">
+          <button><span class="glyph">☀️</span>Today</button>
+          <button><span class="glyph">🐄</span>Stock</button>
+          <button class="on"><span class="glyph">📦</span>Stores</button>
+          <button><span class="glyph">📋</span>Records</button>
+        </nav>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ── 7 ─────────────────────────────────────────────────────────────── -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">07</span><h2>Taking from the freezer</h2></div>
+    <p class="plate-note">Home use asks what it would have cost to buy — which is
+      how the app can tell you whether raising it beat the shop.</p>
+
+    <div class="phone"><div class="viewport">
+      <div class="app">
+        <main class="content"><div class="screen"><h1>Stores</h1>
+          <p class="tagline">Feed, meat, and everything else on hand.</p></div></main>
+        <nav class="tabbar">
+          <button><span class="glyph">☀️</span>Today</button>
+          <button><span class="glyph">🐄</span>Stock</button>
+          <button class="on"><span class="glyph">📦</span>Stores</button>
+          <button><span class="glyph">📋</span>Records</button>
+        </nav>
+      </div>
+      <div class="sheet-backdrop">
+        <div class="sheet">
+          <header class="sheet-head"><h2>Broiler meat, spring batch</h2><button class="icon">✕</button></header>
+          <div class="costbox">
+            <div class="costrow"><span>Came in</span><span>240 lb</span></div>
+            <div class="costrow"><span>Gone</span><span>20 lb</span></div>
+            <div class="costrow strong"><span>Left</span><span>220 lb</span></div>
+          </div>
+          <label class="field" style="margin-top:1.25rem"><span>What happened to it?</span>
+            <select><option>Ate it / used at home</option></select></label>
+          <label class="field"><span>How much (lb)</span><input value="20" inputmode="decimal"></label>
+          <label class="field"><span>What it would have cost to buy ($)</span>
+            <input value="89.80" inputmode="decimal">
+            <small class="hint">Optional. Putting the shop price here is what lets
+              the app tell you whether raising it beat buying it.</small></label>
+          <button class="primary">Save</button>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ── 8 ─────────────────────────────────────────────────────────────── -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">08</span><h2>Records</h2></div>
+    <p class="plate-note">The whole timeline, newest first. Tap anything to fix a
+      typo or delete it.</p>
+
+    <div class="phone"><div class="viewport">
+      <div class="app">
+        <main class="content">
+          <div class="screen">
+            <h1>Records</h1>
+            <p class="tagline">Everything, newest first. Tap one to fix it.</p>
+            <ul class="loglist">
+              <li><button class="logrow"><div class="log-main"><span class="log-type">Harvest</span><span class="log-qty">18 each</span></div><div class="log-sub">Layers</div><time class="log-time">Aug 23</time></button></li>
+              <li><button class="logrow"><div class="log-main"><span class="log-type">Feeding</span><span class="log-qty">25 lb</span></div><div class="log-sub">Spring pigs</div><time class="log-time">Aug 22</time></button></li>
+              <li><button class="logrow"><div class="log-main"><span class="log-type">Note</span></div><div class="log-sub">Hazel</div><div class="log-note">Off her feed this morning — watching her.</div><time class="log-time">Aug 22</time></button></li>
+              <li><button class="logrow"><div class="log-main"><span class="log-type">Weight</span><span class="log-qty">412 lb</span></div><div class="log-sub">Juniper</div><time class="log-time">Aug 20</time></button></li>
+              <li><button class="logrow"><div class="log-main"><span class="log-type">Used</span><span class="log-qty">20 lb, 89.8 USD</span></div><div class="log-sub">Broiler meat, spring batch</div><time class="log-time">Aug 01</time></button></li>
+              <li><button class="logrow"><div class="log-main"><span class="log-type">Harvest</span><span class="log-qty">240 lb</span></div><div class="log-sub">Spring broilers</div><time class="log-time">Jun 14</time></button></li>
+              <li><button class="logrow"><div class="log-main"><span class="log-type">Feeding</span><span class="log-qty">300 lb</span></div><div class="log-sub">Spring broilers</div><time class="log-time">Apr 10</time></button></li>
+              <li><button class="logrow"><div class="log-main"><span class="log-type">Purchase</span><span class="log-qty">340 USD, 600 lb</span></div><div class="log-sub">Grower feed — April</div><time class="log-time">Apr 02</time></button></li>
+            </ul>
+          </div>
+        </main>
+        <nav class="tabbar">
+          <button><span class="glyph">☀️</span>Today</button>
+          <button><span class="glyph">🐄</span>Stock</button>
+          <button><span class="glyph">📦</span>Stores</button>
+          <button class="on"><span class="glyph">📋</span>Records</button>
+        </nav>
+      </div>
+    </div></div>
+  </section>
+
+</div>
+
+<footer class="footnote">
+  <p><strong>What this is.</strong> A static preview — nothing here saves, syncs
+  or calculates. The styling is lifted from <code>src/App.css</code> unchanged,
+  so anything that looks wrong here looks wrong in the real app too. Only two
+  rules were altered: the tab bar and modal backdrop pin themselves to the
+  browser window, which inside a mock frame had to become the frame.</p>
+  <p>Follows your system light or dark theme. Frames scroll inside themselves.</p>
+</footer>
