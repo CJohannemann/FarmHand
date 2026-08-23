@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import {
-  createLog, createPurchase, listTerms, planTask, plannedLogs, recentLogs,
+  createLog, createPurchase, listAssets, listTerms, planTask, plannedLogs,
+  recentLogs,
 } from '../db/queries'
 import type { LogWithDetail } from '../db/types'
+import { HARVESTS, tilesFor, type HarvestSpec } from '../lib/tiles'
 import { Sheet } from './Sheet'
 import { AssetSelect } from './AssetSelect'
 import { LogList } from './LogList'
@@ -11,24 +13,20 @@ import { EditLog } from './EditLog'
 import { TaskList } from './TaskList'
 import { WeatherStrip } from './Weather'
 
-type Kind = 'eggs' | 'weight' | 'feed' | 'buy' | 'note' | 'plan'
-
-const TILES: { kind: Kind; label: string; glyph: string }[] = [
-  { kind: 'eggs',   label: 'Eggs',   glyph: '🥚' },
-  { kind: 'weight', label: 'Weigh',  glyph: '⚖️' },
-  { kind: 'feed',   label: 'Feed',   glyph: '🌾' },
-  { kind: 'buy',    label: 'Buy',    glyph: '🧾' },
-  { kind: 'note',   label: 'Note',   glyph: '📝' },
-  { kind: 'plan',   label: 'Plan',   glyph: '📅' },
-]
-
 export function Today() {
-  const [open, setOpen] = useState<Kind | null>(null)
+  const [open, setOpen] = useState<string | null>(null)
   const [editing, setEditing] = useState<LogWithDetail | null>(null)
   const recent = useAsync(() => recentLogs(8), [])
   const tasks = useAsync(() => plannedLogs(), [])
+  const assets = useAsync(() => listAssets(), [])
 
-  const done = () => { setOpen(null); recent.reload(); tasks.reload() }
+  // Tiles follow the farm: no Eggs button without birds, no Honey without bees.
+  const tiles = tilesFor(assets.data ?? [])
+  const harvest = open ? HARVESTS[open] : undefined
+
+  const done = () => {
+    setOpen(null); recent.reload(); tasks.reload(); assets.reload()
+  }
 
   return (
     <div className="screen">
@@ -41,13 +39,20 @@ export function Today() {
       <WeatherStrip />
 
       <div className="tiles">
-        {TILES.map((t) => (
+        {tiles.map((t) => (
           <button key={t.kind} className="tile" onClick={() => setOpen(t.kind)}>
             <span className="glyph">{t.glyph}</span>
             {t.label}
           </button>
         ))}
       </div>
+
+      {assets.data && assets.data.length === 0 && (
+        <p className="hint" style={{ marginTop: '0.75rem' }}>
+          More buttons appear as you add stock — eggs once there are birds, milk
+          once there is a cow, picking once something is planted.
+        </p>
+      )}
 
       {(tasks.data ?? []).length > 0 && (
         <>
@@ -67,7 +72,9 @@ export function Today() {
           onChanged={() => { setEditing(null); recent.reload() }} />
       )}
 
-      {open === 'eggs'   && <EggForm    onDone={done} onClose={() => setOpen(null)} />}
+      {harvest && (
+        <ProduceForm spec={harvest} onDone={done} onClose={() => setOpen(null)} />
+      )}
       {open === 'weight' && <WeightForm onDone={done} onClose={() => setOpen(null)} />}
       {open === 'feed'   && <FeedForm   onDone={done} onClose={() => setOpen(null)} />}
       {open === 'buy'    && <BuyForm    onDone={done} onClose={() => setOpen(null)} />}
@@ -79,32 +86,39 @@ export function Today() {
 
 type FormProps = { onDone: () => void; onClose: () => void }
 
-function EggForm({ onDone, onClose }: FormProps) {
-  const [count, setCount] = useState('')
+/**
+ * Eggs, milk, honey and picking are the same act: something the farm keeps
+ * yielded something, and carried on existing. One form, four labels.
+ */
+function ProduceForm({ spec, onDone, onClose }: FormProps & { spec: HarvestSpec }) {
+  const [amount, setAmount] = useState('')
   const [asset, setAsset] = useState('')
-  const n = Number(count)
+  const n = Number(amount)
 
   const save = async () => {
     await createLog({
       type: 'harvest',
-      name: 'Eggs collected',
+      name: spec.title,
       assets: asset ? [{ id: asset, role: 'subject' }] : [],
-      quantities: [{ measure: 'count', value: n, unit: 'each', label: 'eggs' }],
+      quantities: [{
+        measure: spec.measure, value: n, unit: spec.unit,
+        label: spec.material.toLowerCase(),
+      }],
     })
     onDone()
   }
 
   return (
-    <Sheet title="Eggs collected" onClose={onClose}>
+    <Sheet title={spec.title} onClose={onClose}>
       <label className="field">
-        <span>How many?</span>
+        <span>{spec.prompt}</span>
         <input
-          type="number" inputMode="numeric" autoFocus value={count}
-          onChange={(e) => setCount(e.target.value)} placeholder="18"
+          type="number" inputMode="decimal" autoFocus value={amount}
+          onChange={(e) => setAmount(e.target.value)} placeholder={spec.placeholder}
         />
       </label>
-      <AssetSelect value={asset} onChange={setAsset} types={['group', 'animal']}
-        label="From which flock? (optional)" />
+      <AssetSelect value={asset} onChange={setAsset} types={spec.from}
+        label="Where from? (optional)" />
       <button className="primary" disabled={!(n > 0)} onClick={save}>Save</button>
     </Sheet>
   )

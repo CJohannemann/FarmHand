@@ -10,9 +10,10 @@
     "preview": "vite preview",
     "verify:db": "node db/test/verify.mjs",
     "verify:sync": "node db/test/verify-sync.mjs",
-    "verify": "npm run verify:db && npm run verify:sync && npm run verify:roundtrip && npm run verify:weather",
+    "verify": "npm run verify:db && npm run verify:sync && npm run verify:roundtrip && npm run verify:weather && npm run verify:tiles",
     "verify:roundtrip": "node --experimental-strip-types db/test/verify-roundtrip.ts",
-    "verify:weather": "node --experimental-strip-types db/test/verify-weather.ts"
+    "verify:weather": "node --experimental-strip-types db/test/verify-weather.ts",
+    "verify:tiles": "node --experimental-strip-types db/test/verify-tiles.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
