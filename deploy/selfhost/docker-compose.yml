@@ -1,0 +1,74 @@
+# Trimmed self-hosted backend for FarmHand: just the three pieces the app
+# actually uses (Postgres, its REST API, and Auth) — not Supabase's full
+# stack (no Realtime, Storage, Studio, or Kong). nginx on the host does the
+# job Kong would, routing /rest/v1 and /auth/v1 to the right container; see
+# nginx-farmhand-api.conf.
+#
+# Uses the official supabase/postgres image rather than plain postgres —
+# it already bootstraps the auth schema, roles (anon/authenticated/
+# service_role/authenticator/supabase_auth_admin), and the auth.uid() /
+# auth.role() helper functions FarmHand's row-level security policies
+# depend on. Hand-rolling that ourselves is exactly the kind of thing that
+# goes subtly, securely wrong.
+#
+# Nothing here is reachable from outside the VPS directly — only nginx
+# (already running on the host) is, and it proxies in over 127.0.0.1.
+
+services:
+  db:
+    image: supabase/postgres:15.1.1.78
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXP: 3600
+    volumes:
+      - ./data/db:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  rest:
+    image: postgrest/postgrest:v12.2.3
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+    ports:
+      - "127.0.0.1:3001:3000"
+
+  auth:
+    image: supabase/gotrue:v2.170.0
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: https://${API_DOMAIN}
+      GOTRUE_SITE_URL: https://${FRONTEND_DOMAIN}
+      GOTRUE_URI_ALLOW_LIST: https://${FRONTEND_DOMAIN}/**
+      GOTRUE_DB_DRIVER: postgres
+      DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_EXP: 3600
+      # Despite the startup deprecation notice, this is still what sets a
+      # new user's JWT "role" claim in this version — remove it and every
+      # signup gets role:"" instead of "authenticated", which PostgREST
+      # then can't SET ROLE to (confirmed by testing, not documentation).
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_DISABLE_SIGNUP: "false"
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "false"
+      GOTRUE_SMTP_HOST: ${SMTP_HOST}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT}
+      GOTRUE_SMTP_USER: ${SMTP_USER}
+      GOTRUE_SMTP_PASS: ${SMTP_PASS}
+      GOTRUE_SMTP_SENDER_NAME: FarmHand
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL}
+    ports:
+      - "127.0.0.1:9999:9999"
