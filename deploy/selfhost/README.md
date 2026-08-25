@@ -132,7 +132,7 @@ failure here is about the containers, not the network in front of them):
 
 ```bash
 source .env
-curl -i "http://127.0.0.1:3001/asset?select=id&limit=1" -H "apikey: $ANON_KEY"
+curl -i "http://127.0.0.1:8001/asset?select=id&limit=1" -H "apikey: $ANON_KEY"
 ```
 
 Expect `HTTP/1.1 200` and `[]` (or real rows). Anything else — stop and

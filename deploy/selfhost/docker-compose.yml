@@ -39,7 +39,8 @@ services:
       PGRST_JWT_SECRET: ${JWT_SECRET}
       PGRST_DB_USE_LEGACY_GUCS: "false"
     ports:
-      - "127.0.0.1:3001:3000"
+      # 3001 collides with the baseball site's own backend on this VPS.
+      - "127.0.0.1:8001:3000"
 
   auth:
     image: supabase/gotrue:v2.170.0
