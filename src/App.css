@@ -315,6 +315,9 @@ button.back {
 
 .screen.auth { max-width: 24rem; padding-top: 12vh; }
 .screen.auth form { margin-top: 1.5rem; }
+/* Buttons are inline by default, so the two footer links here — Forgot
+   password / Create account — sat on the same line whenever both fit. */
+.screen.auth button.linkish { display: block; }
 
 button.linkish {
   border: 0; background: none; color: var(--accent);
