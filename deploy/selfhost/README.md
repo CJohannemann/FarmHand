@@ -53,10 +53,15 @@ cd ~/FarmHand/deploy/selfhost
 cp .env.example .env
 ```
 
-Generate the two random secrets:
+Generate the two random secrets. `POSTGRES_PASSWORD` ends up embedded
+directly inside connection URLs (`postgres://authenticator:PASSWORD@...`),
+so it needs `-hex` rather than `-base64` — base64 can contain `/`, `+`, or
+`=`, and an unescaped `/` in particular gets misread as a path separator,
+corrupting the URL. `JWT_SECRET` is never embedded in a URL, so `-base64`
+is fine for it:
 
 ```bash
-openssl rand -base64 32   # -> POSTGRES_PASSWORD
+openssl rand -hex 32      # -> POSTGRES_PASSWORD
 openssl rand -base64 32   # -> JWT_SECRET
 ```
 
