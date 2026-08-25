@@ -239,6 +239,20 @@ check('server has the group', await count(server,
 check('server has all 12 members', await count(server,
   `select count(*)::int n from asset where parent_id=$1`, [herd]) === 12)
 
+console.log('\nDevice B pulls that herd fresh — the exact shape that broke a')
+console.log('brand new device signing into an existing farm for the first time')
+// End-to-end sanity check mirroring the push case above: B has never seen
+// this group or its members before, so every row here is a genuine insert,
+// not an update to something already local. The ordering guarantee this
+// depends on (pull() must not rely on the server handing rows back with the
+// group ahead of its members just because updated_at ties break that way)
+// is unit-tested directly in verify-pull-order.ts.
+await runSync(asLocal(B), remote)
+check('B has the herd', await count(B,
+  `select count(*)::int n from asset where id=$1`, [herd]) === 1)
+check('B has all 12 members', await count(B,
+  `select count(*)::int n from asset where parent_id=$1`, [herd]) === 12)
+
 console.log('\nRepeat sync is quiet')
 const again = await runSync(asLocal(A), remote)
 check('nothing left to push', again.pushed === 0, `${again.pushed}`)

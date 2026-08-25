@@ -177,7 +177,11 @@ async function pullTable(local: Local, remote: Remote, tbl: string): Promise<num
     if (data.length === 0) break
 
     await local.applying(async () => {
-      await upsertLocal(local, tbl, data)
+      // Same reason push orders these: a page can return a group's members
+      // ahead of the group itself (createGroupWithMembers gives them all but
+      // identical timestamps, so "ascending by updated_at" doesn't promise
+      // parent-before-child), which trips parent_id's foreign key on insert.
+      await upsertLocal(local, tbl, orderByParent(data))
       if (tbl === 'log') {
         const links = await remote.selectLogAssets(data.map((r) => String(r.id)))
         if (links.length) await upsertLocal(local, 'log_asset', links)
