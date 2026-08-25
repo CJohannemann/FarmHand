@@ -67,7 +67,33 @@ h1 { margin: 0 0 0.15rem; font-size: 1.6rem; letter-spacing: -0.02em; }
 }
 
 .tile:active { transform: scale(0.97); }
+.tile.on { border-color: var(--accent); color: var(--accent); }
+.tile-solo { grid-column: 2; }
+
+.devreset {
+  position: fixed; top: 0.5rem; right: 0.5rem; z-index: 50;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--line); border-radius: 0.4rem;
+  background: var(--card); color: var(--muted);
+  font: inherit; font-size: 0.7rem; cursor: pointer;
+}
 .glyph { font-size: 1.4rem; line-height: 1; }
+
+.chipwrap { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+.chip {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.chip.on { border-color: var(--accent); color: var(--accent); }
+.chip.remove { display: inline-flex; align-items: center; gap: 0.35rem; }
 
 /* -------------------------------------------------------------- log list */
 
@@ -118,6 +144,21 @@ h1 { margin: 0 0 0.15rem; font-size: 1.6rem; letter-spacing: -0.02em; }
 }
 
 .field textarea { resize: vertical; }
+
+/*
+  No stepper arrows. They are a mis-tap waiting to happen on a phone held in
+  one hand in a barn, they eat width the value needs, and nothing here is
+  entered by nudging one at a time — you type 600, you don't click 600 times.
+  Applied globally rather than per-field so a new number input can't
+  reintroduce them by being written somewhere else.
+*/
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
 .hint { display: block; margin-top: 0.3rem; color: var(--muted); font-size: 0.8rem; }
 
 button.primary {
@@ -222,6 +263,43 @@ button.back {
 .costrow:last-child { border-bottom: 0; }
 .costrow span:last-child { font-variant-numeric: tabular-nums; }
 .costrow.strong { font-weight: 700; font-size: 1rem; color: var(--accent); }
+
+.growthchart {
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  padding: 0.6rem 0.6rem 0.4rem;
+  background: var(--card);
+  touch-action: none;
+}
+
+.chart-tick, .chart-endlabel { font-size: 0.6rem; fill: var(--muted); }
+.chart-endlabel { fill: var(--fg); font-weight: 600; }
+
+.chart-tooltip {
+  margin: 0.3rem 0 0; text-align: center;
+  font-size: 0.8rem; color: var(--muted);
+}
+.chart-tooltip strong { color: var(--fg); font-variant-numeric: tabular-nums; }
+
+.costchart {
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  padding: 0.6rem 0.6rem 0.4rem;
+  background: var(--card);
+}
+
+.stat { margin: 0.75rem 0 1.25rem; }
+
+.stat-value {
+  display: block;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-label { display: block; margin-top: 0.15rem; color: var(--muted); font-size: 0.85rem; }
 
 .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.25rem; }
 

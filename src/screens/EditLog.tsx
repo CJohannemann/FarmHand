@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import { deleteLog, quantitiesFor, setQuantity, updateLog } from '../db/queries'
 import type { LogWithDetail, Measure } from '../db/types'
+import {
+  ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, sanitizeNumeric,
+} from '../lib/numeric'
 import { Sheet } from './Sheet'
 
 const forInput = (iso: string) => {
@@ -62,9 +65,12 @@ export function EditLog({
         <label className="field" key={q.id}>
           <span>{q.label ?? q.measure} ({q.unit})</span>
           <input
-            type="number" inputMode="decimal"
+            type="number" inputMode="decimal" min="0"
             value={edited[q.id] ?? String(q.value)}
-            onChange={(e) => setEdited({ ...edited, [q.id]: e.target.value })}
+            onChange={(e) =>
+              setEdited({ ...edited, [q.id]: sanitizeNumeric(e.target.value) })}
+            onWheel={ignoreScrollOnNumberInput}
+            onKeyDown={ignoreArrowKeysOnNumberInput}
           />
         </label>
       ))}

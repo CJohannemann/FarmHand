@@ -10,10 +10,14 @@
     "preview": "vite preview",
     "verify:db": "node db/test/verify.mjs",
     "verify:sync": "node db/test/verify-sync.mjs",
-    "verify": "npm run verify:db && npm run verify:sync && npm run verify:roundtrip && npm run verify:weather && npm run verify:tiles",
+    "verify": "npm run verify:db && npm run verify:sync && npm run verify:roundtrip && npm run verify:push-order && npm run verify:weather && npm run verify:tiles && npm run verify:numeric && npm run verify:equipment && npm run verify:purchase-delete",
     "verify:roundtrip": "node --experimental-strip-types db/test/verify-roundtrip.ts",
+    "verify:push-order": "node --experimental-strip-types db/test/verify-push-order.ts",
     "verify:weather": "node --experimental-strip-types db/test/verify-weather.ts",
-    "verify:tiles": "node --experimental-strip-types db/test/verify-tiles.ts"
+    "verify:tiles": "node --experimental-strip-types db/test/verify-tiles.ts",
+    "verify:numeric": "node --experimental-strip-types db/test/verify-numeric.ts",
+    "verify:equipment": "node --experimental-strip-types db/test/verify-equipment.ts",
+    "verify:purchase-delete": "node --experimental-strip-types db/test/verify-purchase-delete.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",

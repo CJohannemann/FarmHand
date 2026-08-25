@@ -76,15 +76,68 @@ export async function push(local: Local, remote: Remote): Promise<number> {
       ? rows.filter((r) => r.farm_id !== null)
       : rows
 
-    for (let i = 0; i < outgoing.length; i += PAGE) {
-      await remote.upsert(tbl, outgoing.slice(i, i + PAGE), keyFor(tbl))
-      total += Math.min(PAGE, outgoing.length - i)
+    // A log_asset row's log and asset are pushed here too, whether or not
+    // they were independently queued — the 60-second auto-sync timer can
+    // catch a multi-step write (create a lot, log a harvest, archive the
+    // source) mid-flight, and a log_asset row for something this push
+    // doesn't otherwise know about is exactly what trips the foreign key
+    // and wedges every push after it, since a failed batch retries the
+    // same missing reference forever.
+    if (tbl === 'log_asset' && outgoing.length > 0) {
+      await pushReferenced(local, remote, 'asset', outgoing.map((r) => String(r.asset_id)))
+      await pushReferenced(local, remote, 'log', outgoing.map((r) => String(r.log_id)))
+    }
+
+    const ordered = orderByParent(outgoing)
+    for (let i = 0; i < ordered.length; i += PAGE) {
+      await remote.upsert(tbl, ordered.slice(i, i + PAGE), keyFor(tbl))
+      total += Math.min(PAGE, ordered.length - i)
     }
 
     // Only clear once the server has them, so a failed push retries.
     await local.query(`delete from sync_outbox where tbl = $1`, [tbl])
   }
   return total
+}
+
+/** Pushes specific rows by id, regardless of whether they were queued. */
+async function pushReferenced(local: Local, remote: Remote, tbl: string, ids: string[]) {
+  const distinct = [...new Set(ids)]
+  if (distinct.length === 0) return
+  const { rows } = await local.query(
+    `select * from "${tbl}" where id = any($1::uuid[])`, [distinct],
+  )
+  if (rows.length === 0) return
+  const ordered = orderByParent(rows)
+  for (let i = 0; i < ordered.length; i += PAGE) {
+    await remote.upsert(tbl, ordered.slice(i, i + PAGE), keyFor(tbl))
+  }
+}
+
+/**
+ * asset, term and location all self-reference via parent_id, and `id = any(
+ * $1::uuid[])` makes no promise about row order — a group's members can
+ * come back ahead of the group itself, since that has nothing to do with
+ * which was inserted first. Pushing a member before its still-unpushed
+ * parent trips the parent_id foreign key. Puts every row after its own
+ * parent (recursively), stable otherwise; a cycle can't happen in practice
+ * but `seen` keeps one from hanging if it ever did.
+ */
+function orderByParent(rows: Row[]): Row[] {
+  if (rows.length === 0 || !('parent_id' in rows[0])) return rows
+  const byId = new Map(rows.map((r) => [String(r.id), r]))
+  const ordered: Row[] = []
+  const seen = new Set<string>()
+  const visit = (r: Row) => {
+    const id = String(r.id)
+    if (seen.has(id)) return
+    seen.add(id)
+    const parent = r.parent_id ? byId.get(String(r.parent_id)) : undefined
+    if (parent) visit(parent)
+    ordered.push(r)
+  }
+  rows.forEach(visit)
+  return ordered
 }
 
 async function localRowsFor(local: Local, tbl: string, ids: string[]): Promise<Row[]> {

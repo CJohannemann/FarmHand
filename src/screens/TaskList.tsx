@@ -15,7 +15,10 @@ function due(iso: string): { text: string; late: boolean } {
   if (days === 0) return { text: 'today', late: false }
   if (days === 1) return { text: 'tomorrow', late: false }
   if (days < 7) return { text: `in ${days} days`, late: false }
-  return { text: when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), late: false }
+  return {
+    text: when.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+    late: false,
+  }
 }
 
 export function TaskList({

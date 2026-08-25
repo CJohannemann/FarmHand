@@ -31,14 +31,14 @@ export function LogList({
         const body = (
           <>
             <div className="log-main">
-              <span className="log-type">{LABELS[l.type] ?? l.type}</span>
+              <span className="log-type">{l.name ?? LABELS[l.type] ?? l.type}</span>
               {l.summary && <span className="log-qty">{l.summary}</span>}
             </div>
             {l.subjects && <div className="log-sub">{l.subjects}</div>}
             {l.notes && <div className="log-note">{l.notes}</div>}
             <time className="log-time">
               {new Date(l.timestamp).toLocaleDateString(undefined,
-                { month: 'short', day: 'numeric' })}
+                { month: 'short', day: 'numeric', year: 'numeric' })}
             </time>
           </>
         )

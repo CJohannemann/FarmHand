@@ -77,8 +77,10 @@ create table asset (
   name           text not null,
   status         text not null default 'active'
                    check (status in ('active','archived')),
-  terminal_event text check (terminal_event in
-                   ('sold','died','culled','harvested','consumed','processed')),
+  terminal_event text
+                   constraint asset_terminal_event_check check (terminal_event in
+                   ('sold','died','culled','harvested','consumed','processed',
+                    'retired','scrapped')),
   parent_id      uuid references asset(id) on delete set null,
   attributes     jsonb not null default '{}'::jsonb,
   created_at     timestamptz not null default now(),

@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import {
-  createLog, createPurchase, listAssets, listTerms, planTask, plannedLogs,
-  recentLogs,
+  createLog, createPurchase, listAssets, listTerms, lotBalances, planTask,
+  plannedLogs, recentLogs,
 } from '../db/queries'
 import type { LogWithDetail } from '../db/types'
 import { HARVESTS, tilesFor, type HarvestSpec } from '../lib/tiles'
+import {
+  ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange, roundQty,
+} from '../lib/numeric'
 import { Sheet } from './Sheet'
 import { AssetSelect } from './AssetSelect'
 import { LogList } from './LogList'
@@ -13,7 +16,7 @@ import { EditLog } from './EditLog'
 import { TaskList } from './TaskList'
 import { WeatherStrip } from './Weather'
 
-export function Today() {
+export function Today({ onGoToStock }: { onGoToStock: () => void }) {
   const [open, setOpen] = useState<string | null>(null)
   const [editing, setEditing] = useState<LogWithDetail | null>(null)
   const recent = useAsync(() => recentLogs(8), [])
@@ -48,10 +51,14 @@ export function Today() {
       </div>
 
       {assets.data && assets.data.length === 0 && (
-        <p className="hint" style={{ marginTop: '0.75rem' }}>
-          More buttons appear as you add stock — eggs once there are birds, milk
-          once there is a cow, picking once something is planted.
-        </p>
+        <div className="empty" style={{ marginTop: '0.75rem' }}>
+          <p style={{ margin: '0 0 0.75rem' }}>
+            Buy, Note and Plan work for any farm — but the rest show up once
+            you add what you keep: eggs once there are birds, milk once there
+            is a cow, picking once something is planted.
+          </p>
+          <button className="primary" onClick={onGoToStock}>+ Add your stock</button>
+        </div>
       )}
 
       {(tasks.data ?? []).length > 0 && (
@@ -75,7 +82,6 @@ export function Today() {
       {harvest && (
         <ProduceForm spec={harvest} onDone={done} onClose={() => setOpen(null)} />
       )}
-      {open === 'weight' && <WeightForm onDone={done} onClose={() => setOpen(null)} />}
       {open === 'feed'   && <FeedForm   onDone={done} onClose={() => setOpen(null)} />}
       {open === 'buy'    && <BuyForm    onDone={done} onClose={() => setOpen(null)} />}
       {open === 'note'   && <NoteForm   onDone={done} onClose={() => setOpen(null)} />}
@@ -113,8 +119,9 @@ function ProduceForm({ spec, onDone, onClose }: FormProps & { spec: HarvestSpec 
       <label className="field">
         <span>{spec.prompt}</span>
         <input
-          type="number" inputMode="decimal" autoFocus value={amount}
-          onChange={(e) => setAmount(e.target.value)} placeholder={spec.placeholder}
+          type="number" inputMode="decimal" min="0" autoFocus value={amount}
+          onChange={onNumericChange(setAmount)} onWheel={ignoreScrollOnNumberInput}
+          onKeyDown={ignoreArrowKeysOnNumberInput} placeholder={spec.placeholder}
         />
       </label>
       <AssetSelect value={asset} onChange={setAsset} types={spec.from}
@@ -124,54 +131,32 @@ function ProduceForm({ spec, onDone, onClose }: FormProps & { spec: HarvestSpec 
   )
 }
 
-function WeightForm({ onDone, onClose }: FormProps) {
-  const [asset, setAsset] = useState('')
-  const [lb, setLb] = useState('')
-  const n = Number(lb)
-
-  const save = async () => {
-    await createLog({
-      type: 'weight',
-      name: 'Weight recorded',
-      assets: [{ id: asset, role: 'subject' }],
-      quantities: [{ measure: 'weight', value: n, unit: 'lb' }],
-    })
-    onDone()
-  }
-
-  return (
-    <Sheet title="Record a weight" onClose={onClose}>
-      <AssetSelect value={asset} onChange={setAsset}
-        types={['animal', 'group']} allowNone={false} label="Which animal?" />
-      <label className="field">
-        <span>Weight (lb)</span>
-        <input type="number" inputMode="decimal" value={lb}
-          onChange={(e) => setLb(e.target.value)} placeholder="240" />
-      </label>
-      <button className="primary" disabled={!asset || !(n > 0)} onClick={save}>
-        Save
-      </button>
-    </Sheet>
-  )
-}
-
+/**
+ * Feeding from a lot draws it down for real — the amount here is what
+ * lotBalances() reads back as "went out", so Stores shows what is actually
+ * left instead of just what was ever bought. The unit rides whatever the
+ * lot was bought in (round bales, pounds, whatever) rather than assuming lb.
+ */
 function FeedForm({ onDone, onClose }: FormProps) {
   const [subject, setSubject] = useState('')
   const [lot, setLot] = useState('')
   const [amount, setAmount] = useState('')
+  const { data: lots } = useAsync(() => lotBalances(), [])
+  const selected = lots?.find((l) => l.id === lot)
+  const unit = selected?.unit ?? 'lb'
 
   const save = async () => {
     const assets = [
       ...(subject ? [{ id: subject, role: 'subject' as const }] : []),
       ...(lot ? [{ id: lot, role: 'input' as const,
-            amount: Number(amount) > 0 ? Number(amount) : undefined, unit: 'lb' }] : []),
+            amount: Number(amount) > 0 ? Number(amount) : undefined, unit }] : []),
     ]
     await createLog({
       type: 'input_application',
       name: 'Fed',
       assets,
       quantities: Number(amount) > 0
-        ? [{ measure: 'weight' as const, value: Number(amount), unit: 'lb' }]
+        ? [{ measure: 'weight' as const, value: Number(amount), unit }]
         : [],
     })
     onDone()
@@ -184,9 +169,15 @@ function FeedForm({ onDone, onClose }: FormProps) {
       <AssetSelect value={lot} onChange={setLot} types={['lot']}
         label="Which feed? (optional)" />
       <label className="field">
-        <span>Amount (lb, optional)</span>
-        <input type="number" inputMode="decimal" value={amount}
-          onChange={(e) => setAmount(e.target.value)} placeholder="25" />
+        <span>Quantity ({unit}, optional)</span>
+        <input type="number" inputMode="decimal" min="0" value={amount}
+          onChange={onNumericChange(setAmount)} onWheel={ignoreScrollOnNumberInput}
+          onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="25" />
+        {selected && (
+          <small className="hint">
+            {roundQty(selected.remaining)} {selected.unit} on hand
+          </small>
+        )}
       </label>
       <button className="primary" disabled={!subject} onClick={save}>Save</button>
     </Sheet>
@@ -225,16 +216,18 @@ function BuyForm({ onDone, onClose }: FormProps) {
   const [material, setMaterial] = useState('Feed')
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
+  const [unit, setUnit] = useState('lb')
   const [cost, setCost] = useState('')
   const [supplier, setSupplier] = useState('')
   const { data: materials } = useAsync(() => listTerms('material'), [])
+  const { data: units } = useAsync(() => listTerms('unit'), [])
 
   const save = async () => {
     await createPurchase({
       material,
       name: name.trim() || material,
       amount: Number(amount) || undefined,
-      unit: 'lb',
+      unit,
       cost: Number(cost) || undefined,
       supplier: supplier.trim() || undefined,
     })
@@ -244,7 +237,7 @@ function BuyForm({ onDone, onClose }: FormProps) {
   return (
     <Sheet title="Bought something" onClose={onClose}>
       <p className="hint">
-        Recording what you paid is what lets the app work out cost per pound
+        Recording what you paid is what lets the app work out cost per unit
         later.
       </p>
       <label className="field">
@@ -258,15 +251,25 @@ function BuyForm({ onDone, onClose }: FormProps) {
         <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
           placeholder="Grower feed — April" />
       </label>
-      <label className="field">
-        <span>How much (lb)</span>
-        <input type="number" inputMode="decimal" value={amount}
-          onChange={(e) => setAmount(e.target.value)} placeholder="600" />
-      </label>
+      <div className="pair">
+        <label className="field">
+          <span>Quantity</span>
+          <input type="number" inputMode="decimal" min="0" value={amount}
+            onChange={onNumericChange(setAmount)} onWheel={ignoreScrollOnNumberInput}
+            onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="600" />
+        </label>
+        <label className="field">
+          <span>Unit</span>
+          <select value={unit} onChange={(e) => setUnit(e.target.value)}>
+            {(units ?? []).map((u) => <option key={u} value={u}>{u}</option>)}
+          </select>
+        </label>
+      </div>
       <label className="field">
         <span>What did it cost ($)</span>
-        <input type="number" inputMode="decimal" value={cost}
-          onChange={(e) => setCost(e.target.value)} placeholder="340" />
+        <input type="number" inputMode="decimal" min="0" value={cost}
+          onChange={onNumericChange(setCost)} onWheel={ignoreScrollOnNumberInput}
+          onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="340" />
       </label>
       <label className="field">
         <span>Supplier (optional)</span>

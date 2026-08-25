@@ -28,38 +28,61 @@ export interface HarvestSpec extends TileSpec {
   placeholder: string
 }
 
-const LAYERS = ['Chicken', 'Duck', 'Goose', 'Turkey']
+const LAYERS = ['Chicken', 'Duck', 'Goose', 'Turkey', 'Quail']
 const MILKERS = ['Cattle', 'Goat', 'Sheep']
 const BEES = ['Honeybee']
+
+export type Purpose = 'eggs' | 'meat' | 'dairy' | 'wool'
+
+export const PURPOSE_LABEL: Record<Purpose, string> = {
+  eggs: 'For eggs', meat: 'For meat', dairy: 'For dairy', wool: 'For wool',
+}
+
+/**
+ * Which purposes are worth asking about for a species — shared by onboarding
+ * and the Stock tab's Add/Edit forms, so "layers vs. broilers" is answerable
+ * everywhere a species gets picked, not just at setup. Species left out have
+ * no meaningful split (a Pig is a Pig), so neither form asks.
+ */
+export const SPECIES_PURPOSES: Record<string, Purpose[]> = {
+  Chicken: ['eggs', 'meat'],
+  Duck: ['eggs', 'meat'],
+  Quail: ['eggs', 'meat'],
+  Cattle: ['dairy', 'meat'],
+  Goat: ['dairy', 'meat'],
+  Sheep: ['wool', 'meat'],
+}
+
+/** A fixed, short list — unlike species, this never needs a farm's own entry. */
+export const EQUIPMENT_KINDS = ['Tractor', 'Implement', 'Vehicle', 'Other'] as const
 
 export const HARVESTS: Record<string, HarvestSpec> = {
   eggs: {
     kind: 'eggs', label: 'Eggs', glyph: '🥚',
-    title: 'Eggs collected', prompt: 'How many?',
+    title: 'Eggs collected', prompt: 'Quantity',
     material: 'Eggs', unit: 'each', measure: 'count',
     from: ['group', 'animal'], placeholder: '18',
   },
   milk: {
     kind: 'milk', label: 'Milk', glyph: '🥛',
-    title: 'Milk collected', prompt: 'How much (gal)?',
+    title: 'Milk collected', prompt: 'Quantity (gal)',
     material: 'Milk', unit: 'gal', measure: 'volume',
     from: ['animal', 'group'], placeholder: '4',
   },
   honey: {
     kind: 'honey', label: 'Honey', glyph: '🍯',
-    title: 'Honey pulled', prompt: 'How much (lb)?',
+    title: 'Honey pulled', prompt: 'Quantity (lb)',
     material: 'Honey', unit: 'lb', measure: 'weight',
     from: ['group', 'animal'], placeholder: '30',
   },
   pick: {
     kind: 'pick', label: 'Pick', glyph: '🥬',
-    title: 'Picked', prompt: 'How much (lb)?',
+    title: 'Picked', prompt: 'Quantity (lb)',
     material: 'Produce', unit: 'lb', measure: 'weight',
     from: ['planting'], placeholder: '18',
   },
 }
 
-const WEIGH: TileSpec = { kind: 'weight', label: 'Weigh', glyph: '⚖️' }
 const FEED:  TileSpec = { kind: 'feed',   label: 'Feed',  glyph: '🌾' }
 const BUY:   TileSpec = { kind: 'buy',    label: 'Buy',   glyph: '🧾' }
 const NOTE:  TileSpec = { kind: 'note',   label: 'Note',  glyph: '📝' }
@@ -72,28 +95,59 @@ export interface AssetLike {
 }
 
 /**
+ * What one animal or group actually yields on an ongoing basis — the same
+ * question tilesFor() asks farm-wide, asked of a single asset instead, so
+ * AssetDetail's Collect button can offer eggs or milk only where one is
+ * real. A beef herd and a dairy herd are both Cattle; only one of them
+ * gives milk. `purpose` says which — unset defaults to worthy for a species
+ * named here, since most groups never set it and the old species-only rule
+ * should keep working.
+ *
+ * `category` is deliberately weaker than `species`: it only ever comes from
+ * a custom entry someone typed under a heading, and "I keep this under
+ * Livestock" is not a claim that it gives milk. An alpaca or a llama would
+ * otherwise arrive with a Milk tile purely for having been added on the
+ * livestock page. So a category-only match must say what it produces, and
+ * an unset purpose there yields nothing.
+ */
+export function producibleMaterial(a: AssetLike): 'eggs' | 'milk' | 'honey' | null {
+  const species = String(a.attributes?.species ?? '')
+  const purpose = a.attributes?.purpose
+
+  if (LAYERS.includes(species) && (purpose === undefined || purpose === 'eggs')) return 'eggs'
+  if (MILKERS.includes(species) && (purpose === undefined || purpose === 'dairy')) return 'milk'
+  if (BEES.includes(species)) return 'honey'
+
+  if (a.attributes?.category === 'poultry' && purpose === 'eggs') return 'eggs'
+  if (a.attributes?.category === 'livestock' && purpose === 'dairy') return 'milk'
+  return null
+}
+
+/**
  * Ordered by how often a farm would reach for each: what you collect daily
  * first, then chores, then the three that suit any farm.
  *
- * At most nine, which fills the three-column grid exactly — and nine only
- * happens on a farm that genuinely does all of it.
+ * At most eight, and eight only on a farm that genuinely does all of it.
+ * Treat and Weigh are not here: both belong to one specific animal, so they
+ * live on that animal's own profile instead of asking "which one?" on a
+ * screen meant to be one tap.
  */
 export function tilesFor(assets: AssetLike[]): TileSpec[] {
   const live = assets.filter((a) => (a.status ?? 'active') === 'active')
-  const species = new Set(
-    live.map((a) => String(a.attributes?.species ?? '')).filter(Boolean),
-  )
-  const has = (list: string[]) => list.some((s) => species.has(s))
+
+  const eggWorthy = live.some((a) => producibleMaterial(a) === 'eggs')
+  const milkWorthy = live.some((a) => producibleMaterial(a) === 'milk')
+  const honeyWorthy = live.some((a) => producibleMaterial(a) === 'honey')
 
   const livestock = live.some((a) => a.type === 'animal' || a.type === 'group')
   const plantings = live.some((a) => a.type === 'planting')
 
   const tiles: TileSpec[] = []
-  if (has(LAYERS)) tiles.push(HARVESTS.eggs)
-  if (has(MILKERS)) tiles.push(HARVESTS.milk)
+  if (eggWorthy) tiles.push(HARVESTS.eggs)
+  if (milkWorthy) tiles.push(HARVESTS.milk)
   if (plantings) tiles.push(HARVESTS.pick)
-  if (has(BEES)) tiles.push(HARVESTS.honey)
-  if (livestock) tiles.push(FEED, WEIGH)
+  if (honeyWorthy) tiles.push(HARVESTS.honey)
+  if (livestock) tiles.push(FEED)
 
   // Buying, noting and planning suit every farm, including an empty one.
   tiles.push(BUY, NOTE, PLAN)

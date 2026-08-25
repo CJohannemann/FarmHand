@@ -209,6 +209,36 @@ check('its quantities died with it', qtyGoneOnB === 1)
 const stillThere = await count(B, `select count(*)::int n from log where id=$1`, [log])
 check('the row itself is retained', stillThere === 1)
 
+console.log('\nDevice A creates a group and its members in the same batch')
+// End-to-end sanity check that this shape of write — a group and a dozen
+// members queued together, the same shape createGroupWithMembers() writes —
+// still syncs cleanly. The specific ordering guarantee this depends on
+// (push() must not rely on the database handing rows back in insertion
+// order) is unit-tested directly in verify-push-order.ts, since PGlite
+// answers `id = any($1::uuid[])` for a table this small with a sequential
+// scan that happens to preserve insertion order either way.
+const herd = await one(A,
+  `insert into asset (farm_id,type,name,attributes)
+   values ($1,'group','Beef cattle','{"headcount":12}') returning id`, [farm])
+for (let i = 1; i <= 12; i++) {
+  await A.query(
+    `insert into asset (farm_id,type,name,parent_id) values ($1,'animal',$2,$3)`,
+    [farm, `Beef cattle ${i}`, herd])
+}
+
+let herdPushError = ''
+try {
+  await runSync(asLocal(A), remote)
+} catch (err) {
+  herdPushError = (err as Error).message
+}
+check('pushing a new group with its members does not trip the parent_id FK',
+  herdPushError === '', herdPushError)
+check('server has the group', await count(server,
+  `select count(*)::int n from asset where id=$1`, [herd]) === 1)
+check('server has all 12 members', await count(server,
+  `select count(*)::int n from asset where parent_id=$1`, [herd]) === 12)
+
 console.log('\nRepeat sync is quiet')
 const again = await runSync(asLocal(A), remote)
 check('nothing left to push', again.pushed === 0, `${again.pushed}`)

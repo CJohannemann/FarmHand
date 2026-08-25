@@ -5,26 +5,30 @@ import { useSync } from './lib/useSync'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import { linkFarm, type FarmLink } from './lib/farm'
 import { db, getSyncState, setSyncState } from './db/client'
+import { resetFarmForTesting } from './db/queries'
 import { Today } from './screens/Today'
 import { Animals } from './screens/Animals'
 import { Records } from './screens/Records'
 import { Stores } from './screens/Stores'
+import { Analytics } from './screens/Analytics'
 import { SignIn } from './screens/SignIn'
+import { ResetPassword } from './screens/ResetPassword'
 import { SyncBar } from './screens/SyncBar'
 import { Setup, FarmName } from './screens/Setup'
 
-type Tab = 'today' | 'animals' | 'stores' | 'records'
+type Tab = 'today' | 'animals' | 'stores' | 'analytics' | 'records'
 
 const TABS: { id: Tab; label: string; glyph: string }[] = [
-  { id: 'today',   label: 'Today',   glyph: '☀️' },
-  { id: 'animals', label: 'Stock',   glyph: '🐄' },
-  { id: 'stores',  label: 'Stores',  glyph: '📦' },
-  { id: 'records', label: 'Records', glyph: '📋' },
+  { id: 'today',     label: 'Today',     glyph: '☀️' },
+  { id: 'animals',   label: 'Stock',     glyph: '🐄' },
+  { id: 'stores',    label: 'Stores',    glyph: '📦' },
+  { id: 'analytics', label: 'Analytics', glyph: '📊' },
+  { id: 'records',   label: 'Records',   glyph: '📋' },
 ]
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('today')
-  const { session, checking } = useSession()
+  const { session, checking, recovery, clearRecovery } = useSession()
   const [link, setLink] = useState<FarmLink | null>(null)
   const [linkError, setLinkError] = useState<string | null>(null)
 
@@ -44,8 +48,12 @@ export default function App() {
   // A second device adopts an existing farm — state 'linked' — and skips it.
   const setupDone = useAsync(async () => (await getSyncState('setup')) === 'done', [])
   const [justSetUp, setJustSetUp] = useState(false)
+  // Dev-only escape hatch — lets onboarding be re-previewed on a farm that
+  // already has one, since a real farm only ever sees it once.
+  const forceSetup = import.meta.env.DEV
+    && new URLSearchParams(location.search).has('forcesetup')
   const needsSetup =
-    link?.state === 'created' && setupDone.data === false && !justSetUp
+    (forceSetup || (link?.state === 'created' && setupDone.data === false)) && !justSetUp
 
   if (ready.error) {
     return (
@@ -67,6 +75,12 @@ export default function App() {
     )
   }
 
+  // Takes priority over the signed-in checks below — the recovery link
+  // signs the browser in as a side effect of proving the email is theirs,
+  // but that shouldn't drop them straight into the app with the old
+  // password's session still effectively "current".
+  if (recovery) return <ResetPassword onDone={clearRecovery} />
+
   if (supabaseConfigured && !session) return <SignIn />
 
   if (needsSetup) {
@@ -80,6 +94,15 @@ export default function App() {
 
   return (
     <div className="app">
+      {import.meta.env.DEV && (
+        <button className="devreset" onClick={async () => {
+          if (!confirm('Wipe this farm back to blank and restart onboarding?')) return
+          await resetFarmForTesting()
+          location.href = '/?forcesetup=1'
+        }}>
+          Reset (dev)
+        </button>
+      )}
       {!supabaseConfigured && (
         <div className="banner">
           Local only — no account. Add Supabase keys to <code>.env</code> to sync.
@@ -103,9 +126,10 @@ export default function App() {
       )}
 
       <main className="content">
-        {tab === 'today' && <Today />}
+        {tab === 'today' && <Today onGoToStock={() => setTab('animals')} />}
         {tab === 'animals' && <Animals />}
         {tab === 'stores' && <Stores />}
+        {tab === 'analytics' && <Analytics />}
         {tab === 'records' && <Records />}
       </main>
 

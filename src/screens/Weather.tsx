@@ -235,25 +235,27 @@ function LocationPicker({ onDone }: { onDone: () => void }) {
 
       {error && <p className="error">{error}</p>}
 
-      {results && results.length > 0 && (
-        <ul className="assetlist">
-          {results.map((p, i) => (
-            <li key={i}>
-              <button className="assetrow" onClick={() => choose(p)}>
-                <span className="asset-name">{p.name}</span>
-                <span className="asset-meta">
-                  {[p.admin, p.country].filter(Boolean).join(', ')}
-                  <span className="chev">›</span>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
       <button className="linkish" onClick={useDevice} disabled={busy}>
         Use this device’s location instead
       </button>
+
+      {results && results.length > 0 && (
+        <Sheet title="Which one is it?" onClose={() => setResults(null)}>
+          <ul className="assetlist">
+            {results.map((p, i) => (
+              <li key={i}>
+                <button className="assetrow" onClick={() => choose(p)}>
+                  <span className="asset-name">{p.name}</span>
+                  <span className="asset-meta">
+                    {[p.admin, p.country].filter(Boolean).join(', ')}
+                    <span className="chev">›</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Sheet>
+      )}
     </>
   )
 }

@@ -1,59 +1,41 @@
-import { PGlite } from '@electric-sql/pglite'
-import schemaSql from '../../db/schema.sql?raw'
-import seedSql from '../../db/seed.sql?raw'
-import syncLocalSql from '../../db/sync-local.sql?raw'
-import cropSeedSql from '../../db/migrations/002_crop_vocabulary.sql?raw'
-import farmLocationSql from '../../db/migrations/003_farm_location.sql?raw'
-
-// schema.sql targets Supabase, which provides auth.users and auth.uid().
-// Locally we stand those up ourselves so one schema file serves both.
-const AUTH_STUB = `
-  do $r$ begin if not exists (select 1 from pg_roles where rolname='authenticated')
-    then create role authenticated; end if; end $r$;
-  create schema if not exists auth;
-  create table if not exists auth.users (id uuid primary key);
-  create or replace function auth.uid() returns uuid
-    language sql stable as $q$ select null::uuid $q$;
-`
+import { PGliteWorker } from '@electric-sql/pglite/worker'
 
 // Table list lives with the algorithm that uses it.
 import { SYNCED_TABLES } from '../lib/syncCore'
 export { SYNCED_TABLES }
 
-let pending: Promise<PGlite> | null = null
+let pending: Promise<PGliteWorker> | null = null
 
-export function db(): Promise<PGlite> {
+// The database itself runs in a Worker (see worker.ts) so a query never
+// blocks the UI thread — this is just an RPC handle to it. Its query/exec
+// API is identical to PGlite's, so every caller elsewhere is unaffected.
+export function db(): Promise<PGliteWorker> {
   if (!pending) pending = open()
   return pending
 }
 
-async function open(): Promise<PGlite> {
-  // idb:// persists to IndexedDB, so records survive a page reload —
-  // the same mechanism that lets the app work with no signal.
-  const pg = new PGlite('idb://farmhand')
-  const { rows } = await pg.query<{ t: string | null }>(
-    `select to_regclass('public.farm') as t`,
-  )
-  if (!rows[0]?.t) await migrate(pg)
-  // Both are cheap and idempotent, so they also upgrade databases created
-  // before these existed — which is the whole migration story for now.
-  await installSync(pg)
-  await pg.exec(farmLocationSql)
-  await pg.exec(cropSeedSql)
-  return pg
-}
+async function open(): Promise<PGliteWorker> {
+  const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
 
-async function migrate(pg: PGlite) {
-  await pg.exec(AUTH_STUB)
-  // pgcrypto is unavailable in PGlite; gen_random_uuid() is core since PG13.
-  await pg.exec(schemaSql.replace(/create extension[^;]*;/, ''))
-  await pg.exec(seedSql)
-  await pg.exec(`insert into farm (name) values ('My farm')`)
-}
+  // PGliteWorker.create() waits on a message the worker sends once it has
+  // booted — if the worker script itself fails to start (a module-worker
+  // quirk on an older WebKit, say), nothing ever posts that message and the
+  // promise hangs forever with no error. Race it against a startup error
+  // from the worker itself, or a flat timeout, so a broken worker surfaces
+  // as a message instead of an app that just sits on the boot screen.
+  const failure = new Promise<never>((_, reject) => {
+    worker.addEventListener('error', (e) => {
+      reject(new Error(`Database worker failed to start: ${e.message} (${e.filename}:${e.lineno})`))
+    })
+    worker.addEventListener('messageerror', () => {
+      reject(new Error('Database worker sent an unreadable message.'))
+    })
+    setTimeout(() => reject(new Error(
+      'Database worker did not respond within 20s — it may not have started at all.',
+    )), 20_000)
+  })
 
-/** Outbox table and the triggers that fill it. Safe to run repeatedly. */
-export async function installSync(pg: PGlite) {
-  await pg.exec(syncLocalSql)
+  return Promise.race([PGliteWorker.create(worker), failure])
 }
 
 /** Suppress outbox writes while applying rows pulled from the server. */
@@ -82,12 +64,4 @@ export async function setSyncState(key: string, value: string) {
      on conflict (key) do update set value = excluded.value`,
     [key, value],
   )
-}
-
-/** Wipe local data and rebuild. Development convenience. */
-export async function resetDb() {
-  const pg = await db()
-  await pg.exec(`drop schema public cascade; create schema public;`)
-  await migrate(pg)
-  await installSync(pg)
 }

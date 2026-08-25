@@ -23,13 +23,27 @@ export async function listTerms(vocabulary: string): Promise<string[]> {
   return rows.map((r) => r.name)
 }
 
+/** Extends the farm's own vocabulary — for a kind of stock the seed list didn't guess. */
+export async function createTerm(vocabulary: string, name: string): Promise<void> {
+  const pg = await db()
+  const farm = await getFarmId()
+  await pg.query(
+    `insert into term (farm_id, vocabulary, name)
+     select $1, $2, $3
+     where not exists (
+       select 1 from term where vocabulary = $2 and name = $3 and deleted_at is null
+     )`,
+    [farm, vocabulary, name],
+  )
+}
+
 export async function listAssets(types?: AssetType[]): Promise<Asset[]> {
   const pg = await db()
   const { rows } = await pg.query<Asset>(
     `select id, type, name, status, terminal_event, parent_id, attributes
        from asset
       where deleted_at is null
-        and ($1::text[] is null or type = any($1::text[]))
+        and ($1::text[] is null or type::text = any($1::text[]))
       order by status, name`,
     [types ?? null],
   )
@@ -40,22 +54,94 @@ export async function createAsset(input: {
   type: AssetType
   name: string
   attributes?: Record<string, unknown>
+  parentId?: string
 }): Promise<string> {
   const pg = await db()
   const farm = await getFarmId()
   const { rows } = await pg.query<{ id: string }>(
-    `insert into asset (farm_id, type, name, attributes)
-     values ($1, $2, $3, $4) returning id`,
-    [farm, input.type, input.name, JSON.stringify(input.attributes ?? {})],
+    `insert into asset (farm_id, type, name, attributes, parent_id)
+     values ($1, $2, $3, $4, $5) returning id`,
+    [farm, input.type, input.name, JSON.stringify(input.attributes ?? {}), input.parentId ?? null],
   )
   return rows[0].id
 }
 
+/** The individuals split out of a group — a herd's named-and-tracked members. */
+export async function childAssets(parentId: string): Promise<Asset[]> {
+  const pg = await db()
+  const { rows } = await pg.query<Asset>(
+    `select id, type, name, status, terminal_event, parent_id, attributes
+       from asset
+      where parent_id = $1 and deleted_at is null
+      order by status, name`,
+    [parentId],
+  )
+  return rows
+}
+
+/**
+ * A roster plus one real animal record per head, not a bare headcount. "5
+ * head" has no individual for a weight chart or a vet bill to point at —
+ * this is the same shape createAsset + SplitForm build one at a time in the
+ * UI, done N times up front so a count of 5 means 5 actual animals, not a
+ * number someone has to peel apart later.
+ */
+export async function createGroupWithMembers(input: {
+  name: string
+  count: number
+  attributes?: Record<string, unknown>
+}): Promise<string> {
+  const pg = await db()
+  const farm = await getFarmId()
+  const groupId = await createAsset({
+    type: 'group', name: input.name, attributes: input.attributes ?? {},
+  })
+
+  // One statement rather than one per head: a 500-bird flock was 500
+  // sequential round-trips behind a disabled button, each re-reading the
+  // farm id and firing its own outbox trigger. Chunked because every row
+  // costs four bind parameters and drivers cap how many a statement takes.
+  const attrs = JSON.stringify(input.attributes ?? {})
+  const CHUNK = 200
+  for (let start = 1; start <= input.count; start += CHUNK) {
+    const end = Math.min(start + CHUNK - 1, input.count)
+    const values: unknown[] = []
+    const tuples: string[] = []
+    for (let i = start; i <= end; i++) {
+      const b = values.length
+      tuples.push(`($${b + 1}, 'animal', $${b + 2}, $${b + 3}, $${b + 4})`)
+      values.push(farm, `${input.name} ${i}`, attrs, groupId)
+    }
+    await pg.query(
+      `insert into asset (farm_id, type, name, attributes, parent_id)
+       values ${tuples.join(', ')}`,
+      values,
+    )
+  }
+  return groupId
+}
+
+/**
+ * Archiving a group archives the individuals under it too.
+ *
+ * Since a group carries one real animal per head, leaving the members
+ * active when the flock is sold would keep them feeding tilesFor() forever
+ * — an Eggs button for birds that are gone — while being unreachable from
+ * the Stock list, which hides anything with a parent_id. Members that were
+ * already closed out on their own keep the terminal_event they were given,
+ * so a bird that died in June does not get relabelled "sold" in October.
+ */
 export async function archiveAsset(id: string, terminal: string) {
   const pg = await db()
   await pg.query(
     `update asset set status = 'archived', terminal_event = $2,
             updated_at = now() where id = $1`,
+    [id, terminal],
+  )
+  await pg.query(
+    `update asset set status = 'archived', terminal_event = $2,
+            updated_at = now()
+      where parent_id = $1 and deleted_at is null and status = 'active'`,
     [id, terminal],
   )
 }
@@ -136,7 +222,14 @@ export async function assetCounts(): Promise<Record<string, number>> {
 
 // --------------------------------------------------------------- purchases
 
-/** A bought lot and the purchase log that records what it cost. */
+/**
+ * A bought lot and the purchase log that records what it cost.
+ *
+ * `origin: 'service'` marks a lot that exists only to carry a price — a
+ * vet visit, an oil change. It is spent the moment it is recorded, so it
+ * is kept out of Stores, which is a list of what is on hand; without the
+ * flag every such charge would pile up there under "Used up" forever.
+ */
 export async function createPurchase(input: {
   material: string
   name: string
@@ -144,12 +237,13 @@ export async function createPurchase(input: {
   unit?: string
   cost?: number
   supplier?: string
+  origin?: 'purchased' | 'service'
 }): Promise<string> {
   const lotId = await createAsset({
     type: 'lot',
     name: input.name,
     attributes: {
-      origin: 'purchased',
+      origin: input.origin ?? 'purchased',
       material: input.material,
       ...(input.supplier ? { supplier: input.supplier } : {}),
     },
@@ -214,13 +308,22 @@ export async function createHarvest(input: {
   return outId
 }
 
-/** A crop in a place for a season. */
+/**
+ * A crop in a place for a season.
+ *
+ * Logging a seeding event assumes the planting happened today, which is
+ * right when someone is recording it as it happens but wrong when they are
+ * just describing an existing farm — setup has no idea when six-week-old
+ * tomatoes actually went in. `logPlanting: false` skips the event without
+ * skipping the planting itself.
+ */
 export async function createPlanting(input: {
   name: string
   crop: string
   variety?: string
   where?: string
   planted?: Date
+  logPlanting?: boolean
 }): Promise<string> {
   const id = await createAsset({
     type: 'planting',
@@ -231,12 +334,14 @@ export async function createPlanting(input: {
       ...(input.where ? { where: input.where } : {}),
     },
   })
-  await createLog({
-    type: 'seeding',
-    name: `Planted ${input.name}`,
-    timestamp: input.planted ?? new Date(),
-    assets: [{ id, role: 'subject' }],
-  })
+  if (input.logPlanting ?? true) {
+    await createLog({
+      type: 'seeding',
+      name: `Planted ${input.name}`,
+      timestamp: input.planted ?? new Date(),
+      assets: [{ id, role: 'subject' }],
+    })
+  }
   return id
 }
 
@@ -269,6 +374,7 @@ export async function logsForAsset(assetId: string): Promise<AssetEvent[]> {
 }
 
 export interface CostSummary {
+  purchaseCost: number
   inputCost: number
   outputs: { name: string; amount: number | null; unit: string | null }[]
   outputAmount: number
@@ -282,9 +388,26 @@ export interface CostSummary {
  * Feed is prorated: if a feeding recorded how much of a lot it used, only
  * that share of the lot's purchase price is charged. If no amount was
  * recorded, the lot's whole cost is charged once, not once per feeding.
+ *
+ * `purchaseCost` is separate from `inputCost` on purpose: what an animal
+ * cost to buy and what it cost to keep are different questions, and lumping
+ * them would make "$340 in feed" and "$340 to buy plus feed" look the same
+ * on screen. Both still add into cost-per-unit — an animal bought outright
+ * is not free just because nothing was purchased *for* it afterward.
  */
 export async function assetCosts(assetId: string): Promise<CostSummary> {
   const pg = await db()
+
+  const purchase = await pg.query<{ purchase_cost: number }>(
+    `select coalesce(sum(q.value), 0)::float as purchase_cost
+       from log_asset la
+       join log p on p.id = la.log_id
+            and p.type = 'purchase' and p.deleted_at is null
+       join quantity q on q.log_id = p.id
+            and q.deleted_at is null and q.measure = 'price'
+      where la.asset_id = $1 and la.role = 'subject'`,
+    [assetId],
+  )
 
   const cost = await pg.query<{ input_cost: number }>(
     `with used as (
@@ -338,18 +461,64 @@ export async function assetCosts(assetId: string): Promise<CostSummary> {
     [assetId],
   )
 
+  const purchaseCost = purchase.rows[0]?.purchase_cost ?? 0
   const inputCost = cost.rows[0]?.input_cost ?? 0
   const outputs = outs.rows
   const outputAmount = outputs.reduce((s, o) => s + (o.amount ?? 0), 0)
   const unit = outputs.find((o) => o.unit)?.unit ?? null
 
   return {
+    purchaseCost,
     inputCost,
     outputs,
     outputAmount,
     unit,
-    costPerUnit: outputAmount > 0 ? inputCost / outputAmount : null,
+    costPerUnit: outputAmount > 0 ? (purchaseCost + inputCost) / outputAmount : null,
   }
+}
+
+export interface CostEntry { timestamp: string; value: number; material: string }
+
+/**
+ * Every dollar the farm has spent, flat — the raw material for the
+ * Analytics page. Bucketing by week/month/quarter/year happens in the
+ * browser (see lib/periods.ts), not here: that math depends on the
+ * viewer's local calendar, and a purchase's timestamp is the only fact
+ * this needs to hand over.
+ */
+export async function costEntries(): Promise<CostEntry[]> {
+  const pg = await db()
+  const { rows } = await pg.query<CostEntry>(
+    `select l.timestamp, q.value::float as value,
+            coalesce(a.attributes->>'material', 'Other') as material
+       from log l
+       join quantity q on q.log_id = l.id and q.deleted_at is null
+            and q.measure = 'price'
+       left join log_asset la on la.log_id = l.id and la.role = 'subject'
+       left join asset a on a.id = la.asset_id
+      where l.type = 'purchase' and l.deleted_at is null
+      order by l.timestamp asc`,
+  )
+  return rows
+}
+
+/** A weight's history for an asset, oldest first — the raw material for a growth chart. */
+export async function weightHistory(assetId: string): Promise<
+  { timestamp: string; value: number; unit: string }[]
+> {
+  const pg = await db()
+  const { rows } = await pg.query<{ timestamp: string; value: number; unit: string }>(
+    `select l.timestamp, q.value::float as value, q.unit
+       from log l
+       join log_asset la on la.log_id = l.id
+            and la.asset_id = $1 and la.role = 'subject'
+       join quantity q on q.log_id = l.id
+            and q.measure = 'weight' and q.deleted_at is null
+      where l.type = 'weight' and l.deleted_at is null
+      order by l.timestamp asc`,
+    [assetId],
+  )
+  return rows
 }
 
 // ------------------------------------------------------------ farm identity
@@ -387,6 +556,30 @@ export async function adoptFarmId(id: string, name: string): Promise<boolean> {
 export async function renameFarm(name: string) {
   const pg = await db()
   await pg.query(`update farm set name = $1, updated_at = now()`, [name])
+}
+
+/**
+ * Dev-only: wipe a farm back to blank so onboarding can be previewed again
+ * and again. Soft-deletes through the same deleted_at columns the rest of
+ * the app uses, so the wipe is a real, synced tombstone rather than a local
+ * hack that a pull from Supabase would silently undo.
+ */
+export async function resetFarmForTesting() {
+  const pg = await db()
+  const farm = await getFarmId()
+  await pg.query(`update asset set deleted_at = now(), updated_at = now()
+    where farm_id = $1 and deleted_at is null`, [farm])
+  await pg.query(`update quantity set deleted_at = now(), updated_at = now()
+    where farm_id = $1 and deleted_at is null`, [farm])
+  await pg.query(`update log set deleted_at = now(), updated_at = now()
+    where farm_id = $1 and deleted_at is null`, [farm])
+  await pg.query(`update location set deleted_at = now(), updated_at = now()
+    where farm_id = $1 and deleted_at is null`, [farm])
+  await pg.query(`update term set deleted_at = now(), updated_at = now()
+    where farm_id = $1 and deleted_at is null`, [farm])
+  await pg.query(`update farm set name = 'My farm', latitude = null,
+    longitude = null, place_name = null, updated_at = now() where id = $1`, [farm])
+  await pg.query(`delete from sync_state where key = 'setup'`)
 }
 
 // ----------------------------------------------------------- edit & delete
@@ -460,9 +653,20 @@ export async function quantitiesFor(logId: string) {
  * Soft delete. Rows are never removed: a device that has been offline must be
  * told a record died rather than simply find it missing, and the deleted_at
  * update is what syncs that fact.
+ *
+ * A purchase log is the only thing that brings its lot into existence, so
+ * deleting one that nothing else has touched (no other purchase, feeding, or
+ * disposition logged against that lot) takes the lot down with it too —
+ * otherwise "delete this duplicate purchase" leaves a phantom, zero-balance
+ * lot still selectable everywhere lots are picked from (Feed, Vet/Med,
+ * Stores), which is exactly the record it looked like this had just deleted.
  */
 export async function deleteLog(id: string) {
   const pg = await db()
+  const { rows: logRows } = await pg.query<{ type: string }>(
+    `select type from log where id = $1`, [id],
+  )
+
   await pg.query(
     `update log set deleted_at = now(), updated_at = now() where id = $1`, [id],
   )
@@ -470,6 +674,26 @@ export async function deleteLog(id: string) {
     `update quantity set deleted_at = now(), updated_at = now()
       where log_id = $1 and deleted_at is null`, [id],
   )
+
+  if (logRows[0]?.type === 'purchase') {
+    const { rows: subjects } = await pg.query<{ asset_id: string }>(
+      `select asset_id from log_asset where log_id = $1 and role = 'subject'`, [id],
+    )
+    for (const { asset_id } of subjects) {
+      const { rows: untouched } = await pg.query<{ n: number }>(
+        `select count(*)::int as n
+           from log_asset la
+           join log l on l.id = la.log_id and l.deleted_at is null
+          where la.asset_id = $1`, [asset_id],
+      )
+      if (untouched[0].n === 0) {
+        await pg.query(
+          `update asset set deleted_at = now(), updated_at = now()
+            where id = $1 and type = 'lot'`, [asset_id],
+        )
+      }
+    }
+  }
 }
 
 export async function deleteAsset(id: string) {
@@ -545,6 +769,7 @@ export async function lotBalances(): Promise<LotBalance[]> {
        left join taken    t on t.lot_id = a.id
        left join consumed u on u.lot_id = a.id
       where a.type = 'lot' and a.deleted_at is null
+        and coalesce(a.attributes->>'origin', '') <> 'service'
       order by (coalesce(c.amount,0) - coalesce(t.amount,0)
                 - coalesce(u.amount,0)) > 0 desc, a.name`,
   )

@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import { lotBalances, recordDisposition, type LotBalance } from '../db/queries'
+import {
+  ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange, roundQty as round,
+} from '../lib/numeric'
 import { Sheet } from './Sheet'
 
 const KINDS = [
@@ -13,8 +16,6 @@ const KINDS = [
 ] as const
 
 type Kind = typeof KINDS[number]['id']
-
-const round = (n: number) => Math.round(n * 100) / 100
 
 export function Stores() {
   const { data, loading, reload } = useAsync(() => lotBalances(), [])
@@ -130,9 +131,10 @@ function TakeForm({
       </label>
 
       <label className="field">
-        <span>How much ({lot.unit ?? 'lb'})</span>
-        <input type="number" inputMode="decimal" autoFocus value={amount}
-          onChange={(e) => setAmount(e.target.value)} placeholder="20" />
+        <span>Quantity ({lot.unit ?? 'lb'})</span>
+        <input type="number" inputMode="decimal" min="0" autoFocus value={amount}
+          onChange={onNumericChange(setAmount)} onWheel={ignoreScrollOnNumberInput}
+          onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="20" />
         {over && (
           <small className="hint warn">
             That is more than the {round(lot.remaining)} {lot.unit ?? ''} left.
@@ -145,8 +147,9 @@ function TakeForm({
         <span>
           {kind === 'sold' ? 'What you got paid ($)' : 'What it would have cost to buy ($)'}
         </span>
-        <input type="number" inputMode="decimal" value={value}
-          onChange={(e) => setValue(e.target.value)} placeholder="89.80" />
+        <input type="number" inputMode="decimal" min="0" value={value}
+          onChange={onNumericChange(setValue)} onWheel={ignoreScrollOnNumberInput}
+          onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="89.80" />
         {kind === 'home_use' && (
           <small className="hint">
             Optional. Putting the shop price here is what lets the app tell you

@@ -19,13 +19,22 @@ const local: Local = {
   setState: setSyncState,
 }
 
+/**
+ * `error.message` alone rarely says which row — for a foreign key violation
+ * the useful part ("Key (parent_id)=(...) is not present in table
+ * \"asset\".") is in `details`, which the bare message drops.
+ */
+function describe(error: { message: string; details?: string }): string {
+  return error.details ? `${error.message} (${error.details})` : error.message
+}
+
 /** Supabase, as the algorithm wants to see it. */
 const remote: Remote = {
   async upsert(table, rows, conflict) {
     const { error } = await supabase!
       .from(table)
       .upsert(rows, { onConflict: conflict.join(',') })
-    if (error) throw new SyncError(`Pushing ${table}: ${error.message}`)
+    if (error) throw new SyncError(`Pushing ${table}: ${describe(error)}`)
   },
 
   async selectSince(table, since, limit) {
@@ -40,7 +49,7 @@ const remote: Remote = {
     if (table === 'term') q = q.not('farm_id', 'is', null)
 
     const { data, error } = await q
-    if (error) throw new SyncError(`Pulling ${table}: ${error.message}`)
+    if (error) throw new SyncError(`Pulling ${table}: ${describe(error)}`)
     return (data ?? []) as Row[]
   },
 
@@ -50,7 +59,7 @@ const remote: Remote = {
     for (let i = 0; i < logIds.length; i += 500) {
       const { data, error } = await supabase!
         .from('log_asset').select('*').in('log_id', logIds.slice(i, i + 500))
-      if (error) throw new SyncError(`Pulling log_asset: ${error.message}`)
+      if (error) throw new SyncError(`Pulling log_asset: ${describe(error)}`)
       if (data) out.push(...(data as Row[]))
     }
     return out
