@@ -5,6 +5,7 @@ import { useSync } from './lib/useSync'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import { linkFarm, type FarmLink } from './lib/farm'
 import { db, getSyncState, setSyncState } from './db/client'
+import { ensureCutover, type CutoverResult } from './db/cutover'
 import { resetFarmForTesting } from './db/queries'
 import { Today } from './screens/Today'
 import { Animals } from './screens/Animals'
@@ -34,15 +35,43 @@ export default function App() {
 
   const ready = useAsync(async () => { await db(); return true }, [])
 
+  // A device still on the old (PGlite) local engine needs its outbox
+  // drained before that database is thrown away — see db/cutover.ts. Needs
+  // a session to push with, so this waits for sign-in; a local-only install
+  // (no Supabase configured at all) has nothing to push to or lose, so
+  // there is nothing to gate on.
+  const [cutover, setCutover] = useState<CutoverResult | null>(null)
+  const [cutoverTick, setCutoverTick] = useState(0)
+  useEffect(() => {
+    if (!ready.data) return
+    if (!supabaseConfigured) { setCutover({ ok: true }); return }
+    if (!session) return
+    let live = true
+    ensureCutover().then(
+      (r) => { if (live) setCutover(r) },
+      (e: Error) => { if (live) setCutover({ ok: false, reason: 'error', message: e.message }) },
+    )
+    return () => { live = false }
+  }, [ready.data, session, cutoverTick])
+
+  useEffect(() => {
+    if (cutover?.ok) return
+    const retry = () => setCutoverTick((n) => n + 1)
+    window.addEventListener('online', retry)
+    return () => window.removeEventListener('online', retry)
+  }, [cutover])
+
+  const cutoverDone = cutover?.ok === true
+
   // Once signed in, make the local and remote farm identities agree. Syncing
   // before that would push records into the wrong farm.
   useEffect(() => {
-    if (!session || !ready.data) return
+    if (!session || !ready.data || !cutoverDone) return
     linkFarm().then(setLink, (e: Error) => setLinkError(e.message))
-  }, [session, ready.data])
+  }, [session, ready.data, cutoverDone])
 
   const linked = link?.state === 'linked' || link?.state === 'created'
-  const sync = useSync(Boolean(session) && linked)
+  const sync = useSync(Boolean(session) && linked && cutoverDone)
 
   // Setup runs once, and only for a farm this sign-in actually created.
   // A second device adopts an existing farm — state 'linked' — and skips it.
@@ -83,6 +112,31 @@ export default function App() {
 
   if (supabaseConfigured && !session)
     return <SignIn linkError={badLink} onDismissLinkError={clearLinkError} />
+
+  if (cutover === null) {
+    return (
+      <main className="screen boot">
+        <h1>FarmHand</h1>
+        <p className="muted">Finishing an update…</p>
+      </main>
+    )
+  }
+
+  if (cutover.ok === false) {
+    return (
+      <main className="screen">
+        <h1>FarmHand</h1>
+        <p className="error">
+          {cutover.reason === 'offline'
+            ? "Connect to the internet to finish updating — some records haven't synced yet."
+            : `Finishing the update failed: ${cutover.message}`}
+        </p>
+        <button className="primary" onClick={() => setCutoverTick((n) => n + 1)}>
+          Try again
+        </button>
+      </main>
+    )
+  }
 
   if (needsSetup) {
     return (

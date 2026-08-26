@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 import { applying, db, getSyncState, setSyncState } from '../db/client'
 import {
-  runSync, SyncError, type Local, type Remote, type Row, type SyncResult,
+  push, runSync, SyncError, type Local, type Remote, type Row, type SyncResult,
 } from './syncCore'
 
 export { SyncError }
@@ -79,6 +79,20 @@ async function run(): Promise<SyncResult> {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new SyncError('Not signed in.')
   return runSync(local, remote)
+}
+
+/**
+ * Pushes a *different* local database's outbox through the same Supabase
+ * remote this module already talks to — for draining an old engine's queued
+ * writes during the storage-engine cutover, before that database is thrown
+ * away. Push only: there is no reason to pull data into a database about to
+ * be deleted.
+ */
+export async function pushFrom(otherLocal: Local): Promise<number> {
+  if (!supabase) throw new SyncError('Supabase is not configured.')
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new SyncError('Not signed in.')
+  return push(otherLocal, remote)
 }
 
 // ------------------------------------------------------------------ status
