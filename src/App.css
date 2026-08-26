@@ -355,7 +355,7 @@ button.linkish {
 
 .account {
   display: flex; align-items: center; justify-content: center; gap: 0.75rem;
-  margin: 0; padding: 0 1rem 1rem;
+  margin: 0; padding: 0 1rem 5rem;   /* 5rem clears the fixed tab bar below it */
   color: var(--muted); font-size: 0.8rem;
 }
 
