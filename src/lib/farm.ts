@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { describeError, supabase } from './supabase'
 import { adoptFarmId, getFarmId, getFarmName } from '../db/queries'
 
 export type FarmLink =
@@ -26,15 +26,19 @@ export async function linkFarm(): Promise<FarmLink> {
     .select('farm_id')
     .limit(1)
 
-  // No network, or the tables are not there yet — carry on locally.
-  if (error) return { state: 'offline' }
+  // No network, or the tables are not there yet — carry on locally. Logged
+  // (not surfaced to the user — this path is meant to stay quiet) since a
+  // real, persistent failure here looks identical to "genuinely offline"
+  // from the UI alone, and postgrest-js's `.message` alone is never enough
+  // to tell the two apart — see describeError()'s own comment.
+  if (error) { console.error('linkFarm: farm_member lookup failed —', describeError(error)); return { state: 'offline' } }
 
   if (!memberships || memberships.length === 0) {
     const { data, error: rpcError } = await supabase.rpc('create_farm', {
       farm_name: localName,
       wanted_id: localId,
     })
-    if (rpcError) throw new Error(rpcError.message)
+    if (rpcError) throw new Error(describeError(rpcError))
     return { state: 'created', farmId: data as string, name: localName }
   }
 

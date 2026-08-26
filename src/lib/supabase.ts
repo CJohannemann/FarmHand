@@ -24,3 +24,24 @@ export const supabase = supabaseConfigured
       },
     })
   : null
+
+/**
+ * postgrest-js swallows the real cause of a client-side network failure (a
+ * raw fetch() rejection — DNS, TLS, an aborted request, headers over a
+ * server limit) into a bare `TypeError: Load failed`/`Failed to fetch` on
+ * `.message`, but stashes the actual detail — often the fetch error's own
+ * stack, or a `.cause` chain with a specific reason — on `.details`/`.hint`
+ * instead. Every call site that threw `.message` alone turned a failure
+ * only reproducible on one specific device into a dead end with no way to
+ * tell why; surfacing all three is the difference.
+ */
+export function describeError(error: {
+  message: string
+  hint?: string | null
+  details?: string | null
+}): string {
+  const parts = [error.message]
+  if (error.hint) parts.push(`hint: ${error.hint}`)
+  if (error.details) parts.push(`details: ${error.details}`)
+  return parts.join(' — ')
+}
