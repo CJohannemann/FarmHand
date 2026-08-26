@@ -22,7 +22,7 @@ function inviteUrl(code: string): string {
   return u.toString()
 }
 
-export function Settings({ onClose }: { onClose: () => void }) {
+export function Settings() {
   const { session } = useSession()
   const members = useAsync(() => listMembers(), [])
   const isOwner = members.data?.some(
@@ -30,8 +30,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
   ) ?? false
 
   return (
-    <main className="screen">
-      <button type="button" className="back" onClick={onClose}>‹ Back</button>
+    <div className="screen">
       <h1>Settings</h1>
 
       <label className="field">
@@ -54,7 +53,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
           onChanged={members.reload}
         />
       )}
-    </main>
+    </div>
   )
 }
 

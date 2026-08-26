@@ -49,8 +49,14 @@ export const SPECIES_PURPOSES: Record<string, Purpose[]> = {
   Sheep: ['wool', 'meat'],
 }
 
-/** A fixed, short list — unlike species, this never needs a farm's own entry. */
-export const EQUIPMENT_KINDS = ['Tractor', 'Implement', 'Vehicle', 'Other'] as const
+/**
+ * A fixed, short list — unlike species, this never needs a farm's own entry.
+ *
+ * "Attachment" rather than the catalogue's "implement": both name the same
+ * thing hanging off the back of a tractor, and one of them is the word
+ * people actually say.
+ */
+export const EQUIPMENT_KINDS = ['Tractor', 'Attachment', 'Vehicle', 'Other'] as const
 
 export const HARVESTS: Record<string, HarvestSpec> = {
   eggs: {

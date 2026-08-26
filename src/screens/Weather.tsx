@@ -179,6 +179,11 @@ function LocationPicker({ onDone }: { onDone: () => void }) {
     setBusy(true); setError(null)
     try {
       const found = await searchPlace(query.trim())
+      // A postcode resolves to exactly one place, so "which one is it?" over
+      // a list of one is a tap that decides nothing. Take it and move on;
+      // the chosen name is shown on the sheet behind this, and Change
+      // location is right there if the geocoder guessed wrong.
+      if (found.length === 1) { await choose(found[0]); return }
       setResults(found)
       if (found.length === 0) setError('Nothing found. Try a nearby town.')
     } catch (e) {

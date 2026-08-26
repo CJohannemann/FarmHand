@@ -6,6 +6,7 @@ import {
   BUCKET_COUNT, type Granularity,
 } from '../lib/periods'
 import { CostChart } from './CostChart'
+import { Records } from './Records'
 
 const GRANULARITIES: { id: Granularity; label: string }[] = [
   { id: 'week', label: 'Week' },
@@ -14,7 +15,44 @@ const GRANULARITIES: { id: Granularity; label: string }[] = [
   { id: 'year', label: 'Year' },
 ]
 
+type View = 'costs' | 'records'
+
+const VIEWS: { id: View; label: string; title: string; tagline: string }[] = [
+  { id: 'costs', label: 'Costs', title: 'Analytics',
+    tagline: 'What your farm has cost you, by period.' },
+  { id: 'records', label: 'Records', title: 'Records',
+    tagline: 'Everything, newest first. Tap one to fix it.' },
+]
+
+/**
+ * Costs and the raw log are one question — "what has happened here?" — asked
+ * at two zoom levels, so they share a tab instead of sitting side by side in
+ * the bar looking like two unrelated features.
+ */
 export function Analytics() {
+  const [view, setView] = useState<View>('costs')
+  const meta = VIEWS.find((v) => v.id === view)!
+
+  return (
+    <div className="screen">
+      <h1>{meta.title}</h1>
+      <p className="tagline">{meta.tagline}</p>
+
+      <div className="chipwrap" style={{ marginBottom: '1.25rem' }}>
+        {VIEWS.map((v) => (
+          <button key={v.id} className={view === v.id ? 'chip on' : 'chip'}
+            onClick={() => setView(v.id)}>
+            {v.label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'records' ? <Records /> : <Costs />}
+    </div>
+  )
+}
+
+function Costs() {
   const [granularity, setGranularity] = useState<Granularity>('month')
   const [selected, setSelected] = useState(BUCKET_COUNT.month - 1)
   const { data: entries, loading } = useAsync(() => costEntries(), [])
@@ -40,10 +78,7 @@ export function Analytics() {
   const hasAny = (entries?.length ?? 0) > 0
 
   return (
-    <div className="screen">
-      <h1>Analytics</h1>
-      <p className="tagline">What your farm has cost you, by period.</p>
-
+    <>
       <div className="chipwrap">
         {GRANULARITIES.map((g) => (
           <button key={g.id} className={granularity === g.id ? 'chip on' : 'chip'}
@@ -86,6 +121,6 @@ export function Analytics() {
           )}
         </>
       )}
-    </div>
+    </>
   )
 }

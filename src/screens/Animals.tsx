@@ -2,24 +2,64 @@ import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import {
   createAsset, createGroupWithMembers, createLog, createPlanting, listAssets, listTerms,
+  lotBalances, type LotBalance,
 } from '../db/queries'
 import type { Asset, AssetType } from '../db/types'
 import { EQUIPMENT_KINDS, SPECIES_PURPOSES, type Purpose } from '../lib/tiles'
 import { purposeLabel, sexTermsFor, speciesGlyph } from '../lib/husbandry'
 import {
-  ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
+  ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange, roundQty,
 } from '../lib/numeric'
 import { Sheet } from './Sheet'
 import { AssetDetail } from './AssetDetail'
+import { TakeFromLot } from './TakeFromLot'
 
 const GROUPS: { type: AssetType; heading: string; blurb: string }[] = [
   { type: 'animal',    heading: 'Animals',   blurb: 'Tracked one by one' },
   { type: 'group',     heading: 'Groups',    blurb: 'Flocks, batches, herds' },
   { type: 'planting',  heading: 'Plantings', blurb: 'A crop in a place, this season' },
-  { type: 'lot',       heading: 'Lots',      blurb: 'Feed, seed, meat, produce' },
+  { type: 'lot',       heading: 'Stores',    blurb: 'Feed, seed, meat, produce' },
   { type: 'land',      heading: 'Land',      blurb: 'Fields, paddocks, beds' },
-  { type: 'equipment', heading: 'Equipment', blurb: 'Tractors, implements, vehicles' },
+  { type: 'equipment', heading: 'Equipment', blurb: 'Tractors, attachments, vehicles' },
 ]
+
+/**
+ * Section headings come from what a thing IS, not from the table it lives
+ * in. "Lots" is a word out of the schema — nobody buys a lot, they buy hay,
+ * and hay belongs under Feed. Same for a tractor, which belongs under
+ * Tractors rather than Equipment. So lots are bucketed by their material and
+ * machines by their kind, and the type-level heading survives only as the
+ * fallback for anything that never got one.
+ */
+function bucketBy<T>(
+  items: T[], key: (item: T) => string | null, fallback: string,
+): { heading: string; items: T[] }[] {
+  const buckets = new Map<string, T[]>()
+  for (const item of items) {
+    const heading = (key(item) ?? '').trim() || fallback
+    const bucket = buckets.get(heading)
+    if (bucket) bucket.push(item)
+    else buckets.set(heading, [item])
+  }
+  return [...buckets.entries()]
+    .map(([heading, items]) => ({ heading, items }))
+    .sort((a, b) => {
+      // The fallback bucket is the leftovers — always last, whatever it
+      // would sort as alphabetically.
+      if (a.heading === fallback) return 1
+      if (b.heading === fallback) return -1
+      return a.heading.localeCompare(b.heading)
+    })
+}
+
+/**
+ * "Tractor" as a heading over three tractors reads wrong. Only applied to a
+ * real kind — the fallback heading is a category name that already reads as
+ * one ("Equipment"), and materials need no help either, being mass nouns
+ * ("Feed", "Hay", "Straw") left exactly as they were typed.
+ */
+const pluralKind = (kind: string) =>
+  kind === 'Other' || kind.endsWith('s') ? kind : kind + 's'
 
 /**
  * Buckets animals under their species, alphabetically, with anything that
@@ -45,6 +85,7 @@ function groupBySpecies(items: Asset[]): { species: string | null; items: Asset[
 
 export function Animals() {
   const [adding, setAdding] = useState(false)
+  const [taking, setTaking] = useState<LotBalance | null>(null)
   // A stack, not a single value — so Back from a member returns to its
   // group, not all the way out to the top list. Selecting from the top
   // list starts a fresh stack; a group's Members list pushes onto it.
@@ -55,19 +96,28 @@ export function Animals() {
   const [species, setSpecies] = useState<string | null | undefined>(undefined)
   const { data, loading, reload } = useAsync(() => listAssets(), [])
   const assets = data ?? []
+  // Lots come from lotBalances() rather than the asset list, because a lot
+  // is only ever interesting as "how much is left" — and that query already
+  // filters out the service lots (a vet bill, an oil change) that exist to
+  // carry a price and nothing else.
+  const lots = useAsync(() => lotBalances(), [])
+  const reloadAll = () => { reload(); lots.reload() }
 
-  // `underSpeciesHeading` rows already sit somewhere naming their species —
-  // repeating it on every row is just noise, so show the ear tag instead.
-  const row = (a: Asset, underSpeciesHeading = false) => {
+  // `underOwnHeading` rows already sit under a heading naming their species
+  // or their kind — repeating it on every row is just noise, so an animal
+  // shows its ear tag instead and a machine drops straight to make and model.
+  const row = (a: Asset, underOwnHeading = false) => {
     const liveMembers = assets.filter(
       (m) => m.parent_id === a.id && m.status === 'active',
     ).length
     const headcount = liveMembers || a.attributes?.headcount
-    const equipMeta = [a.attributes?.kind, a.attributes?.make, a.attributes?.model]
-      .filter(Boolean).join(' ')
+    const equipMeta = [
+      underOwnHeading ? null : a.attributes?.kind,
+      a.attributes?.make, a.attributes?.model,
+    ].filter(Boolean).join(' ')
     const kind = a.type === 'equipment'
       ? equipMeta
-      : underSpeciesHeading
+      : underOwnHeading
         ? [a.attributes?.sex, a.attributes?.tag ? `Tag ${String(a.attributes.tag)}` : '']
           .filter(Boolean).join(' · ')
         : String(a.attributes?.species ?? a.attributes?.crop ?? '')
@@ -121,8 +171,10 @@ export function Animals() {
 
   return (
     <div className="screen">
-      <h1>Livestock &amp; land</h1>
-      <p className="tagline">Everything the records hang off.</p>
+      <h1>Stock</h1>
+      <p className="tagline">
+        Animals, land, feed and machines — everything the records hang off.
+      </p>
 
       <button className="primary" onClick={() => setAdding(true)}>
         + Add something
@@ -132,11 +184,47 @@ export function Animals() {
 
       {!loading && assets.length === 0 && (
         <p className="empty">
-          Nothing here yet. Add your cattle, a flock, or a bag of feed.
+          Nothing here yet. Add your cattle, a flock, a bag of feed — or the
+          tractor, so its services have somewhere to go.
         </p>
       )}
 
       {GROUPS.map((g) => {
+        // Stores is the one section not backed by the asset list — see
+        // `lots` above. Its rows carry a balance and draw the lot down
+        // rather than opening an asset page, which is all the separate
+        // Stores tab ever did.
+        if (g.type === 'lot') {
+          const all = lots.data ?? []
+          if (all.length === 0) return null
+          return (
+            <section key={g.type}>
+              {bucketBy(all, (l) => l.material, 'Other supplies').map(({ heading, items }) => (
+                <div key={heading}>
+                  <h2 className="section">{heading}</h2>
+                  <ul className="assetlist">
+                    {items.map((l) => (
+                      <li key={l.id} className={l.remaining > 0.001 ? '' : 'gone'}>
+                        <button className="assetrow" onClick={() => setTaking(l)}>
+                          <span className="asset-name">{l.name}</span>
+                          <span className="asset-meta">
+                            {l.remaining > 0.001 ? (
+                              <strong className="remaining">
+                                {roundQty(l.remaining)} {l.unit ?? ''}
+                              </strong>
+                            ) : `${roundQty(l.came_in)} ${l.unit ?? ''} in, none left`}
+                            <span className="chev">›</span>
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </section>
+          )
+        }
+
         // Members of a group are reached through that group, not listed
         // flatly here too — otherwise every named-out animal would show up
         // twice.
@@ -169,6 +257,25 @@ export function Animals() {
           )
         }
 
+        // A tractor and the bush hog behind it are different things to own
+        // and different things to service — one "Equipment" heading over
+        // both hides that.
+        if (g.type === 'equipment') {
+          return (
+            <section key={g.type}>
+              {bucketBy(mine, (a) => String(a.attributes?.kind ?? ''), g.heading)
+                .map(({ heading, items }) => (
+                  <div key={heading}>
+                    <h2 className="section">
+                      {heading === g.heading ? heading : pluralKind(heading)}
+                    </h2>
+                    <ul className="assetlist">{items.map((a) => row(a, true))}</ul>
+                  </div>
+                ))}
+            </section>
+          )
+        }
+
         return (
           <section key={g.type}>
             <h2 className="section">{g.heading}</h2>
@@ -179,7 +286,12 @@ export function Animals() {
 
       {adding && (
         <AddForm onClose={() => setAdding(false)}
-          onDone={() => { setAdding(false); reload() }} />
+          onDone={() => { setAdding(false); reloadAll() }} />
+      )}
+
+      {taking && (
+        <TakeFromLot lot={taking} onClose={() => setTaking(null)}
+          onDone={() => { setTaking(null); lots.reload() }} />
       )}
     </div>
   )

@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { useAsync } from '../lib/useAsync'
-import { lotBalances, recordDisposition, type LotBalance } from '../db/queries'
+import { recordDisposition, type LotBalance } from '../db/queries'
 import {
   ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange, roundQty as round,
 } from '../lib/numeric'
@@ -17,78 +16,12 @@ const KINDS = [
 
 type Kind = typeof KINDS[number]['id']
 
-export function Stores() {
-  const { data, loading, reload } = useAsync(() => lotBalances(), [])
-  const [taking, setTaking] = useState<LotBalance | null>(null)
-
-  const lots = data ?? []
-  const have = lots.filter((l) => l.remaining > 0.001)
-  const gone = lots.filter((l) => l.remaining <= 0.001)
-
-  return (
-    <div className="screen">
-      <h1>Stores</h1>
-      <p className="tagline">Feed, meat, and everything else on hand.</p>
-
-      {loading && <p className="muted">Loading…</p>}
-
-      {!loading && lots.length === 0 && (
-        <p className="empty">
-          Nothing yet. Use <strong>Buy</strong> on the Today screen, or record a
-          harvest, and what you have will show up here.
-        </p>
-      )}
-
-      {have.length > 0 && (
-        <ul className="assetlist">
-          {have.map((l) => (
-            <li key={l.id}>
-              <button className="assetrow" onClick={() => setTaking(l)}>
-                <span className="asset-name">{l.name}</span>
-                <span className="asset-meta">
-                  <strong className="remaining">
-                    {round(l.remaining)} {l.unit ?? ''}
-                  </strong>
-                  {l.material ? ` · ${l.material}` : ''}
-                  <span className="chev">›</span>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {gone.length > 0 && (
-        <>
-          <h2 className="section">Used up</h2>
-          <ul className="assetlist">
-            {gone.map((l) => (
-              <li key={l.id} className="gone">
-                <button className="assetrow" onClick={() => setTaking(l)}>
-                  <span className="asset-name">{l.name}</span>
-                  <span className="asset-meta">
-                    {round(l.came_in)} {l.unit ?? ''} in, none left
-                    <span className="chev">›</span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      {taking && (
-        <TakeForm
-          lot={taking}
-          onClose={() => setTaking(null)}
-          onDone={() => { setTaking(null); reload() }}
-        />
-      )}
-    </div>
-  )
-}
-
-function TakeForm({
+/**
+ * Drawing down a lot — what used to be the whole point of a separate Stores
+ * tab. That tab listed the same lots the Stock tab already did, so it is
+ * gone and this sheet opens from the lot's row on Stock instead.
+ */
+export function TakeFromLot({
   lot, onClose, onDone,
 }: { lot: LotBalance; onClose: () => void; onDone: () => void }) {
   const [kind, setKind] = useState<Kind>('home_use')

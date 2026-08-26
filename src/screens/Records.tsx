@@ -5,14 +5,18 @@ import type { LogWithDetail } from '../db/types'
 import { LogList } from './LogList'
 import { EditLog } from './EditLog'
 
+/**
+ * The raw log, newest first. Body only — no heading of its own: this used to
+ * be its own tab sitting next to Analytics, and the two were the same
+ * question ("what has happened here?") answered at two zoom levels. They
+ * share one tab now, and Analytics owns the header.
+ */
 export function Records() {
   const { data, loading, reload } = useAsync(() => recentLogs(200), [])
   const [editing, setEditing] = useState<LogWithDetail | null>(null)
 
   return (
-    <div className="screen">
-      <h1>Records</h1>
-      <p className="tagline">Everything, newest first. Tap one to fix it.</p>
+    <>
       <LogList logs={data ?? []} loading={loading} onSelect={setEditing} />
 
       {editing && (
@@ -22,6 +26,6 @@ export function Records() {
           onChanged={() => { setEditing(null); reload() }}
         />
       )}
-    </div>
+    </>
   )
 }

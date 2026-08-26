@@ -11,8 +11,6 @@ import { consumeWipeIfPending, ensureCutover, type CutoverResult } from './db/cu
 import { resetFarmForTesting } from './db/queries'
 import { Today } from './screens/Today'
 import { Animals } from './screens/Animals'
-import { Records } from './screens/Records'
-import { Stores } from './screens/Stores'
 import { Analytics } from './screens/Analytics'
 import { SignIn } from './screens/SignIn'
 import { ResetPassword } from './screens/ResetPassword'
@@ -20,14 +18,22 @@ import { SyncBar } from './screens/SyncBar'
 import { Setup, FarmName } from './screens/Setup'
 import { Settings } from './screens/Settings'
 
-type Tab = 'today' | 'animals' | 'stores' | 'analytics' | 'records'
+type Tab = 'today' | 'animals' | 'analytics' | 'settings'
 
+/**
+ * Four, down from five plus a floating gear.
+ *
+ * Stores listed the same lots the Stock tab already did, one screen apart,
+ * so it moved into Stock as the sections that carry a balance. Records was
+ * the same records Analytics charts, so the two share a tab. What that
+ * bought back is a slot for Settings, which had been a gear pinned over the
+ * top-right corner of every screen — findable only by knowing it was there.
+ */
 const TABS: { id: Tab; label: string; glyph: string }[] = [
   { id: 'today',     label: 'Today',     glyph: '☀️' },
   { id: 'animals',   label: 'Stock',     glyph: '🐄' },
-  { id: 'stores',    label: 'Stores',    glyph: '📦' },
   { id: 'analytics', label: 'Analytics', glyph: '📊' },
-  { id: 'records',   label: 'Records',   glyph: '📋' },
+  { id: 'settings',  label: 'Settings',  glyph: '⚙️' },
 ]
 
 export default function App() {
@@ -35,7 +41,6 @@ export default function App() {
   const { session, checking, recovery, clearRecovery, linkError: badLink, clearLinkError } = useSession()
   const [link, setLink] = useState<FarmLink | null>(null)
   const [linkError, setLinkError] = useState<string | null>(null)
-  const [showSettings, setShowSettings] = useState(false)
 
   const ready = useAsync(async () => { await consumeWipeIfPending(); await db(); return true }, [])
 
@@ -214,15 +219,16 @@ export default function App() {
     )
   }
 
-  if (showSettings) return <Settings onClose={() => setShowSettings(false)} />
+  // Everything Settings holds — the farm name, sync, who else is on the
+  // farm — needs an account behind it, so a local-only install has no tab
+  // for it rather than a tab that can only apologise.
+  const tabs = TABS.filter(
+    (t) => t.id !== 'settings' || (session && supabaseConfigured),
+  )
+  const current = tabs.some((t) => t.id === tab) ? tab : 'today'
 
   return (
     <div className="app">
-      {session && supabaseConfigured && (
-        <button className="settingsgear" aria-label="Settings" onClick={() => setShowSettings(true)}>
-          ⚙️
-        </button>
-      )}
       {import.meta.env.DEV && (
         <button className="devreset" onClick={async () => {
           if (!confirm('Wipe this farm back to blank and restart onboarding?')) return
@@ -255,11 +261,10 @@ export default function App() {
       )}
 
       <main className="content">
-        {tab === 'today' && <Today onGoToStock={() => setTab('animals')} />}
-        {tab === 'animals' && <Animals />}
-        {tab === 'stores' && <Stores />}
-        {tab === 'analytics' && <Analytics />}
-        {tab === 'records' && <Records />}
+        {current === 'today' && <Today onGoToStock={() => setTab('animals')} />}
+        {current === 'animals' && <Animals />}
+        {current === 'analytics' && <Analytics />}
+        {current === 'settings' && <Settings />}
       </main>
 
       {session && (
@@ -274,12 +279,12 @@ export default function App() {
       )}
 
       <nav className="tabbar">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.id}
-            className={tab === t.id ? 'on' : ''}
+            className={current === t.id ? 'on' : ''}
             onClick={() => setTab(t.id)}
-            aria-current={tab === t.id ? 'page' : undefined}
+            aria-current={current === t.id ? 'page' : undefined}
           >
             <span className="glyph">{t.glyph}</span>
             {t.label}

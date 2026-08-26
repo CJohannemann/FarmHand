@@ -107,19 +107,10 @@ h1 { margin: 0 0 0.15rem; font-size: 1.6rem; letter-spacing: -0.02em; }
 .tile.on { border-color: var(--accent); color: var(--accent); }
 .tile-solo { grid-column: 2; }
 
-.settingsgear {
-  position: fixed; top: 0.5rem; right: 0.5rem; z-index: 50;
-  width: 2.25rem; height: 2.25rem;
-  display: flex; align-items: center; justify-content: center;
-  border: 1px solid var(--line); border-radius: 50%;
-  background: var(--card); color: var(--fg);
-  font-size: 1.15rem; line-height: 1; cursor: pointer;
-}
-
-/* Dev-only reset button shares the corner with the settings gear — bumped
-   left so both stay reachable instead of one sitting on top of the other. */
+/* Dev-only reset button. Has the corner to itself now that Settings lives
+   in the tab bar rather than under a gear pinned here. */
 .devreset {
-  position: fixed; top: 0.5rem; right: 3.15rem; z-index: 50;
+  position: fixed; top: 0.5rem; right: 0.5rem; z-index: 50;
   padding: 0.35rem 0.6rem;
   border: 1px solid var(--line); border-radius: 0.4rem;
   background: var(--card); color: var(--muted);
@@ -147,21 +138,42 @@ h1 { margin: 0 0 0.15rem; font-size: 1.6rem; letter-spacing: -0.02em; }
 
 .loglist, .assetlist { list-style: none; margin: 0; padding: 0; }
 
-.loglist li {
-  position: relative;
-  padding: 0.8rem 4.5rem 0.8rem 0;
-  border-bottom: 1px solid var(--line);
+.loglist li { border-bottom: 1px solid var(--line); }
+
+/*
+  Two columns: what the entry says on the left, when it happened on the
+  right. This was a fixed 4.5rem of right padding with the date absolutely
+  positioned into it — which a real date never fit, so "Aug 26, 2026" ran
+  back over the name and amount beside it. A grid track sizes itself to
+  whatever the date turns out to be instead of being told in advance.
+
+  .logrow (a tappable row) and .logbody (a plain one) are the same box under
+  two names — a row that opens an editor has to be a <button>, and one that
+  does nothing shouldn't be.
+*/
+.logrow, .logbody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 0.75rem;
+  align-items: start;
+  padding: 0.8rem 0;
 }
 
-.log-main { display: flex; align-items: baseline; gap: 0.5rem; }
+/* Long amounts ("600.00 USD, 21 Round Bale") wrap under the name rather
+   than forcing the row wider than the screen. */
+.log-main {
+  grid-column: 1;
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.1rem 0.5rem;
+}
 .log-type { font-weight: 600; font-size: 0.95rem; }
 .log-qty  { color: var(--accent); font-size: 0.9rem; font-variant-numeric: tabular-nums; }
-.log-sub  { color: var(--muted); font-size: 0.88rem; margin-top: 0.1rem; }
-.log-note { font-size: 0.9rem; margin-top: 0.25rem; }
+.log-sub  { grid-column: 1; color: var(--muted); font-size: 0.88rem; margin-top: 0.1rem; }
+.log-note { grid-column: 1; font-size: 0.9rem; margin-top: 0.25rem; }
 
 .log-time {
-  position: absolute; top: 0.85rem; right: 0;
+  grid-column: 2; grid-row: 1;
   color: var(--muted); font-size: 0.8rem;
+  white-space: nowrap; text-align: right; line-height: 1.5;
 }
 
 /* ------------------------------------------------------------ asset list */
@@ -420,8 +432,7 @@ button.linkish {
 /* --------------------------------------------------------- edit & delete */
 
 .logrow {
-  position: relative; display: block; width: 100%;
-  padding: 0; border: 0; background: none;
+  width: 100%; border: 0; background: none;
   color: var(--fg); font: inherit; text-align: left; cursor: pointer;
 }
 

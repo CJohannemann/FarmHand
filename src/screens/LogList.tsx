@@ -15,6 +15,20 @@ const LABELS: Record<string, string> = {
   maintenance: 'Maintenance',
 }
 
+/**
+ * Shared by every history list. The year is dropped for anything in the
+ * current one — on a phone the date sits in its own column beside the entry,
+ * and "Aug 26, 2026" spends a third of a narrow screen saying something the
+ * reader already knows.
+ */
+export function logDate(timestamp: string): string {
+  const d = new Date(timestamp)
+  const thisYear = d.getFullYear() === new Date().getFullYear()
+  return d.toLocaleDateString(undefined,
+    thisYear ? { month: 'short', day: 'numeric' }
+      : { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 export function LogList({
   logs, loading, onSelect,
 }: {
@@ -36,17 +50,14 @@ export function LogList({
             </div>
             {l.subjects && <div className="log-sub">{l.subjects}</div>}
             {l.notes && <div className="log-note">{l.notes}</div>}
-            <time className="log-time">
-              {new Date(l.timestamp).toLocaleDateString(undefined,
-                { month: 'short', day: 'numeric', year: 'numeric' })}
-            </time>
+            <time className="log-time">{logDate(l.timestamp)}</time>
           </>
         )
         return (
           <li key={l.id}>
             {onSelect
               ? <button className="logrow" onClick={() => onSelect(l)}>{body}</button>
-              : body}
+              : <div className="logbody">{body}</div>}
           </li>
         )
       })}

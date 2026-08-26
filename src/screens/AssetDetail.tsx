@@ -10,6 +10,7 @@ import {
   ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange, roundQty,
 } from '../lib/numeric'
 import { AssetSelect } from './AssetSelect'
+import { logDate } from './LogList'
 import { Sheet } from './Sheet'
 import { EditAsset } from './EditAsset'
 import { GrowthChart } from './GrowthChart'
@@ -196,15 +197,14 @@ export function AssetDetail({
       <ul className="loglist">
         {(events.data ?? []).map((e) => (
           <li key={e.id + e.role}>
-            <div className="log-main">
-              <span className="log-type">{e.name ?? EVENT_LABELS[e.type] ?? e.type}</span>
-              {e.summary && <span className="log-qty">{e.summary}</span>}
+            <div className="logbody">
+              <div className="log-main">
+                <span className="log-type">{e.name ?? EVENT_LABELS[e.type] ?? e.type}</span>
+                {e.summary && <span className="log-qty">{e.summary}</span>}
+              </div>
+              {e.notes && <div className="log-note">{e.notes}</div>}
+              <time className="log-time">{logDate(e.timestamp)}</time>
             </div>
-            {e.notes && <div className="log-note">{e.notes}</div>}
-            <time className="log-time">
-              {new Date(e.timestamp).toLocaleDateString(undefined,
-                { month: 'short', day: 'numeric', year: 'numeric' })}
-            </time>
           </li>
         ))}
       </ul>
