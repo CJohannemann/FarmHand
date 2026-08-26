@@ -9,7 +9,7 @@ import { inviteLinkCode } from './lib/inviteLink'
 import { db, getSyncState, setSyncState } from './db/client'
 import { consumeWipeIfPending, ensureCutover, type CutoverResult } from './db/cutover'
 import { Today } from './screens/Today'
-import { Animals } from './screens/Animals'
+import { Stock } from './screens/Stock'
 import { Analytics } from './screens/Analytics'
 import { SignIn } from './screens/SignIn'
 import { ResetPassword } from './screens/ResetPassword'
@@ -17,7 +17,7 @@ import { SyncBar } from './screens/SyncBar'
 import { Setup, FarmName } from './screens/Setup'
 import { Settings } from './screens/Settings'
 
-type Tab = 'today' | 'animals' | 'analytics' | 'settings'
+type Tab = 'today' | 'stock' | 'analytics' | 'settings'
 
 /**
  * Four, down from five plus a floating gear.
@@ -30,7 +30,7 @@ type Tab = 'today' | 'animals' | 'analytics' | 'settings'
  */
 const TABS: { id: Tab; label: string; glyph: string }[] = [
   { id: 'today',     label: 'Today',     glyph: '☀️' },
-  { id: 'animals',   label: 'Stock',     glyph: '🐄' },
+  { id: 'stock',     label: 'Stock',     glyph: '🐄' },
   { id: 'analytics', label: 'Analytics', glyph: '📊' },
   { id: 'settings',  label: 'Settings',  glyph: '⚙️' },
 ]
@@ -251,8 +251,8 @@ export default function App() {
       )}
 
       <main className="content">
-        {current === 'today' && <Today onGoToStock={() => setTab('animals')} />}
-        {current === 'animals' && <Animals />}
+        {current === 'today' && <Today onGoToStock={() => setTab('stock')} />}
+        {current === 'stock' && <Stock />}
         {current === 'analytics' && <Analytics />}
         {current === 'settings' && <Settings />}
       </main>

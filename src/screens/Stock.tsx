@@ -83,7 +83,7 @@ function groupBySpecies(items: Asset[]): { species: string | null; items: Asset[
     })
 }
 
-export function Animals() {
+export function Stock() {
   const [adding, setAdding] = useState(false)
   const [taking, setTaking] = useState<LotBalance | null>(null)
   // A stack, not a single value — so Back from a member returns to its
@@ -297,8 +297,15 @@ export function Animals() {
   )
 }
 
+const LAST_ADD_TYPE_KEY = 'farmhand.lastAddType'
+
 function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void }) {
-  const [type, setType] = useState<AssetType>('animal')
+  // Defaults to whatever was added last rather than always "Animals" — a
+  // farm that's mostly logging tractor maintenance shouldn't have to
+  // reselect Equipment from the top of the list every single time.
+  const [type, setType] = useState<AssetType>(
+    () => (localStorage.getItem(LAST_ADD_TYPE_KEY) as AssetType | null) ?? 'animal',
+  )
   const [name, setName] = useState('')
   const [species, setSpecies] = useState('')
   const [purpose, setPurpose] = useState<Purpose | undefined>(undefined)
@@ -379,7 +386,11 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
     <Sheet title="Add" onClose={onClose}>
       <label className="field">
         <span>What kind?</span>
-        <select value={type} onChange={(e) => setType(e.target.value as AssetType)}>
+        <select value={type} onChange={(e) => {
+          const next = e.target.value as AssetType
+          setType(next)
+          localStorage.setItem(LAST_ADD_TYPE_KEY, next)
+        }}>
           {GROUPS.map((g) => (
             <option key={g.type} value={g.type}>
               {g.heading}{g.blurb ? ` — ${g.blurb}` : ''}
