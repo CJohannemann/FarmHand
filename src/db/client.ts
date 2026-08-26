@@ -1,7 +1,9 @@
 // Table list lives with the algorithm that uses it.
 import { SYNCED_TABLES } from '../lib/syncCore'
 import { parseJsonColumns } from './json'
+import { beginApplying, endApplying, noteWrite } from './writeSignal'
 export { SYNCED_TABLES }
+export { onLocalWrite } from './writeSignal'
 
 export interface DbHandle {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>
@@ -85,6 +87,8 @@ async function open(): Promise<DbHandle> {
     // as PGlite used to hand them back. See db/json.ts.
     query: async <T = Record<string, unknown>>(sql: string, params?: unknown[]) => {
       const result = await (send('query', [sql, params]) as unknown as Promise<{ rows: T[] }>)
+      // Only after it succeeded — a rejected write has nothing to push.
+      noteWrite(sql)
       return { rows: parseJsonColumns(result.rows) }
     },
     exec: (sql: string) => send('exec', [sql]) as Promise<void>,
@@ -95,9 +99,11 @@ async function open(): Promise<DbHandle> {
 export async function applying<T>(fn: () => Promise<T>): Promise<T> {
   const pg = await db()
   await pg.query(`update sync_control set applying = 1`)
+  beginApplying()
   try {
     return await fn()
   } finally {
+    endApplying()
     await pg.query(`update sync_control set applying = 0`)
   }
 }

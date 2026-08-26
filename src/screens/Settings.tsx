@@ -5,7 +5,9 @@ import {
   createInvite, listMembers, removeMember, updateMemberRole,
   type FarmRole, type FarmMember,
 } from '../lib/members'
+import { lastSyncedAt, pendingCount, syncNow } from '../lib/sync'
 import { FarmName } from './Setup'
+import { ago } from './SyncBar'
 
 const ROLE_LABEL: Record<FarmRole, string> = {
   owner: 'Owner', manager: 'Manager', member: 'Member', viewer: 'Viewer',
@@ -37,6 +39,8 @@ export function Settings({ onClose }: { onClose: () => void }) {
         <FarmName />
       </label>
 
+      <SyncPanel />
+
       {isOwner && <InvitePanel onCreated={members.reload} />}
 
       <h2 style={{ marginTop: '1.5rem' }}>Who's on this farm</h2>
@@ -51,6 +55,49 @@ export function Settings({ onClose }: { onClose: () => void }) {
         />
       )}
     </main>
+  )
+}
+
+/**
+ * Where the sync state lives now that the top-of-screen bar only appears
+ * when something is actually waiting or wrong. Syncing runs by itself — on
+ * load, a couple of seconds after any change, once a minute, and whenever
+ * the device gets signal back — so this is for reassurance and for the
+ * occasional "push it now, I'm about to lose signal".
+ */
+function SyncPanel() {
+  const state = useAsync(
+    async () => ({ pending: await pendingCount(), last: await lastSyncedAt() }), [])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const run = async () => {
+    setBusy(true); setError(null)
+    try {
+      await syncNow()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+      state.reload()
+    }
+  }
+
+  const pending = state.data?.pending ?? 0
+
+  return (
+    <div className="banner" style={{ marginTop: '1.25rem' }}>
+      <p><strong>Sync</strong></p>
+      <p className="hint">
+        {pending > 0
+          ? `${pending} ${pending === 1 ? 'change' : 'changes'} still to upload.`
+          : `Everything here is backed up. Last synced ${ago(state.data?.last ?? null)}.`}
+      </p>
+      <button className="primary" disabled={busy} onClick={run}>
+        {busy ? 'Syncing…' : 'Sync now'}
+      </button>
+      {error && <p className="error">{error}</p>}
+    </div>
   )
 }
 

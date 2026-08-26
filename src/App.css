@@ -402,7 +402,10 @@ button.linkish {
 
 .syncbar {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 1rem; padding: 0.4rem 1rem;
+  gap: 1rem;
+  /* Right padding clears the fixed settings gear, which sits over this
+     corner on every screen — without it the two overlap. */
+  padding: 0.4rem 3.25rem 0.4rem 1rem;
   background: var(--card);
   border-bottom: 1px solid var(--line);
   color: var(--muted);
