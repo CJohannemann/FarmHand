@@ -76,31 +76,52 @@ export interface SeedQuery {
   (sql: string, params?: unknown[]): Promise<unknown>
 }
 
+// One multi-row insert per vocabulary (chunked, in case a vocabulary ever
+// grows past what a single statement's bind-parameter count comfortably
+// holds) rather than one round trip per term — 143 individual awaited
+// inserts through the worker's serialized RPC queue turned out to dominate
+// first-boot time far more than the WASM engine itself does.
+const CHUNK = 200
+
+async function insertTerms(
+  query: SeedQuery,
+  vocabulary: string,
+  rows: { id?: string; name: string; parentId?: string | null }[],
+  now: string,
+): Promise<void> {
+  for (let start = 0; start < rows.length; start += CHUNK) {
+    const batch = rows.slice(start, start + CHUNK)
+    const tuples: string[] = []
+    const params: unknown[] = []
+    for (const r of batch) {
+      tuples.push('(?, null, ?, ?, ?, ?, ?)')
+      params.push(r.id ?? crypto.randomUUID(), vocabulary, r.name, r.parentId ?? null, now, now)
+    }
+    await query(
+      `insert into term (id, farm_id, vocabulary, name, parent_id, created_at, updated_at)
+       values ${tuples.join(', ')}`,
+      params,
+    )
+  }
+}
+
 /** Inserts the starting vocabulary. Call exactly once, on a freshly created local database. */
 export async function seedLocalVocabulary(query: SeedQuery): Promise<void> {
   const now = new Date().toISOString()
-  const term = (vocabulary: string, name: string, parentId: string | null = null) =>
-    query(
-      `insert into term (id, farm_id, vocabulary, name, parent_id, created_at, updated_at)
-       values (?, null, ?, ?, ?, ?, ?)`,
-      [crypto.randomUUID(), vocabulary, name, parentId, now, now],
-    )
 
   const speciesId: Record<string, string> = {}
-  for (const name of SPECIES) {
-    const id = crypto.randomUUID()
-    speciesId[name] = id
-    await query(
-      `insert into term (id, farm_id, vocabulary, name, created_at, updated_at)
-       values (?, null, 'species', ?, ?, ?)`,
-      [id, name, now, now],
-    )
-  }
-  for (const [name, species] of BREEDS) await term('breed', name, speciesId[species])
-  for (const name of MATERIALS) await term('material', name)
-  for (const name of METHODS) await term('method', name)
-  for (const name of TREATMENTS) await term('treatment', name)
-  for (const name of SERVICE) await term('service', name)
-  for (const name of UNITS) await term('unit', name)
-  for (const name of CROPS) await term('crop', name)
+  for (const name of SPECIES) speciesId[name] = crypto.randomUUID()
+  await insertTerms(query, 'species', SPECIES.map((name) => ({ id: speciesId[name], name })), now)
+
+  await insertTerms(
+    query, 'breed',
+    BREEDS.map(([name, species]) => ({ name, parentId: speciesId[species] })),
+    now,
+  )
+  await insertTerms(query, 'material', MATERIALS.map((name) => ({ name })), now)
+  await insertTerms(query, 'method', METHODS.map((name) => ({ name })), now)
+  await insertTerms(query, 'treatment', TREATMENTS.map((name) => ({ name })), now)
+  await insertTerms(query, 'service', SERVICE.map((name) => ({ name })), now)
+  await insertTerms(query, 'unit', UNITS.map((name) => ({ name })), now)
+  await insertTerms(query, 'crop', CROPS.map((name) => ({ name })), now)
 }
