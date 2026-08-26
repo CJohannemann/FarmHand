@@ -5,7 +5,7 @@ import {
   createInvite, listMembers, removeMember, updateMemberRole,
   type FarmRole, type FarmMember,
 } from '../lib/members'
-import { ago, lastSyncedAt, pendingCount, syncNow } from '../lib/sync'
+import { ago, lastSyncedAt, pendingCount, syncClockTime, syncNow } from '../lib/sync'
 import { FarmName } from './Setup'
 
 const ROLE_LABEL: Record<FarmRole, string> = {
@@ -89,7 +89,10 @@ function SyncPanel() {
       <p className="hint">
         {pending > 0
           ? `${pending} ${pending === 1 ? 'change' : 'changes'} still to upload.`
-          : `Everything here is backed up. Last synced ${ago(state.data?.last ?? null)}.`}
+          : 'Everything here is backed up.'}
+      </p>
+      <p className="hint">
+        Last synced {syncClockTime(state.data?.last ?? null)} ({ago(state.data?.last ?? null)})
       </p>
       <button className="primary" disabled={busy} onClick={run}>
         {busy ? 'Syncing…' : 'Sync now'}

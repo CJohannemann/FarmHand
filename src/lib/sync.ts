@@ -116,3 +116,17 @@ export function ago(iso: string | null): string {
   if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`
   return new Date(iso).toLocaleDateString()
 }
+
+/**
+ * The actual clock time of the last sync, not just "3m ago" — for someone
+ * checking whether a sync actually happened around a specific moment (right
+ * before losing signal, say), a relative age is the wrong unit.
+ */
+export function syncClockTime(iso: string | null): string {
+  if (!iso) return 'never'
+  const d = new Date(iso)
+  const sameDay = d.toDateString() === new Date().toDateString()
+  return d.toLocaleString(undefined, sameDay
+    ? { hour: 'numeric', minute: '2-digit' }
+    : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
