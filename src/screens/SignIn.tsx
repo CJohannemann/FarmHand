@@ -1,33 +1,42 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { authErrorMessage, type AuthLinkError } from '../lib/authLink'
 
 type Mode = 'in' | 'up' | 'forgot'
 
-export function SignIn() {
-  const [mode, setMode] = useState<Mode>('in')
+export function SignIn({ linkError, onDismissLinkError }: {
+  linkError?: AuthLinkError | null
+  onDismissLinkError?: () => void
+} = {}) {
+  // A dead reset link lands here. Open on the form that fixes it rather than
+  // making them find "Forgot your password?" again after being told to.
+  const [mode, setMode] = useState<Mode>(linkError ? 'forgot' : 'in')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
-  const switchTo = (m: Mode) => { setMode(m); setError(null); setNotice(null) }
+  const dismissLink = () => onDismissLinkError?.()
+  const switchTo = (m: Mode) => { setMode(m); setError(null); setNotice(null); dismissLink() }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!supabase) return
-    setBusy(true); setError(null); setNotice(null)
+    setBusy(true); setError(null); setNotice(null); dismissLink()
 
     if (mode === 'forgot') {
       // The link this sends back lands on this same page — Supabase's
       // client picks the recovery tokens out of the URL itself and fires
-      // a PASSWORD_RECOVERY auth event, which App.tsx watches for.
+      // a PASSWORD_RECOVERY auth event, which App.tsx watches for. If it
+      // instead comes back with an error, lib/authLink catches that.
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin,
       })
       setBusy(false)
-      if (error) { setError(error.message); return }
-      setNotice('Check your email for a link to reset your password.')
+      if (error) { setError(authErrorMessage(error)); return }
+      setNotice('Check your email for a link to reset your password. Open it on ' +
+        'this device, and use it straight away — it only works once.')
       return
     }
 
@@ -38,7 +47,7 @@ export function SignIn() {
     const { data, error } = await fn
     setBusy(false)
 
-    if (error) { setError(error.message); return }
+    if (error) { setError(authErrorMessage(error)); return }
     // Signing up with email confirmation on returns a user but no session.
     if (mode === 'up' && !data.session) {
       setNotice('Check your email for a confirmation link, then sign in.')
@@ -54,6 +63,8 @@ export function SignIn() {
         {mode === 'up' && 'Create your account.'}
         {mode === 'forgot' && 'Reset your password.'}
       </p>
+
+      {linkError && <p className="error">{linkError.message}</p>}
 
       <form onSubmit={submit}>
         <label className="field">

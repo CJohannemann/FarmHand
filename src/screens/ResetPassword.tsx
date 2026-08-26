@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { authErrorMessage } from '../lib/authLink'
 
 /**
  * Shown after a password-reset email link lands back on the app. Supabase
@@ -22,7 +23,7 @@ export function ResetPassword({ onDone }: { onDone: () => void }) {
     const { error } = await supabase.auth.updateUser({ password })
     setBusy(false)
 
-    if (error) { setError(error.message); return }
+    if (error) { setError(authErrorMessage(error)); return }
     onDone()
   }
 

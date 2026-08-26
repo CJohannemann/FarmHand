@@ -28,7 +28,7 @@ const TABS: { id: Tab; label: string; glyph: string }[] = [
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('today')
-  const { session, checking, recovery, clearRecovery } = useSession()
+  const { session, checking, recovery, clearRecovery, linkError: badLink, clearLinkError } = useSession()
   const [link, setLink] = useState<FarmLink | null>(null)
   const [linkError, setLinkError] = useState<string | null>(null)
 
@@ -81,7 +81,8 @@ export default function App() {
   // password's session still effectively "current".
   if (recovery) return <ResetPassword onDone={clearRecovery} />
 
-  if (supabaseConfigured && !session) return <SignIn />
+  if (supabaseConfigured && !session)
+    return <SignIn linkError={badLink} onDismissLinkError={clearLinkError} />
 
   if (needsSetup) {
     return (
