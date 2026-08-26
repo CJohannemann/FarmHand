@@ -100,13 +100,30 @@ export async function push(local: Local, remote: Remote): Promise<number> {
   return total
 }
 
+/**
+ * `$1, $2, ...` for an IN clause of the given length — plain placeholders
+ * rather than the JSON-array-plus-json_each() unpacking trick used
+ * elsewhere in this codebase, because push() also runs (via cutover.ts,
+ * migrating a device off the old local engine) against a real Postgres
+ * `Local` adapter, not just SQLite. SQLite's json_each() happily unpacks a
+ * JSON array; Postgres's json_each() expects a JSON *object* and returns a
+ * `json`-typed value column that a uuid id column can't be compared
+ * against without an explicit cast ("operator does not exist: uuid =
+ * json") — confirmed live, this is what broke a real device's cutover.
+ * Plain `$N` placeholders have no such divide: both backends bind them
+ * the same way.
+ */
+function placeholders(n: number): string {
+  return Array.from({ length: n }, (_, i) => `$${i + 1}`).join(', ')
+}
+
 /** Pushes specific rows by id, regardless of whether they were queued. */
 async function pushReferenced(local: Local, remote: Remote, tbl: string, ids: string[]) {
   const distinct = [...new Set(ids)]
   if (distinct.length === 0) return
   const { rows } = await local.query(
-    `select * from "${tbl}" where id in (select value from json_each($1))`,
-    [JSON.stringify(distinct)],
+    `select * from "${tbl}" where id in (${placeholders(distinct.length)})`,
+    distinct,
   )
   if (rows.length === 0) return
   const ordered = orderByParent(rows)
@@ -146,14 +163,14 @@ async function localRowsFor(local: Local, tbl: string, ids: string[]): Promise<R
     // Composite key; fetch by log and let the upsert sort out the rest.
     const logIds = [...new Set(ids.map((i) => i.split('|')[0]))]
     const { rows } = await local.query(
-      `select * from log_asset where log_id in (select value from json_each($1))`,
-      [JSON.stringify(logIds)],
+      `select * from log_asset where log_id in (${placeholders(logIds.length)})`,
+      logIds,
     )
     return rows
   }
   const { rows } = await local.query(
-    `select * from "${tbl}" where id in (select value from json_each($1))`,
-    [JSON.stringify(ids)],
+    `select * from "${tbl}" where id in (${placeholders(ids.length)})`,
+    ids,
   )
   return rows
 }
