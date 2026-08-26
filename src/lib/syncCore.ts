@@ -105,7 +105,8 @@ async function pushReferenced(local: Local, remote: Remote, tbl: string, ids: st
   const distinct = [...new Set(ids)]
   if (distinct.length === 0) return
   const { rows } = await local.query(
-    `select * from "${tbl}" where id = any($1::uuid[])`, [distinct],
+    `select * from "${tbl}" where id in (select value from json_each($1))`,
+    [JSON.stringify(distinct)],
   )
   if (rows.length === 0) return
   const ordered = orderByParent(rows)
@@ -115,13 +116,13 @@ async function pushReferenced(local: Local, remote: Remote, tbl: string, ids: st
 }
 
 /**
- * asset, term and location all self-reference via parent_id, and `id = any(
- * $1::uuid[])` makes no promise about row order — a group's members can
- * come back ahead of the group itself, since that has nothing to do with
- * which was inserted first. Pushing a member before its still-unpushed
- * parent trips the parent_id foreign key. Puts every row after its own
- * parent (recursively), stable otherwise; a cycle can't happen in practice
- * but `seen` keeps one from hanging if it ever did.
+ * asset, term and location all self-reference via parent_id, and reading rows
+ * back by an id list makes no promise about what order they come back in — a
+ * group's members can come back ahead of the group itself, since that has
+ * nothing to do with which was inserted first. Pushing a member before its
+ * still-unpushed parent trips the parent_id foreign key. Puts every row after
+ * its own parent (recursively), stable otherwise; a cycle can't happen in
+ * practice but `seen` keeps one from hanging if it ever did.
  */
 function orderByParent(rows: Row[]): Row[] {
   if (rows.length === 0 || !('parent_id' in rows[0])) return rows
@@ -145,12 +146,14 @@ async function localRowsFor(local: Local, tbl: string, ids: string[]): Promise<R
     // Composite key; fetch by log and let the upsert sort out the rest.
     const logIds = [...new Set(ids.map((i) => i.split('|')[0]))]
     const { rows } = await local.query(
-      `select * from log_asset where log_id = any($1::uuid[])`, [logIds],
+      `select * from log_asset where log_id in (select value from json_each($1))`,
+      [JSON.stringify(logIds)],
     )
     return rows
   }
   const { rows } = await local.query(
-    `select * from "${tbl}" where id = any($1::uuid[])`, [ids],
+    `select * from "${tbl}" where id in (select value from json_each($1))`,
+    [JSON.stringify(ids)],
   )
   return rows
 }

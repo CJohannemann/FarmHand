@@ -27,13 +27,18 @@ export async function listTerms(vocabulary: string): Promise<string[]> {
 export async function createTerm(vocabulary: string, name: string): Promise<void> {
   const pg = await db()
   const farm = await getFarmId()
+  const now = new Date().toISOString()
+  // Every repeated value (vocabulary, name, now) is passed once per
+  // occurrence rather than reused by placeholder number — SQLite driver
+  // parameter binding isn't guaranteed to let one bound value satisfy two
+  // occurrences of the same placeholder the way Postgres does.
   await pg.query(
-    `insert into term (farm_id, vocabulary, name)
-     select $1, $2, $3
+    `insert into term (id, farm_id, vocabulary, name, created_at, updated_at)
+     select $1, $2, $3, $4, $5, $6
      where not exists (
-       select 1 from term where vocabulary = $2 and name = $3 and deleted_at is null
+       select 1 from term where vocabulary = $7 and name = $8 and deleted_at is null
      )`,
-    [farm, vocabulary, name],
+    [crypto.randomUUID(), farm, vocabulary, name, now, now, vocabulary, name],
   )
 }
 
@@ -43,9 +48,9 @@ export async function listAssets(types?: AssetType[]): Promise<Asset[]> {
     `select id, type, name, status, terminal_event, parent_id, attributes
        from asset
       where deleted_at is null
-        and ($1::text[] is null or type::text = any($1::text[]))
+        and ($1 is null or type in (select value from json_each($2)))
       order by status, name`,
-    [types ?? null],
+    [types ? JSON.stringify(types) : null, JSON.stringify(types ?? [])],
   )
   return rows
 }
@@ -58,12 +63,17 @@ export async function createAsset(input: {
 }): Promise<string> {
   const pg = await db()
   const farm = await getFarmId()
-  const { rows } = await pg.query<{ id: string }>(
-    `insert into asset (farm_id, type, name, attributes, parent_id)
-     values ($1, $2, $3, $4, $5) returning id`,
-    [farm, input.type, input.name, JSON.stringify(input.attributes ?? {}), input.parentId ?? null],
+  const id = crypto.randomUUID()
+  const now = new Date().toISOString()
+  await pg.query(
+    `insert into asset (id, farm_id, type, name, attributes, parent_id, created_at, updated_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      id, farm, input.type, input.name,
+      JSON.stringify(input.attributes ?? {}), input.parentId ?? null, now, now,
+    ],
   )
-  return rows[0].id
+  return id
 }
 
 /** The individuals split out of a group — a herd's named-and-tracked members. */
@@ -100,8 +110,9 @@ export async function createGroupWithMembers(input: {
   // One statement rather than one per head: a 500-bird flock was 500
   // sequential round-trips behind a disabled button, each re-reading the
   // farm id and firing its own outbox trigger. Chunked because every row
-  // costs four bind parameters and drivers cap how many a statement takes.
+  // costs seven bind parameters and drivers cap how many a statement takes.
   const attrs = JSON.stringify(input.attributes ?? {})
+  const now = new Date().toISOString()
   const CHUNK = 200
   for (let start = 1; start <= input.count; start += CHUNK) {
     const end = Math.min(start + CHUNK - 1, input.count)
@@ -109,11 +120,13 @@ export async function createGroupWithMembers(input: {
     const tuples: string[] = []
     for (let i = start; i <= end; i++) {
       const b = values.length
-      tuples.push(`($${b + 1}, 'animal', $${b + 2}, $${b + 3}, $${b + 4})`)
-      values.push(farm, `${input.name} ${i}`, attrs, groupId)
+      tuples.push(
+        `($${b + 1}, $${b + 2}, 'animal', $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7})`,
+      )
+      values.push(crypto.randomUUID(), farm, `${input.name} ${i}`, attrs, groupId, now, now)
     }
     await pg.query(
-      `insert into asset (farm_id, type, name, attributes, parent_id)
+      `insert into asset (id, farm_id, type, name, attributes, parent_id, created_at, updated_at)
        values ${tuples.join(', ')}`,
       values,
     )
@@ -133,16 +146,17 @@ export async function createGroupWithMembers(input: {
  */
 export async function archiveAsset(id: string, terminal: string) {
   const pg = await db()
+  const now = new Date().toISOString()
   await pg.query(
     `update asset set status = 'archived', terminal_event = $2,
-            updated_at = now() where id = $1`,
-    [id, terminal],
+            updated_at = $3 where id = $1`,
+    [id, terminal, now],
   )
   await pg.query(
     `update asset set status = 'archived', terminal_event = $2,
-            updated_at = now()
+            updated_at = $3
       where parent_id = $1 and deleted_at is null and status = 'active'`,
-    [id, terminal],
+    [id, terminal, now],
   )
 }
 
@@ -158,20 +172,24 @@ export async function createLog(input: {
 }): Promise<string> {
   const pg = await db()
   const farm = await getFarmId()
+  const logId = crypto.randomUUID()
+  const now = new Date().toISOString()
 
-  const { rows } = await pg.query<{ id: string }>(
-    `insert into log (farm_id, type, timestamp, status, name, notes)
-     values ($1, $2, $3, $4, $5, $6) returning id`,
+  await pg.query(
+    `insert into log (id, farm_id, type, timestamp, status, name, notes, created_at, updated_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [
+      logId,
       farm,
       input.type,
       (input.timestamp ?? new Date()).toISOString(),
       input.status ?? 'done',
       input.name ?? null,
       input.notes ?? null,
+      now,
+      now,
     ],
   )
-  const logId = rows[0].id
 
   for (const a of input.assets ?? []) {
     await pg.query(
@@ -182,9 +200,9 @@ export async function createLog(input: {
   }
   for (const q of input.quantities ?? []) {
     await pg.query(
-      `insert into quantity (farm_id, log_id, measure, value, unit, label)
-       values ($1, $2, $3, $4, $5, $6)`,
-      [farm, logId, q.measure, q.value, q.unit, q.label ?? null],
+      `insert into quantity (id, farm_id, log_id, measure, value, unit, label, created_at, updated_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [crypto.randomUUID(), farm, logId, q.measure, q.value, q.unit, q.label ?? null, now, now],
     )
   }
   return logId
@@ -195,10 +213,10 @@ export async function recentLogs(limit = 50): Promise<LogWithDetail[]> {
   const pg = await db()
   const { rows } = await pg.query<LogWithDetail>(
     `select l.id, l.type, l.timestamp, l.status, l.name, l.notes,
-            (select string_agg(a.name, ', ' order by a.name)
+            (select group_concat(a.name, ', ' order by a.name)
                from log_asset la join asset a on a.id = la.asset_id
               where la.log_id = l.id and la.role = 'subject') as subjects,
-            (select string_agg(q.value::text || ' ' || q.unit, ', ')
+            (select group_concat(q.value || ' ' || q.unit, ', ')
                from quantity q where q.log_id = l.id
                  and q.deleted_at is null) as summary
        from log l
@@ -213,7 +231,7 @@ export async function recentLogs(limit = 50): Promise<LogWithDetail[]> {
 export async function assetCounts(): Promise<Record<string, number>> {
   const pg = await db()
   const { rows } = await pg.query<{ type: string; n: number }>(
-    `select type, count(*)::int as n from asset
+    `select type, count(*) as n from asset
       where deleted_at is null and status = 'active'
       group by type`,
   )
@@ -361,7 +379,7 @@ export async function logsForAsset(assetId: string): Promise<AssetEvent[]> {
   const pg = await db()
   const { rows } = await pg.query<AssetEvent>(
     `select l.id, l.type, l.timestamp, l.name, l.notes, la.role,
-            (select string_agg(q.value::text || ' ' || q.unit, ', ')
+            (select group_concat(q.value || ' ' || q.unit, ', ')
                from quantity q
               where q.log_id = l.id and q.deleted_at is null) as summary
        from log_asset la
@@ -399,7 +417,7 @@ export async function assetCosts(assetId: string): Promise<CostSummary> {
   const pg = await db()
 
   const purchase = await pg.query<{ purchase_cost: number }>(
-    `select coalesce(sum(q.value), 0)::float as purchase_cost
+    `select coalesce(sum(q.value), 0) as purchase_cost
        from log_asset la
        join log p on p.id = la.log_id
             and p.type = 'purchase' and p.deleted_at is null
@@ -420,7 +438,9 @@ export async function assetCosts(assetId: string): Promise<CostSummary> {
      ),
      per_lot as (
        select lot_id, sum(used_amount) as used_total,
-              bool_or(used_amount is null) as unknown_amount
+              -- bool_or() doesn't exist in SQLite; max() over the 0/1 that
+              -- an "is null" check already evaluates to is the same thing.
+              max(used_amount is null) as unknown_amount
          from used group by lot_id
      ),
      lot_purchase as (
@@ -439,16 +459,21 @@ export async function assetCosts(assetId: string): Promise<CostSummary> {
          when lp.price is null then 0
          when pl.unknown_amount then lp.price
          when lp.bought > 0
-           then lp.price * least(pl.used_total / lp.bought, 1)
+           -- least() doesn't exist in SQLite; min() with 2+ plain arguments
+           -- (not the aggregate form) is the same thing. used_total is never
+           -- null on this branch (unknown_amount above is false), so this
+           -- doesn't hit the one case where SQLite's min() and Postgres's
+           -- least() disagree — least() ignores a null argument, min() does not.
+           then lp.price * min(pl.used_total / lp.bought, 1)
          else lp.price
-       end), 0)::float as input_cost
+       end), 0) as input_cost
        from per_lot pl join lot_purchase lp on lp.lot_id = pl.lot_id`,
     [assetId],
   )
 
   const outs = await pg.query<{ name: string; amount: number | null; unit: string | null }>(
     `select a.name,
-            q.value::float as amount,
+            q.value as amount,
             q.unit
        from log_asset subj
        join log h on h.id = subj.log_id
@@ -489,7 +514,7 @@ export interface CostEntry { timestamp: string; value: number; material: string 
 export async function costEntries(): Promise<CostEntry[]> {
   const pg = await db()
   const { rows } = await pg.query<CostEntry>(
-    `select l.timestamp, q.value::float as value,
+    `select l.timestamp, q.value as value,
             coalesce(a.attributes->>'material', 'Other') as material
        from log l
        join quantity q on q.log_id = l.id and q.deleted_at is null
@@ -508,7 +533,7 @@ export async function weightHistory(assetId: string): Promise<
 > {
   const pg = await db()
   const { rows } = await pg.query<{ timestamp: string; value: number; unit: string }>(
-    `select l.timestamp, q.value::float as value, q.unit
+    `select l.timestamp, q.value as value, q.unit
        from log l
        join log_asset la on la.log_id = l.id
             and la.asset_id = $1 and la.role = 'subject'
@@ -534,7 +559,7 @@ export async function localIsEmpty(): Promise<boolean> {
   const { rows } = await pg.query<{ n: number }>(
     `select ((select count(*) from asset) +
              (select count(*) from log) +
-             (select count(*) from location))::int as n`,
+             (select count(*) from location)) as n`,
   )
   return (rows[0]?.n ?? 0) === 0
 }
@@ -547,15 +572,19 @@ export async function localIsEmpty(): Promise<boolean> {
 export async function adoptFarmId(id: string, name: string): Promise<boolean> {
   if (!(await localIsEmpty())) return false
   const pg = await db()
+  const now = new Date().toISOString()
   await pg.exec(`delete from farm`)
-  await pg.query(`insert into farm (id, name) values ($1, $2)`, [id, name])
+  await pg.query(
+    `insert into farm (id, name, created_at, updated_at) values ($1, $2, $3, $4)`,
+    [id, name, now, now],
+  )
   farmId = null
   return true
 }
 
 export async function renameFarm(name: string) {
   const pg = await db()
-  await pg.query(`update farm set name = $1, updated_at = now()`, [name])
+  await pg.query(`update farm set name = $1, updated_at = $2`, [name, new Date().toISOString()])
 }
 
 /**
@@ -567,18 +596,19 @@ export async function renameFarm(name: string) {
 export async function resetFarmForTesting() {
   const pg = await db()
   const farm = await getFarmId()
-  await pg.query(`update asset set deleted_at = now(), updated_at = now()
-    where farm_id = $1 and deleted_at is null`, [farm])
-  await pg.query(`update quantity set deleted_at = now(), updated_at = now()
-    where farm_id = $1 and deleted_at is null`, [farm])
-  await pg.query(`update log set deleted_at = now(), updated_at = now()
-    where farm_id = $1 and deleted_at is null`, [farm])
-  await pg.query(`update location set deleted_at = now(), updated_at = now()
-    where farm_id = $1 and deleted_at is null`, [farm])
-  await pg.query(`update term set deleted_at = now(), updated_at = now()
-    where farm_id = $1 and deleted_at is null`, [farm])
+  const now = new Date().toISOString()
+  await pg.query(`update asset set deleted_at = $2, updated_at = $3
+    where farm_id = $1 and deleted_at is null`, [farm, now, now])
+  await pg.query(`update quantity set deleted_at = $2, updated_at = $3
+    where farm_id = $1 and deleted_at is null`, [farm, now, now])
+  await pg.query(`update log set deleted_at = $2, updated_at = $3
+    where farm_id = $1 and deleted_at is null`, [farm, now, now])
+  await pg.query(`update location set deleted_at = $2, updated_at = $3
+    where farm_id = $1 and deleted_at is null`, [farm, now, now])
+  await pg.query(`update term set deleted_at = $2, updated_at = $3
+    where farm_id = $1 and deleted_at is null`, [farm, now, now])
   await pg.query(`update farm set name = 'My farm', latitude = null,
-    longitude = null, place_name = null, updated_at = now() where id = $1`, [farm])
+    longitude = null, place_name = null, updated_at = $2 where id = $1`, [farm, now])
   await pg.query(`delete from sync_state where key = 'setup'`)
 }
 
@@ -589,16 +619,17 @@ export async function updateAsset(id: string, input: {
   attributes?: Record<string, unknown>
 }) {
   const pg = await db()
+  const now = new Date().toISOString()
   if (input.name !== undefined) {
     await pg.query(
-      `update asset set name = $2, updated_at = now() where id = $1`,
-      [id, input.name],
+      `update asset set name = $2, updated_at = $3 where id = $1`,
+      [id, input.name, now],
     )
   }
   if (input.attributes !== undefined) {
     await pg.query(
-      `update asset set attributes = $2, updated_at = now() where id = $1`,
-      [id, JSON.stringify(input.attributes)],
+      `update asset set attributes = $2, updated_at = $3 where id = $1`,
+      [id, JSON.stringify(input.attributes), now],
     )
   }
 }
@@ -617,8 +648,9 @@ export async function updateLog(id: string, input: {
     sets.push(`timestamp = $${vals.push(input.timestamp.toISOString())}`)
   }
   if (sets.length === 0) return
+  const updatedAtParam = vals.push(new Date().toISOString())
   await pg.query(
-    `update log set ${sets.join(', ')}, updated_at = now() where id = $1`, vals,
+    `update log set ${sets.join(', ')}, updated_at = $${updatedAtParam} where id = $1`, vals,
   )
 }
 
@@ -631,8 +663,8 @@ export async function setQuantity(logId: string, measure: Measure, value: number
   )
   if (rows[0]) {
     await pg.query(
-      `update quantity set value = $2, updated_at = now() where id = $1`,
-      [rows[0].id, value],
+      `update quantity set value = $2, updated_at = $3 where id = $1`,
+      [rows[0].id, value, new Date().toISOString()],
     )
   }
 }
@@ -642,7 +674,7 @@ export async function quantitiesFor(logId: string) {
   const { rows } = await pg.query<{
     id: string; measure: Measure; value: number; unit: string; label: string | null
   }>(
-    `select id, measure, value::float as value, unit, label
+    `select id, measure, value, unit, label
        from quantity where log_id = $1 and deleted_at is null order by measure`,
     [logId],
   )
@@ -663,16 +695,17 @@ export async function quantitiesFor(logId: string) {
  */
 export async function deleteLog(id: string) {
   const pg = await db()
+  const now = new Date().toISOString()
   const { rows: logRows } = await pg.query<{ type: string }>(
     `select type from log where id = $1`, [id],
   )
 
   await pg.query(
-    `update log set deleted_at = now(), updated_at = now() where id = $1`, [id],
+    `update log set deleted_at = $2, updated_at = $2 where id = $1`, [id, now],
   )
   await pg.query(
-    `update quantity set deleted_at = now(), updated_at = now()
-      where log_id = $1 and deleted_at is null`, [id],
+    `update quantity set deleted_at = $2, updated_at = $2
+      where log_id = $1 and deleted_at is null`, [id, now],
   )
 
   if (logRows[0]?.type === 'purchase') {
@@ -681,15 +714,15 @@ export async function deleteLog(id: string) {
     )
     for (const { asset_id } of subjects) {
       const { rows: untouched } = await pg.query<{ n: number }>(
-        `select count(*)::int as n
+        `select count(*) as n
            from log_asset la
            join log l on l.id = la.log_id and l.deleted_at is null
           where la.asset_id = $1`, [asset_id],
       )
       if (untouched[0].n === 0) {
         await pg.query(
-          `update asset set deleted_at = now(), updated_at = now()
-            where id = $1 and type = 'lot'`, [asset_id],
+          `update asset set deleted_at = $2, updated_at = $2
+            where id = $1 and type = 'lot'`, [asset_id, now],
         )
       }
     }
@@ -698,8 +731,9 @@ export async function deleteLog(id: string) {
 
 export async function deleteAsset(id: string) {
   const pg = await db()
+  const now = new Date().toISOString()
   await pg.query(
-    `update asset set deleted_at = now(), updated_at = now() where id = $1`, [id],
+    `update asset set deleted_at = $2, updated_at = $2 where id = $1`, [id, now],
   )
 }
 
@@ -730,7 +764,7 @@ export async function lotBalances(): Promise<LotBalance[]> {
   const { rows } = await pg.query<LotBalance>(
     `with came as (
        select la.asset_id as lot_id,
-              sum(q.value)::float as amount,
+              sum(q.value) as amount,
               max(q.unit) as unit
          from log_asset la
          join log l on l.id = la.log_id and l.deleted_at is null
@@ -741,7 +775,7 @@ export async function lotBalances(): Promise<LotBalance[]> {
         group by la.asset_id
      ),
      taken as (
-       select la.asset_id as lot_id, sum(q.value)::float as amount
+       select la.asset_id as lot_id, sum(q.value) as amount
          from log_asset la
          join log l on l.id = la.log_id and l.deleted_at is null
               and l.type = 'disposition' and la.role = 'subject'
@@ -750,7 +784,7 @@ export async function lotBalances(): Promise<LotBalance[]> {
         group by la.asset_id
      ),
      consumed as (
-       select la.asset_id as lot_id, sum(la.amount)::float as amount
+       select la.asset_id as lot_id, sum(la.amount) as amount
          from log_asset la
          join log l on l.id = la.log_id and l.deleted_at is null
         where la.role = 'input' and la.amount is not null
@@ -821,10 +855,10 @@ export async function plannedLogs(): Promise<LogWithDetail[]> {
   const pg = await db()
   const { rows } = await pg.query<LogWithDetail>(
     `select l.id, l.type, l.timestamp, l.status, l.name, l.notes,
-            (select string_agg(a.name, ', ' order by a.name)
+            (select group_concat(a.name, ', ' order by a.name)
                from log_asset la join asset a on a.id = la.asset_id
               where la.log_id = l.id and la.role = 'subject') as subjects,
-            null::text as summary
+            null as summary
        from log l
       where l.deleted_at is null and l.status = 'planned'
       order by l.timestamp asc`,
@@ -856,15 +890,17 @@ export async function planTask(input: {
  */
 export async function completeTask(id: string) {
   const pg = await db()
+  const now = new Date().toISOString()
   await pg.query(
-    `update log set status = 'done', timestamp = now(), updated_at = now()
-      where id = $1`, [id],
+    `update log set status = 'done', timestamp = $2, updated_at = $2
+      where id = $1`, [id, now],
   )
 }
 
 export async function cancelTask(id: string) {
   const pg = await db()
   await pg.query(
-    `update log set status = 'cancelled', updated_at = now() where id = $1`, [id],
+    `update log set status = 'cancelled', updated_at = $2 where id = $1`,
+    [id, new Date().toISOString()],
   )
 }
