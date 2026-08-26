@@ -13,7 +13,6 @@ import { Stock } from './screens/Stock'
 import { Analytics } from './screens/Analytics'
 import { SignIn } from './screens/SignIn'
 import { ResetPassword } from './screens/ResetPassword'
-import { SyncBar } from './screens/SyncBar'
 import { Setup, FarmName } from './screens/Setup'
 import { Settings } from './screens/Settings'
 
@@ -108,7 +107,10 @@ export default function App() {
   }, [session, ready.data, cutoverDone, pendingInvite, skipInvite])
 
   const linked = link?.state === 'linked' || link?.state === 'created'
-  const sync = useSync(Boolean(session) && linked && cutoverDone)
+  // Return value unused — Settings' own panel reports sync state now; this
+  // call is only for the polling/push-after-write/revocation-check side
+  // effects it runs internally.
+  useSync(Boolean(session) && linked && cutoverDone)
 
   // Setup runs once, and only for a farm this sign-in actually created.
   // A second device adopts an existing farm — state 'linked' — and skips it.
@@ -240,16 +242,6 @@ export default function App() {
           they will not sync.
         </div>
       )}
-      {linked && (
-        <SyncBar
-          status={sync.status}
-          pending={sync.pending}
-          last={sync.last}
-          error={sync.error}
-          onSync={sync.sync}
-        />
-      )}
-
       <main className="content">
         {current === 'today' && <Today onGoToStock={() => setTab('stock')} />}
         {current === 'stock' && <Stock />}

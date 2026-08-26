@@ -401,25 +401,6 @@ button.linkish {
 
 .account button.linkish { padding: 0; font-size: 0.8rem; }
 
-/* ------------------------------------------------------------------ sync */
-
-.syncbar {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 1rem;
-  /* Right padding clears the fixed settings gear, which sits over this
-     corner on every screen — without it the two overlap. */
-  padding: 0.4rem 3.25rem 0.4rem 1rem;
-  background: var(--card);
-  border-bottom: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 0.78rem;
-}
-
-.syncbar button.linkish { padding: 0; font-size: 0.78rem; }
-.syncbar.syncing span { color: var(--accent); }
-.syncbar.error   span { color: #c0392b; }
-.syncbar.offline span { color: #a4571c; }
-
 /* --------------------------------------------------------- edit & delete */
 
 .logrow {
