@@ -31,7 +31,7 @@ export function AssetDetail({
 }) {
   const [sheet, setSheet] = useState<
     | 'harvest' | 'pull' | 'closeout' | 'edit' | 'treat' | 'split' | 'weigh'
-    | 'maintain' | 'retire' | null
+    | 'maintain' | 'retire' | 'addmember' | null
   >(null)
 
   const livestock = asset.type === 'animal' || asset.type === 'group'
@@ -164,6 +164,9 @@ export function AssetDetail({
           <button onClick={() => setSheet('maintain')}>Maintenance</button>
         )}
         {asset.status === 'active' && asset.type === 'group' && (
+          <button onClick={() => setSheet('addmember')}>Add to this group</button>
+        )}
+        {asset.status === 'active' && asset.type === 'group' && (
           <button onClick={() => setSheet('split')}>Name an individual</button>
         )}
         <button onClick={() => { setSheet('edit'); setAutoEdit(false) }}>Edit</button>
@@ -232,6 +235,9 @@ export function AssetDetail({
       )}
       {sheet === 'split' && (
         <SplitForm group={asset} onClose={() => setSheet(null)} onDone={refresh} />
+      )}
+      {sheet === 'addmember' && (
+        <AddMemberForm group={asset} onClose={() => setSheet(null)} onDone={refresh} />
       )}
       {sheet === 'edit' && (
         <EditAsset
@@ -647,6 +653,88 @@ function SplitForm({ group, onDone, onClose }: {
       <button className="primary" disabled={busy || !name.trim()} onClick={save}>
         Save
       </button>
+    </Sheet>
+  )
+}
+
+/**
+ * A new head joining an existing herd — buying a fifth cow for a group that
+ * already has four. `SplitForm` only ever peels a name off headcount the
+ * group already carries; once every head has a real member record backing
+ * it, there was previously no way to grow the group at all, which is what
+ * pushed a newly bought animal into a disconnected top-level Animal instead.
+ *
+ * Left blank, the name falls back to the same "<group> <n>" pattern
+ * `createGroupWithMembers` uses, so it reads through `memberLabel` by tag
+ * and stays renameable later via "Name an individual" — behaving exactly
+ * like the members the group started with.
+ */
+function AddMemberForm({ group, onDone, onClose }: {
+  group: Asset; onDone: () => void; onClose: () => void
+}) {
+  const [name, setName] = useState('')
+  const [tag, setTag] = useState('')
+  const [birthday, setBirthday] = useState('')
+  const [price, setPrice] = useState('')
+  const [busy, setBusy] = useState(false)
+  const { data: members } = useAsync(() => childAssets(group.id), [group.id])
+
+  const finalName = name.trim() || `${group.name} ${(members ?? []).length + 1}`
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      const attributes = { ...group.attributes }
+      delete attributes.headcount
+      if (tag.trim()) attributes.tag = tag.trim()
+      const id = await createAsset({
+        type: 'animal', name: finalName, attributes, parentId: group.id,
+      })
+      if (birthday) {
+        await createLog({
+          type: 'birth', name: 'Born', timestamp: new Date(`${birthday}T12:00:00`),
+          assets: [{ id, role: 'subject' }],
+        })
+      }
+      if (Number(price) > 0) {
+        await createLog({
+          type: 'purchase', name: `Bought ${finalName}`,
+          assets: [{ id, role: 'subject' }],
+          quantities: [{ measure: 'price', value: Number(price), unit: 'USD' }],
+        })
+      }
+      onDone()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Sheet title={`Add to ${group.name}`} onClose={onClose}>
+      <p className="hint">
+        Joins the herd as a new member — species and purpose carry over from {group.name}.
+      </p>
+      <label className="field">
+        <span>Name (optional)</span>
+        <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
+          placeholder="Bessie" />
+      </label>
+      <label className="field">
+        <span>Tag number (optional)</span>
+        <input value={tag} onChange={(e) => setTag(e.target.value)}
+          placeholder="Ear tag, ID number, whatever you use" />
+      </label>
+      <label className="field">
+        <span>Birthday (optional)</span>
+        <input type="date" value={birthday} onChange={(e) => setBirthday(e.target.value)} />
+      </label>
+      <label className="field">
+        <span>Bought for ($, optional)</span>
+        <input type="number" inputMode="decimal" min="0" value={price}
+          onChange={onNumericChange(setPrice)} onWheel={ignoreScrollOnNumberInput}
+          onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="350" />
+      </label>
+      <button className="primary" disabled={busy} onClick={save}>Save</button>
     </Sheet>
   )
 }
