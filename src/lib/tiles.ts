@@ -58,6 +58,9 @@ export const SPECIES_PURPOSES: Record<string, Purpose[]> = {
  */
 export const EQUIPMENT_KINDS = ['Tractor', 'Attachment', 'Vehicle', 'Other'] as const
 
+/** Only Tractor and Vehicle have an engine worth naming a fuel for. */
+export const FUEL_TYPES = ['Diesel', 'Gas', 'Electric', 'Other'] as const
+
 export const HARVESTS: Record<string, HarvestSpec> = {
   eggs: {
     kind: 'eggs', label: 'Eggs', glyph: '🥚',

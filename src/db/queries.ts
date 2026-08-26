@@ -587,31 +587,6 @@ export async function renameFarm(name: string) {
   await pg.query(`update farm set name = $1, updated_at = $2`, [name, new Date().toISOString()])
 }
 
-/**
- * Dev-only: wipe a farm back to blank so onboarding can be previewed again
- * and again. Soft-deletes through the same deleted_at columns the rest of
- * the app uses, so the wipe is a real, synced tombstone rather than a local
- * hack that a pull from Supabase would silently undo.
- */
-export async function resetFarmForTesting() {
-  const pg = await db()
-  const farm = await getFarmId()
-  const now = new Date().toISOString()
-  await pg.query(`update asset set deleted_at = $2, updated_at = $3
-    where farm_id = $1 and deleted_at is null`, [farm, now, now])
-  await pg.query(`update quantity set deleted_at = $2, updated_at = $3
-    where farm_id = $1 and deleted_at is null`, [farm, now, now])
-  await pg.query(`update log set deleted_at = $2, updated_at = $3
-    where farm_id = $1 and deleted_at is null`, [farm, now, now])
-  await pg.query(`update location set deleted_at = $2, updated_at = $3
-    where farm_id = $1 and deleted_at is null`, [farm, now, now])
-  await pg.query(`update term set deleted_at = $2, updated_at = $3
-    where farm_id = $1 and deleted_at is null`, [farm, now, now])
-  await pg.query(`update farm set name = 'My farm', latitude = null,
-    longitude = null, place_name = null, updated_at = $2 where id = $1`, [farm, now])
-  await pg.query(`delete from sync_state where key = 'setup'`)
-}
-
 // ----------------------------------------------------------- edit & delete
 
 export async function updateAsset(id: string, input: {

@@ -75,6 +75,11 @@ export function AssetDetail({
 
   const c = costs.data
   const showCosts = !!c && (c.purchaseCost > 0 || c.inputCost > 0 || c.outputs.length > 0)
+  const showEquipmentDetails = equipment && (
+    asset.attributes?.year || asset.attributes?.serial
+    || asset.attributes?.hours || asset.attributes?.mileage
+    || asset.attributes?.fuel || asset.attributes?.plate
+  )
   const birthEvent = (events.data ?? []).find((e) => e.type === 'birth')
   const hasPurchase = (events.data ?? []).some((e) => e.type === 'purchase')
   const liveMembers = (members.data ?? []).filter((m) => m.status === 'active').length
@@ -89,7 +94,8 @@ export function AssetDetail({
         {equipment
           ? String(asset.attributes?.kind ?? 'Equipment')
           : String(asset.attributes?.species ?? asset.type)}
-        {equipment && asset.attributes?.make ? ` · ${String(asset.attributes.make)}` : ''}
+        {equipment && asset.attributes?.year ? ` · ${String(asset.attributes.year)}` : ''}
+        {equipment && asset.attributes?.make ? ` ${String(asset.attributes.make)}` : ''}
         {equipment && asset.attributes?.model ? ` ${String(asset.attributes.model)}` : ''}
         {headcount ? ` · ${String(headcount)} head` : ''}
         {asset.attributes?.tag ? ` · Tag ${String(asset.attributes.tag)}` : ''}
@@ -115,6 +121,32 @@ export function AssetDetail({
               </li>
             ))}
           </ul>
+        </>
+      )}
+
+      {showEquipmentDetails && (
+        <>
+          <h2 className="section">Details</h2>
+          <div className="costbox">
+            {asset.attributes?.year != null && (
+              <Row label="Year" value={String(asset.attributes.year)} />
+            )}
+            {!!asset.attributes?.serial && (
+              <Row label="Serial / VIN" value={String(asset.attributes.serial)} />
+            )}
+            {asset.attributes?.hours != null && (
+              <Row label="Engine hours" value={String(asset.attributes.hours)} />
+            )}
+            {asset.attributes?.mileage != null && (
+              <Row label="Mileage" value={`${asset.attributes.mileage} mi`} />
+            )}
+            {!!asset.attributes?.fuel && (
+              <Row label="Fuel" value={String(asset.attributes.fuel)} />
+            )}
+            {!!asset.attributes?.plate && (
+              <Row label="Plate" value={String(asset.attributes.plate)} />
+            )}
+          </div>
         </>
       )}
 

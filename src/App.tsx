@@ -8,7 +8,6 @@ import { redeemInvite } from './lib/members'
 import { inviteLinkCode } from './lib/inviteLink'
 import { db, getSyncState, setSyncState } from './db/client'
 import { consumeWipeIfPending, ensureCutover, type CutoverResult } from './db/cutover'
-import { resetFarmForTesting } from './db/queries'
 import { Today } from './screens/Today'
 import { Animals } from './screens/Animals'
 import { Analytics } from './screens/Analytics'
@@ -229,15 +228,6 @@ export default function App() {
 
   return (
     <div className="app">
-      {import.meta.env.DEV && (
-        <button className="devreset" onClick={async () => {
-          if (!confirm('Wipe this farm back to blank and restart onboarding?')) return
-          await resetFarmForTesting()
-          location.href = '/?forcesetup=1'
-        }}>
-          Reset (dev)
-        </button>
-      )}
       {!supabaseConfigured && (
         <div className="banner">
           Local only — no account. Add Supabase keys to <code>.env</code> to sync.

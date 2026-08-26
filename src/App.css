@@ -107,15 +107,6 @@ h1 { margin: 0 0 0.15rem; font-size: 1.6rem; letter-spacing: -0.02em; }
 .tile.on { border-color: var(--accent); color: var(--accent); }
 .tile-solo { grid-column: 2; }
 
-/* Dev-only reset button. Has the corner to itself now that Settings lives
-   in the tab bar rather than under a gear pinned here. */
-.devreset {
-  position: fixed; top: 0.5rem; right: 0.5rem; z-index: 50;
-  padding: 0.35rem 0.6rem;
-  border: 1px solid var(--line); border-radius: 0.4rem;
-  background: var(--card); color: var(--muted);
-  font: inherit; font-size: 0.7rem; cursor: pointer;
-}
 .glyph { font-size: 1.4rem; line-height: 1; }
 
 .chipwrap { display: flex; flex-wrap: wrap; gap: 0.5rem; }

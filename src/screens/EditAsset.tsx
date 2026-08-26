@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import { createLog, deleteAsset, listTerms, updateAsset } from '../db/queries'
 import type { Asset } from '../db/types'
-import { EQUIPMENT_KINDS, SPECIES_PURPOSES, type Purpose } from '../lib/tiles'
+import { EQUIPMENT_KINDS, FUEL_TYPES, SPECIES_PURPOSES, type Purpose } from '../lib/tiles'
 import { purposeLabel, sexTermsFor } from '../lib/husbandry'
 import {
   ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
@@ -11,8 +11,9 @@ import { Sheet } from './Sheet'
 
 /**
  * Name, species, sex, tag, birthday, price paid — or, for equipment, kind,
- * make, model and what it cost — one form for the facts about a thing,
- * rather than a separate button and sheet for each. A hundred-head farm
+ * make, model, year, serial, hours/mileage, fuel and plate — one form for
+ * the facts about a thing, rather than a separate button and sheet for
+ * each. A hundred-head farm
  * cannot afford eight taps per cow just to enter one. Birthday and price
  * still land as their own log events under the hood (History, and
  * assetCosts(), both depend on that) — this just stops making the farmer
@@ -43,6 +44,18 @@ export function EditAsset({
   const [kind, setKind] = useState(String(asset.attributes?.kind ?? ''))
   const [make, setMake] = useState(String(asset.attributes?.make ?? ''))
   const [model, setModel] = useState(String(asset.attributes?.model ?? ''))
+  const [year, setYear] = useState(
+    asset.attributes?.year ? String(asset.attributes.year) : '',
+  )
+  const [serial, setSerial] = useState(String(asset.attributes?.serial ?? ''))
+  const [hours, setHours] = useState(
+    asset.attributes?.hours ? String(asset.attributes.hours) : '',
+  )
+  const [mileage, setMileage] = useState(
+    asset.attributes?.mileage ? String(asset.attributes.mileage) : '',
+  )
+  const [fuel, setFuel] = useState(String(asset.attributes?.fuel ?? ''))
+  const [plate, setPlate] = useState(String(asset.attributes?.plate ?? ''))
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const { data: speciesList } = useAsync(() => listTerms('species'), [])
@@ -85,6 +98,18 @@ export function EditAsset({
       else delete attributes.make
       if (model.trim()) attributes.model = model.trim()
       else delete attributes.model
+      if (Number(year) > 0) attributes.year = Number(year)
+      else delete attributes.year
+      if (serial.trim()) attributes.serial = serial.trim()
+      else delete attributes.serial
+      if (kind === 'Tractor' && Number(hours) > 0) attributes.hours = Number(hours)
+      else delete attributes.hours
+      if (kind === 'Vehicle' && Number(mileage) > 0) attributes.mileage = Number(mileage)
+      else delete attributes.mileage
+      if ((kind === 'Tractor' || kind === 'Vehicle') && fuel) attributes.fuel = fuel
+      else delete attributes.fuel
+      if (kind === 'Vehicle' && plate.trim()) attributes.plate = plate.trim()
+      else delete attributes.plate
     }
     try {
       await updateAsset(asset.id, { name: name.trim(), attributes })
@@ -205,6 +230,55 @@ export function EditAsset({
               placeholder="L3901" />
           </label>
         </div>
+      )}
+
+      {equipment && (
+        <div className="pair">
+          <label className="field">
+            <span>Year (optional)</span>
+            <input type="number" inputMode="numeric" min="0" value={year}
+              onChange={onNumericChange(setYear, { integer: true })}
+              onWheel={ignoreScrollOnNumberInput} onKeyDown={ignoreArrowKeysOnNumberInput}
+              placeholder="2020" />
+          </label>
+          <label className="field">
+            <span>Serial / VIN (optional)</span>
+            <input value={serial} onChange={(e) => setSerial(e.target.value)} />
+          </label>
+        </div>
+      )}
+
+      {equipment && (kind === 'Tractor' || kind === 'Vehicle') && (
+        <div className="pair">
+          <label className="field">
+            <span>{kind === 'Tractor' ? 'Engine hours (optional)' : 'Mileage (optional)'}</span>
+            {kind === 'Tractor' ? (
+              <input type="number" inputMode="numeric" min="0" value={hours}
+                onChange={onNumericChange(setHours, { integer: true })}
+                onWheel={ignoreScrollOnNumberInput} onKeyDown={ignoreArrowKeysOnNumberInput}
+                placeholder="1240" />
+            ) : (
+              <input type="number" inputMode="numeric" min="0" value={mileage}
+                onChange={onNumericChange(setMileage, { integer: true })}
+                onWheel={ignoreScrollOnNumberInput} onKeyDown={ignoreArrowKeysOnNumberInput}
+                placeholder="32400" />
+            )}
+          </label>
+          <label className="field">
+            <span>Fuel (optional)</span>
+            <select value={fuel} onChange={(e) => setFuel(e.target.value)}>
+              <option value="">— none —</option>
+              {FUEL_TYPES.map((f) => <option key={f} value={f}>{f}</option>)}
+            </select>
+          </label>
+        </div>
+      )}
+
+      {equipment && kind === 'Vehicle' && (
+        <label className="field">
+          <span>License plate (optional)</span>
+          <input value={plate} onChange={(e) => setPlate(e.target.value)} />
+        </label>
       )}
 
       {livestock && !hasBirthday && (
