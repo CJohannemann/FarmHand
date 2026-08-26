@@ -5,7 +5,8 @@ import {
   listTerms, renameFarm,
 } from '../db/queries'
 import { setFarmLocation, searchPlace, type Place } from '../lib/weather'
-import { PURPOSE_LABEL, type Purpose } from '../lib/tiles'
+import { type Purpose } from '../lib/tiles'
+import { purposeLabel } from '../lib/husbandry'
 import {
   ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange, sanitizeNumeric,
 } from '../lib/numeric'
@@ -291,7 +292,7 @@ function AddKindRow({
           {purposeOptions.map((p) => (
             <button key={p} type="button" className={`chip${purpose === p ? ' on' : ''}`}
               onClick={() => setPurpose(purpose === p ? undefined : p)}>
-              {PURPOSE_LABEL[p]}
+              {purposeLabel(p, name)}
             </button>
           ))}
         </div>

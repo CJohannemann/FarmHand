@@ -34,10 +34,6 @@ const BEES = ['Honeybee']
 
 export type Purpose = 'eggs' | 'meat' | 'dairy' | 'wool'
 
-export const PURPOSE_LABEL: Record<Purpose, string> = {
-  eggs: 'For eggs', meat: 'For meat', dairy: 'For dairy', wool: 'For wool',
-}
-
 /**
  * Which purposes are worth asking about for a species — shared by onboarding
  * and the Stock tab's Add/Edit forms, so "layers vs. broilers" is answerable

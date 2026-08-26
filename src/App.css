@@ -39,6 +39,34 @@ h1 { margin: 0 0 0.15rem; font-size: 1.6rem; letter-spacing: -0.02em; }
   color: var(--fg);
 }
 
+/* One card per species on the Stock screen. Two columns rather than the
+   four .tiles uses: these carry a name and a count, not a single word, and
+   a species like "Honeybee" wraps badly in a quarter-width box. */
+.speciescards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.6rem;
+}
+
+.speciescard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 1rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: var(--card);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+}
+
+.speciescard:active { transform: scale(0.97); }
+.speciescard-name { font-weight: 600; }
+.speciescard-count { color: var(--muted); font-size: 0.8rem; }
+
 .muted { color: var(--muted); }
 
 .empty {

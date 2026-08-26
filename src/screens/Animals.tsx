@@ -4,7 +4,8 @@ import {
   createAsset, createGroupWithMembers, createLog, createPlanting, listAssets, listTerms,
 } from '../db/queries'
 import type { Asset, AssetType } from '../db/types'
-import { EQUIPMENT_KINDS, PURPOSE_LABEL, SPECIES_PURPOSES, type Purpose } from '../lib/tiles'
+import { EQUIPMENT_KINDS, SPECIES_PURPOSES, type Purpose } from '../lib/tiles'
+import { purposeLabel, sexTermsFor, speciesGlyph } from '../lib/husbandry'
 import {
   ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
 } from '../lib/numeric'
@@ -48,8 +49,43 @@ export function Animals() {
   // group, not all the way out to the top list. Selecting from the top
   // list starts a fresh stack; a group's Members list pushes onto it.
   const [stack, setStack] = useState<Asset[]>([])
+  // Which species card is open, if any. `null` is a real value here — the
+  // bucket of animals with no species recorded — so `undefined` means "no
+  // card open" and the two cannot be confused.
+  const [species, setSpecies] = useState<string | null | undefined>(undefined)
   const { data, loading, reload } = useAsync(() => listAssets(), [])
   const assets = data ?? []
+
+  // `underSpeciesHeading` rows already sit somewhere naming their species —
+  // repeating it on every row is just noise, so show the ear tag instead.
+  const row = (a: Asset, underSpeciesHeading = false) => {
+    const liveMembers = assets.filter(
+      (m) => m.parent_id === a.id && m.status === 'active',
+    ).length
+    const headcount = liveMembers || a.attributes?.headcount
+    const equipMeta = [a.attributes?.kind, a.attributes?.make, a.attributes?.model]
+      .filter(Boolean).join(' ')
+    const kind = a.type === 'equipment'
+      ? equipMeta
+      : underSpeciesHeading
+        ? [a.attributes?.sex, a.attributes?.tag ? `Tag ${String(a.attributes.tag)}` : '']
+          .filter(Boolean).join(' · ')
+        : String(a.attributes?.species ?? a.attributes?.crop ?? '')
+    return (
+      <li key={a.id} className={a.status === 'archived' ? 'gone' : ''}>
+        <button className="assetrow" onClick={() => setStack([a])}>
+          <span className="asset-name">{a.name}</span>
+          <span className="asset-meta">
+            {kind}
+            {headcount ? ` · ${String(headcount)} head` : ''}
+            {a.status === 'archived'
+              ? ` · ${a.terminal_event ?? 'archived'}` : ''}
+            <span className="chev">›</span>
+          </span>
+        </button>
+      </li>
+    )
+  }
 
   if (stack.length > 0) {
     const current = stack[stack.length - 1]
@@ -62,6 +98,24 @@ export function Animals() {
         onChanged={reload}
         onSelect={(a) => setStack([...stack, a])}
       />
+    )
+  }
+
+  if (species !== undefined) {
+    const mine = assets.filter((a) =>
+      a.type === 'animal' && !a.parent_id
+      && (String(a.attributes?.species ?? '').trim() || null) === species)
+    return (
+      <div className="screen">
+        <button type="button" className="back" onClick={() => setSpecies(undefined)}>
+          ‹ Back
+        </button>
+        <h1>{species ?? 'No species set'}</h1>
+        <p className="tagline">
+          {mine.length} {mine.length === 1 ? 'animal' : 'animals'}
+        </p>
+        <ul className="assetlist">{mine.map((a) => row(a, true))}</ul>
+      </div>
     )
   }
 
@@ -89,57 +143,36 @@ export function Animals() {
         const mine = assets.filter((a) => a.type === g.type && !a.parent_id)
         if (mine.length === 0) return null
 
-        // `underSpeciesHeading` rows sit beneath a heading naming their
-        // species already — repeating it on every row is just noise.
-        const row = (a: Asset, underSpeciesHeading = false) => {
-          const liveMembers = assets.filter(
-            (m) => m.parent_id === a.id && m.status === 'active',
-          ).length
-          const headcount = liveMembers || a.attributes?.headcount
-          const equipMeta = [a.attributes?.kind, a.attributes?.make, a.attributes?.model]
-            .filter(Boolean).join(' ')
-          const kind = a.type === 'equipment'
-            ? equipMeta
-            : underSpeciesHeading
-              ? String(a.attributes?.tag ? `Tag ${String(a.attributes.tag)}` : '')
-              : String(a.attributes?.species ?? a.attributes?.crop ?? '')
+        // Animals are tracked and named individually, so a flat list of "1",
+        // "2", "Patti" says nothing about which is a pig and which the cow.
+        // One card per species, tapped to see that species' animals — a herd
+        // of forty would otherwise bury everything else on this screen.
+        // Nothing else here needs it: a group carries its kind in its own
+        // name ("Cattle (beef)"), and the rest have no species at all.
+        if (g.type === 'animal') {
           return (
-            <li key={a.id} className={a.status === 'archived' ? 'gone' : ''}>
-              <button className="assetrow" onClick={() => setStack([a])}>
-                <span className="asset-name">{a.name}</span>
-                <span className="asset-meta">
-                  {kind}
-                  {headcount ? ` · ${String(headcount)} head` : ''}
-                  {a.status === 'archived'
-                    ? ` · ${a.terminal_event ?? 'archived'}` : ''}
-                  <span className="chev">›</span>
-                </span>
-              </button>
-            </li>
+            <section key={g.type}>
+              <h2 className="section">{g.heading}</h2>
+              <div className="speciescards">
+                {groupBySpecies(mine).map(({ species, items }) => (
+                  <button key={species ?? '—'} type="button" className="speciescard"
+                    onClick={() => setSpecies(species)}>
+                    <span className="glyph">{speciesGlyph(species)}</span>
+                    <span className="speciescard-name">{species ?? 'No species set'}</span>
+                    <span className="speciescard-count">
+                      {items.length} {items.length === 1 ? 'animal' : 'animals'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
           )
         }
-
-        // Animals are tracked individually and named individually, so a flat
-        // list of "1", "2", "Patti" says nothing about which is a pig and
-        // which is the cow. Everything else on this screen either carries
-        // its kind in its own name (a group called "Cattle (beef)") or has
-        // no species at all, so only animals get split up this way.
-        const bySpecies = g.type === 'animal' ? groupBySpecies(mine) : null
 
         return (
           <section key={g.type}>
             <h2 className="section">{g.heading}</h2>
-            {bySpecies
-              ? bySpecies.map(({ species, items }) => (
-                <div key={species ?? '—'}>
-                  {/* One unlabelled bucket is just the flat list again. */}
-                  {(species || bySpecies.length > 1) && (
-                    <h3 className="subsection">{species ?? 'No species set'}</h3>
-                  )}
-                  <ul className="assetlist">{items.map((a) => row(a, species !== null))}</ul>
-                </div>
-              ))
-              : <ul className="assetlist">{mine.map((a) => row(a))}</ul>}
+            <ul className="assetlist">{mine.map((a) => row(a))}</ul>
           </section>
         )
       })}
@@ -157,6 +190,7 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
   const [name, setName] = useState('')
   const [species, setSpecies] = useState('')
   const [purpose, setPurpose] = useState<Purpose | undefined>(undefined)
+  const [sex, setSex] = useState('')
   const [tag, setTag] = useState('')
   const [headcount, setHeadcount] = useState('')
   const [birthday, setBirthday] = useState('')
@@ -192,6 +226,7 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
     if (wantsSpecies && species) attributes.species = species
     if (purposeOptions && purpose) attributes.purpose = purpose
     if (isEquipment && kind) attributes.kind = kind
+    if (isAnimal && sex) attributes.sex = sex
     if (isAnimal && tag.trim()) attributes.tag = tag.trim()
     const id = type === 'group' && Number(headcount) > 0
       ? await createGroupWithMembers({ name: finalName, count: Number(headcount), attributes })
@@ -229,7 +264,7 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
         <label className="field">
           <span>Species</span>
           <select autoFocus value={species}
-            onChange={(e) => { setSpecies(e.target.value); setPurpose(undefined) }}>
+            onChange={(e) => { setSpecies(e.target.value); setPurpose(undefined); setSex('') }}>
             <option value="">— pick one —</option>
             {(speciesList ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
@@ -241,10 +276,26 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
           {purposeOptions.map((p) => (
             <button key={p} type="button" className={`chip${purpose === p ? ' on' : ''}`}
               onClick={() => setPurpose(purpose === p ? undefined : p)}>
-              {PURPOSE_LABEL[p]}
+              {purposeLabel(p, species)}
             </button>
           ))}
         </div>
+      )}
+
+      {/* Held back until a species is picked: the words themselves depend on
+          it, and offering "Gilt" before knowing it's a pig invites nonsense. */}
+      {isAnimal && species && (
+        <label className="field">
+          <span>What is it? (optional)</span>
+          <div className="chipwrap">
+            {sexTermsFor(species).map((s) => (
+              <button key={s} type="button" className={`chip${sex === s ? ' on' : ''}`}
+                onClick={() => setSex(sex === s ? '' : s)}>
+                {s}
+              </button>
+            ))}
+          </div>
+        </label>
       )}
 
       <label className="field">

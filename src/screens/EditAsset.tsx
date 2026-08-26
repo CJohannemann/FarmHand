@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import { createLog, deleteAsset, listTerms, updateAsset } from '../db/queries'
 import type { Asset } from '../db/types'
-import { EQUIPMENT_KINDS, PURPOSE_LABEL, SPECIES_PURPOSES, type Purpose } from '../lib/tiles'
+import { EQUIPMENT_KINDS, SPECIES_PURPOSES, type Purpose } from '../lib/tiles'
+import { purposeLabel, sexTermsFor } from '../lib/husbandry'
 import {
   ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
 } from '../lib/numeric'
@@ -139,7 +140,7 @@ export function EditAsset({
           {purposeOptions.map((p) => (
             <button key={p} type="button" className={`chip${purpose === p ? ' on' : ''}`}
               onClick={() => setPurpose(purpose === p ? undefined : p)}>
-              {PURPOSE_LABEL[p]}
+              {purposeLabel(p, species)}
             </button>
           ))}
         </div>
@@ -164,9 +165,13 @@ export function EditAsset({
 
       {asset.type === 'animal' && (
         <div className="field">
-          <span>Sex</span>
+          <span>What is it?</span>
           <div className="chipwrap">
-            {(['Female', 'Male'] as const).map((s) => (
+            {/* Species-specific: a cow is never a gilt. A value already
+                saved under a different species stays offered alongside, so
+                editing something else about the animal cannot silently
+                discard it. */}
+            {[...new Set([...sexTermsFor(species), ...(sex ? [sex] : [])])].map((s) => (
               <button key={s} type="button" className={`chip${sex === s ? ' on' : ''}`}
                 onClick={() => setSex(sex === s ? '' : s)}>
                 {s}
