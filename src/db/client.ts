@@ -1,5 +1,6 @@
 // Table list lives with the algorithm that uses it.
 import { SYNCED_TABLES } from '../lib/syncCore'
+import { parseJsonColumns } from './json'
 export { SYNCED_TABLES }
 
 export interface DbHandle {
@@ -77,8 +78,15 @@ async function open(): Promise<DbHandle> {
     // whatever T the caller asked for; this is just where that boundary gets
     // asserted, since `send()` itself only knows it got an `unknown` value
     // back over postMessage.
-    query: <T = Record<string, unknown>>(sql: string, params?: unknown[]) =>
-      send('query', [sql, params]) as unknown as Promise<{ rows: T[] }>,
+    //
+    // JSON columns are parsed here, at the single point every read passes
+    // through — queries.ts for the screens, and sync.ts's Local adapter for
+    // push — so both see the objects callers were written against, exactly
+    // as PGlite used to hand them back. See db/json.ts.
+    query: async <T = Record<string, unknown>>(sql: string, params?: unknown[]) => {
+      const result = await (send('query', [sql, params]) as unknown as Promise<{ rows: T[] }>)
+      return { rows: parseJsonColumns(result.rows) }
+    },
     exec: (sql: string) => send('exec', [sql]) as Promise<void>,
   }
 }

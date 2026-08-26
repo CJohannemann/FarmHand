@@ -20,6 +20,28 @@ const GROUPS: { type: AssetType; heading: string; blurb: string }[] = [
   { type: 'equipment', heading: 'Equipment', blurb: 'Tractors, implements, vehicles' },
 ]
 
+/**
+ * Buckets animals under their species, alphabetically, with anything that
+ * has no species recorded last — those are the ones needing attention, and
+ * burying them mid-list makes them easy to miss.
+ */
+function groupBySpecies(items: Asset[]): { species: string | null; items: Asset[] }[] {
+  const buckets = new Map<string | null, Asset[]>()
+  for (const a of items) {
+    const species = String(a.attributes?.species ?? '').trim() || null
+    const bucket = buckets.get(species)
+    if (bucket) bucket.push(a)
+    else buckets.set(species, [a])
+  }
+  return [...buckets.entries()]
+    .map(([species, items]) => ({ species, items }))
+    .sort((a, b) => {
+      if (a.species === null) return 1
+      if (b.species === null) return -1
+      return a.species.localeCompare(b.species)
+    })
+}
+
 export function Animals() {
   const [adding, setAdding] = useState(false)
   // A stack, not a single value — so Back from a member returns to its
@@ -66,35 +88,58 @@ export function Animals() {
         // twice.
         const mine = assets.filter((a) => a.type === g.type && !a.parent_id)
         if (mine.length === 0) return null
+
+        // `underSpeciesHeading` rows sit beneath a heading naming their
+        // species already — repeating it on every row is just noise.
+        const row = (a: Asset, underSpeciesHeading = false) => {
+          const liveMembers = assets.filter(
+            (m) => m.parent_id === a.id && m.status === 'active',
+          ).length
+          const headcount = liveMembers || a.attributes?.headcount
+          const equipMeta = [a.attributes?.kind, a.attributes?.make, a.attributes?.model]
+            .filter(Boolean).join(' ')
+          const kind = a.type === 'equipment'
+            ? equipMeta
+            : underSpeciesHeading
+              ? String(a.attributes?.tag ? `Tag ${String(a.attributes.tag)}` : '')
+              : String(a.attributes?.species ?? a.attributes?.crop ?? '')
+          return (
+            <li key={a.id} className={a.status === 'archived' ? 'gone' : ''}>
+              <button className="assetrow" onClick={() => setStack([a])}>
+                <span className="asset-name">{a.name}</span>
+                <span className="asset-meta">
+                  {kind}
+                  {headcount ? ` · ${String(headcount)} head` : ''}
+                  {a.status === 'archived'
+                    ? ` · ${a.terminal_event ?? 'archived'}` : ''}
+                  <span className="chev">›</span>
+                </span>
+              </button>
+            </li>
+          )
+        }
+
+        // Animals are tracked individually and named individually, so a flat
+        // list of "1", "2", "Patti" says nothing about which is a pig and
+        // which is the cow. Everything else on this screen either carries
+        // its kind in its own name (a group called "Cattle (beef)") or has
+        // no species at all, so only animals get split up this way.
+        const bySpecies = g.type === 'animal' ? groupBySpecies(mine) : null
+
         return (
           <section key={g.type}>
             <h2 className="section">{g.heading}</h2>
-            <ul className="assetlist">
-              {mine.map((a) => {
-                const liveMembers = assets.filter(
-                  (m) => m.parent_id === a.id && m.status === 'active',
-                ).length
-                const headcount = liveMembers || a.attributes?.headcount
-                const equipMeta = [a.attributes?.kind, a.attributes?.make, a.attributes?.model]
-                  .filter(Boolean).join(' ')
-                return (
-                  <li key={a.id} className={a.status === 'archived' ? 'gone' : ''}>
-                    <button className="assetrow" onClick={() => setStack([a])}>
-                      <span className="asset-name">{a.name}</span>
-                      <span className="asset-meta">
-                        {a.type === 'equipment'
-                          ? equipMeta
-                          : String(a.attributes?.species ?? a.attributes?.crop ?? '')}
-                        {headcount ? ` · ${String(headcount)} head` : ''}
-                        {a.status === 'archived'
-                          ? ` · ${a.terminal_event ?? 'archived'}` : ''}
-                        <span className="chev">›</span>
-                      </span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
+            {bySpecies
+              ? bySpecies.map(({ species, items }) => (
+                <div key={species ?? '—'}>
+                  {/* One unlabelled bucket is just the flat list again. */}
+                  {(species || bySpecies.length > 1) && (
+                    <h3 className="subsection">{species ?? 'No species set'}</h3>
+                  )}
+                  <ul className="assetlist">{items.map((a) => row(a, species !== null))}</ul>
+                </div>
+              ))
+              : <ul className="assetlist">{mine.map((a) => row(a))}</ul>}
           </section>
         )
       })}

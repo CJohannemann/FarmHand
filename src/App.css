@@ -30,6 +30,15 @@ h1 { margin: 0 0 0.15rem; font-size: 1.6rem; letter-spacing: -0.02em; }
   font-weight: 600;
 }
 
+/* Species headings inside a section — deliberately quieter than .section
+   above them, so the nesting reads at a glance rather than competing. */
+.subsection {
+  margin: 1.1rem 0 0.3rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+
 .muted { color: var(--muted); }
 
 .empty {
