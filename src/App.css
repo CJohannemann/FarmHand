@@ -70,8 +70,19 @@ h1 { margin: 0 0 0.15rem; font-size: 1.6rem; letter-spacing: -0.02em; }
 .tile.on { border-color: var(--accent); color: var(--accent); }
 .tile-solo { grid-column: 2; }
 
-.devreset {
+.settingsgear {
   position: fixed; top: 0.5rem; right: 0.5rem; z-index: 50;
+  width: 2.25rem; height: 2.25rem;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); border-radius: 50%;
+  background: var(--card); color: var(--fg);
+  font-size: 1.15rem; line-height: 1; cursor: pointer;
+}
+
+/* Dev-only reset button shares the corner with the settings gear — bumped
+   left so both stay reachable instead of one sitting on top of the other. */
+.devreset {
+  position: fixed; top: 0.5rem; right: 3.15rem; z-index: 50;
   padding: 0.35rem 0.6rem;
   border: 1px solid var(--line); border-radius: 0.4rem;
   background: var(--card); color: var(--muted);

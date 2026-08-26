@@ -218,6 +218,11 @@ export default function App() {
 
   return (
     <div className="app">
+      {session && supabaseConfigured && (
+        <button className="settingsgear" aria-label="Settings" onClick={() => setShowSettings(true)}>
+          ⚙️
+        </button>
+      )}
       {import.meta.env.DEV && (
         <button className="devreset" onClick={async () => {
           if (!confirm('Wipe this farm back to blank and restart onboarding?')) return
@@ -262,11 +267,6 @@ export default function App() {
           <FarmName />
           <span className="account-sep">·</span>
           {session.user.email}
-          {supabaseConfigured && (
-            <button className="linkish" onClick={() => setShowSettings(true)}>
-              Settings
-            </button>
-          )}
           <button className="linkish" onClick={() => supabase?.auth.signOut()}>
             Sign out
           </button>
