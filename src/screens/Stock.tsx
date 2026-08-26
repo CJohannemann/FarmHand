@@ -8,7 +8,7 @@ import type { Asset, AssetType } from '../db/types'
 import { EQUIPMENT_KINDS, FUEL_TYPES, SPECIES_PURPOSES, type Purpose } from '../lib/tiles'
 import { purposeLabel, sexTermsFor, speciesGlyph } from '../lib/husbandry'
 import {
-  ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange, roundQty,
+  formatQty, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
 } from '../lib/numeric'
 import { Sheet } from './Sheet'
 import { AssetDetail } from './AssetDetail'
@@ -127,7 +127,7 @@ export function Stock() {
           <span className="asset-name">{a.name}</span>
           <span className="asset-meta">
             {kind}
-            {headcount ? ` · ${String(headcount)} head` : ''}
+            {headcount ? ` · ${formatQty(Number(headcount))} head` : ''}
             {a.status === 'archived'
               ? ` · ${a.terminal_event ?? 'archived'}` : ''}
             <span className="chev">›</span>
@@ -162,7 +162,7 @@ export function Stock() {
         </button>
         <h1>{species ?? 'No species set'}</h1>
         <p className="tagline">
-          {mine.length} {mine.length === 1 ? 'animal' : 'animals'}
+          {formatQty(mine.length)} {mine.length === 1 ? 'animal' : 'animals'}
         </p>
         <ul className="assetlist">{mine.map((a) => row(a, true))}</ul>
       </div>
@@ -210,9 +210,9 @@ export function Stock() {
                           <span className="asset-meta">
                             {l.remaining > 0.001 ? (
                               <strong className="remaining">
-                                {roundQty(l.remaining)} {l.unit ?? ''}
+                                {formatQty(l.remaining)} {l.unit ?? ''}
                               </strong>
-                            ) : `${roundQty(l.came_in)} ${l.unit ?? ''} in, none left`}
+                            ) : `${formatQty(l.came_in)} ${l.unit ?? ''} in, none left`}
                             <span className="chev">›</span>
                           </span>
                         </button>
@@ -248,7 +248,7 @@ export function Stock() {
                     <span className="glyph">{speciesGlyph(species)}</span>
                     <span className="speciescard-name">{species ?? 'No species set'}</span>
                     <span className="speciescard-count">
-                      {items.length} {items.length === 1 ? 'animal' : 'animals'}
+                      {formatQty(items.length)} {items.length === 1 ? 'animal' : 'animals'}
                     </span>
                   </button>
                 ))}

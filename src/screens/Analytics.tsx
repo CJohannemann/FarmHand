@@ -5,6 +5,7 @@ import {
   bucketize, bucketEnd, materialBreakdown, rangeLabel,
   BUCKET_COUNT, type Granularity,
 } from '../lib/periods'
+import { formatMoney } from '../lib/numeric'
 import { CostChart } from './CostChart'
 import { Records } from './Records'
 
@@ -99,7 +100,7 @@ function Costs() {
       {hasAny && active && (
         <>
           <div className="stat">
-            <span className="stat-value">${active.total.toFixed(2)}</span>
+            <span className="stat-value">{formatMoney(active.total)}</span>
             <span className="stat-label">{rangeLabel(active.start, granularity)}</span>
           </div>
 
@@ -114,7 +115,7 @@ function Costs() {
               {breakdown.map((b) => (
                 <div className="costrow" key={b.material}>
                   <span>{b.material}</span>
-                  <span>${b.total.toFixed(2)}</span>
+                  <span>{formatMoney(b.total)}</span>
                 </div>
               ))}
             </div>

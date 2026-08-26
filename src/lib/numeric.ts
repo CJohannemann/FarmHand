@@ -42,6 +42,38 @@ export function sanitizeNumeric(raw: string, opts?: { integer?: boolean }): stri
  */
 export const roundQty = (n: number) => Math.round(n * 100) / 100
 
+/** A dollar figure, always two decimals and comma-grouped: 28500 -> "$28,500.00". */
+export function formatMoney(n: number): string {
+  return n.toLocaleString('en-US', {
+    style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2,
+  })
+}
+
+/**
+ * A count or measurement, comma-grouped with no forced decimals — hours,
+ * mileage, headcount, a lot balance. `roundQty` first, so a summed balance
+ * displays the same trimmed value this used to show, just grouped: 32400 ->
+ * "32,400", 33.30000000000001 -> "33.3".
+ */
+export function formatQty(n: number): string {
+  return roundQty(n).toLocaleString('en-US', { maximumFractionDigits: 2 })
+}
+
+/**
+ * Comma-groups the bare numbers inside a sentence someone else built —
+ * SQL's `group_concat(value || ' ' || unit)` summaries ("28500.0 USD",
+ * "18.0 each, 4.0 gal") being the one real caller. Never point this at text
+ * that only looks numeric, like a serial number or a license plate — it
+ * would cheerfully wreck a VIN.
+ */
+export function withThousands(text: string): string {
+  return text.replace(/\d+(\.\d+)?/g, (match) => {
+    const [intPart, decPart] = match.split('.')
+    const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    return decPart === undefined ? grouped : `${grouped}.${decPart}`
+  })
+}
+
 /** Convenience for an onChange handler: sanitize, then hand to setState. */
 export const onNumericChange =
   (set: (v: string) => void, opts?: { integer?: boolean }) =>

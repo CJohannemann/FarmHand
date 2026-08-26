@@ -1,4 +1,5 @@
 import type { LogWithDetail } from '../db/types'
+import { withThousands } from '../lib/numeric'
 
 const LABELS: Record<string, string> = {
   harvest: 'Harvest',
@@ -46,7 +47,7 @@ export function LogList({
           <>
             <div className="log-main">
               <span className="log-type">{l.name ?? LABELS[l.type] ?? l.type}</span>
-              {l.summary && <span className="log-qty">{l.summary}</span>}
+              {l.summary && <span className="log-qty">{withThousands(l.summary)}</span>}
             </div>
             {l.subjects && <div className="log-sub">{l.subjects}</div>}
             {l.notes && <div className="log-note">{l.notes}</div>}

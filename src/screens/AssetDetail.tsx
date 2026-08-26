@@ -7,7 +7,8 @@ import {
 import type { Asset } from '../db/types'
 import { producibleMaterial } from '../lib/tiles'
 import {
-  ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange, roundQty,
+  formatMoney, formatQty, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput,
+  onNumericChange, withThousands,
 } from '../lib/numeric'
 import { AssetSelect } from './AssetSelect'
 import { logDate } from './LogList'
@@ -97,7 +98,7 @@ export function AssetDetail({
         {equipment && asset.attributes?.year ? ` · ${String(asset.attributes.year)}` : ''}
         {equipment && asset.attributes?.make ? ` ${String(asset.attributes.make)}` : ''}
         {equipment && asset.attributes?.model ? ` ${String(asset.attributes.model)}` : ''}
-        {headcount ? ` · ${String(headcount)} head` : ''}
+        {headcount ? ` · ${formatQty(Number(headcount))} head` : ''}
         {asset.attributes?.tag ? ` · Tag ${String(asset.attributes.tag)}` : ''}
         {asset.attributes?.sex ? ` · ${String(asset.attributes.sex)}` : ''}
         {birthEvent ? ` · Born ${new Date(birthEvent.timestamp).toLocaleDateString(
@@ -135,10 +136,10 @@ export function AssetDetail({
               <Row label="Serial / VIN" value={String(asset.attributes.serial)} />
             )}
             {asset.attributes?.hours != null && (
-              <Row label="Engine hours" value={String(asset.attributes.hours)} />
+              <Row label="Engine hours" value={formatQty(Number(asset.attributes.hours))} />
             )}
             {asset.attributes?.mileage != null && (
-              <Row label="Mileage" value={`${asset.attributes.mileage} mi`} />
+              <Row label="Mileage" value={`${formatQty(Number(asset.attributes.mileage))} mi`} />
             )}
             {!!asset.attributes?.fuel && (
               <Row label="Fuel" value={String(asset.attributes.fuel)} />
@@ -155,16 +156,16 @@ export function AssetDetail({
           <h2 className="section">Cost</h2>
           <div className="costbox">
             {c!.purchaseCost > 0 && (
-              <Row label="Bought for" value={`$${c!.purchaseCost.toFixed(2)}`} />
+              <Row label="Bought for" value={formatMoney(c!.purchaseCost)} />
             )}
-            <Row label="Inputs" value={`$${c!.inputCost.toFixed(2)}`} />
+            <Row label="Inputs" value={formatMoney(c!.inputCost)} />
             {c!.outputs.map((o, i) => (
               <Row key={i} label={o.name}
-                value={o.amount ? `${o.amount} ${o.unit ?? ''}` : '—'} />
+                value={o.amount ? `${formatQty(o.amount)} ${o.unit ?? ''}` : '—'} />
             ))}
             {c!.costPerUnit != null && (
               <Row strong label={`Cost per ${c!.unit ?? 'unit'}`}
-                value={`$${c!.costPerUnit.toFixed(2)}`} />
+                value={formatMoney(c!.costPerUnit)} />
             )}
           </div>
           {c!.costPerUnit == null && (c!.purchaseCost > 0 || c!.inputCost > 0) && (
@@ -232,7 +233,7 @@ export function AssetDetail({
             <div className="logbody">
               <div className="log-main">
                 <span className="log-type">{e.name ?? EVENT_LABELS[e.type] ?? e.type}</span>
-                {e.summary && <span className="log-qty">{e.summary}</span>}
+                {e.summary && <span className="log-qty">{withThousands(e.summary)}</span>}
               </div>
               {e.notes && <div className="log-note">{e.notes}</div>}
               <time className="log-time">{logDate(e.timestamp)}</time>
@@ -541,7 +542,7 @@ function InputForm({
             onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="5" />
           {selected && (
             <small className="hint">
-              {roundQty(selected.remaining)} {selected.unit} on hand
+              {formatQty(selected.remaining)} {selected.unit} on hand
             </small>
           )}
         </label>

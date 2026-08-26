@@ -1,4 +1,5 @@
 import { axisLabel, rangeLabel, type Bucket, type Granularity } from '../lib/periods'
+import { formatMoney } from '../lib/numeric'
 
 const W = 320
 const H = 160
@@ -86,7 +87,7 @@ export function CostChart({
         })}
       </svg>
       <p className="chart-tooltip">
-        <strong>${active.total.toFixed(2)}</strong> · {rangeLabel(active.start, granularity)}
+        <strong>{formatMoney(active.total)}</strong> · {rangeLabel(active.start, granularity)}
       </p>
     </div>
   )

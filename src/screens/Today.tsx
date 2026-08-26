@@ -7,7 +7,7 @@ import {
 import type { LogWithDetail } from '../db/types'
 import { HARVESTS, tilesFor, type HarvestSpec } from '../lib/tiles'
 import {
-  ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange, roundQty,
+  formatQty, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
 } from '../lib/numeric'
 import { Sheet } from './Sheet'
 import { AssetSelect } from './AssetSelect'
@@ -175,7 +175,7 @@ function FeedForm({ onDone, onClose }: FormProps) {
           onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="25" />
         {selected && (
           <small className="hint">
-            {roundQty(selected.remaining)} {selected.unit} on hand
+            {formatQty(selected.remaining)} {selected.unit} on hand
           </small>
         )}
       </label>

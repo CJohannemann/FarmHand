@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { recordDisposition, type LotBalance } from '../db/queries'
 import {
-  ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange, roundQty as round,
+  formatQty as round, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
 } from '../lib/numeric'
 import { Sheet } from './Sheet'
 

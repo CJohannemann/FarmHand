@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { formatQty } from '../lib/numeric'
 
 interface WeightPoint { timestamp: string; value: number; unit: string }
 
@@ -111,7 +112,7 @@ export function GrowthChart({ points }: { points: WeightPoint[] }) {
       </svg>
       <p className="chart-tooltip">
         {hp
-          ? <><strong>{hp.value} {hp.unit}</strong> · {dateFmt(hp.timestamp)}</>
+          ? <><strong>{formatQty(hp.value)} {hp.unit}</strong> · {dateFmt(hp.timestamp)}</>
           : <>{points.length} weigh-ins · touch the line for a date</>}
       </p>
     </div>
