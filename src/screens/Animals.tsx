@@ -5,7 +5,7 @@ import {
   lotBalances, type LotBalance,
 } from '../db/queries'
 import type { Asset, AssetType } from '../db/types'
-import { EQUIPMENT_KINDS, SPECIES_PURPOSES, type Purpose } from '../lib/tiles'
+import { EQUIPMENT_KINDS, FUEL_TYPES, SPECIES_PURPOSES, type Purpose } from '../lib/tiles'
 import { purposeLabel, sexTermsFor, speciesGlyph } from '../lib/husbandry'
 import {
   ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange, roundQty,
@@ -311,6 +311,14 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
   const [variety, setVariety] = useState('')
   const [where, setWhere] = useState('')
   const [kind, setKind] = useState('')
+  const [make, setMake] = useState('')
+  const [model, setModel] = useState('')
+  const [year, setYear] = useState('')
+  const [serial, setSerial] = useState('')
+  const [hours, setHours] = useState('')
+  const [mileage, setMileage] = useState('')
+  const [fuel, setFuel] = useState('')
+  const [plate, setPlate] = useState('')
   const { data: speciesList } = useAsync(() => listTerms('species'), [])
   const { data: cropList } = useAsync(() => listTerms('crop'), [])
 
@@ -338,6 +346,14 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
     if (wantsSpecies && species) attributes.species = species
     if (purposeOptions && purpose) attributes.purpose = purpose
     if (isEquipment && kind) attributes.kind = kind
+    if (isEquipment && make.trim()) attributes.make = make.trim()
+    if (isEquipment && model.trim()) attributes.model = model.trim()
+    if (isEquipment && Number(year) > 0) attributes.year = Number(year)
+    if (isEquipment && serial.trim()) attributes.serial = serial.trim()
+    if (isEquipment && kind === 'Tractor' && Number(hours) > 0) attributes.hours = Number(hours)
+    if (isEquipment && kind === 'Vehicle' && Number(mileage) > 0) attributes.mileage = Number(mileage)
+    if (isEquipment && (kind === 'Tractor' || kind === 'Vehicle') && fuel) attributes.fuel = fuel
+    if (isEquipment && kind === 'Vehicle' && plate.trim()) attributes.plate = plate.trim()
     if (isAnimal && sex) attributes.sex = sex
     if (isAnimal && tag.trim()) attributes.tag = tag.trim()
     const id = type === 'group' && Number(headcount) > 0
@@ -349,7 +365,7 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
         assets: [{ id, role: 'subject' }],
       })
     }
-    if (isAnimal && Number(price) > 0) {
+    if ((isAnimal || isEquipment) && Number(price) > 0) {
       await createLog({
         type: 'purchase', name: `Bought ${finalName}`,
         assets: [{ id, role: 'subject' }],
@@ -431,15 +447,6 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
         </label>
       )}
 
-      {isAnimal && (
-        <label className="field">
-          <span>Bought for ($, optional)</span>
-          <input type="number" inputMode="decimal" min="0" value={price}
-            onChange={onNumericChange(setPrice)} onWheel={ignoreScrollOnNumberInput}
-            onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="350" />
-        </label>
-      )}
-
       {isEquipment && (
         <div className="chipwrap" style={{ marginBottom: '1rem' }}>
           {EQUIPMENT_KINDS.map((k) => (
@@ -449,6 +456,79 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
             </button>
           ))}
         </div>
+      )}
+
+      {isEquipment && (
+        <div className="pair">
+          <label className="field">
+            <span>Make (optional)</span>
+            <input value={make} onChange={(e) => setMake(e.target.value)}
+              placeholder="Kubota" />
+          </label>
+          <label className="field">
+            <span>Model (optional)</span>
+            <input value={model} onChange={(e) => setModel(e.target.value)}
+              placeholder="L3901" />
+          </label>
+        </div>
+      )}
+
+      {isEquipment && (
+        <div className="pair">
+          <label className="field">
+            <span>Year (optional)</span>
+            <input type="number" inputMode="numeric" min="0" value={year}
+              onChange={onNumericChange(setYear, { integer: true })}
+              onWheel={ignoreScrollOnNumberInput} onKeyDown={ignoreArrowKeysOnNumberInput}
+              placeholder="2020" />
+          </label>
+          <label className="field">
+            <span>Serial / VIN (optional)</span>
+            <input value={serial} onChange={(e) => setSerial(e.target.value)} />
+          </label>
+        </div>
+      )}
+
+      {isEquipment && (kind === 'Tractor' || kind === 'Vehicle') && (
+        <div className="pair">
+          <label className="field">
+            <span>{kind === 'Tractor' ? 'Engine hours (optional)' : 'Mileage (optional)'}</span>
+            {kind === 'Tractor' ? (
+              <input type="number" inputMode="numeric" min="0" value={hours}
+                onChange={onNumericChange(setHours, { integer: true })}
+                onWheel={ignoreScrollOnNumberInput} onKeyDown={ignoreArrowKeysOnNumberInput}
+                placeholder="1240" />
+            ) : (
+              <input type="number" inputMode="numeric" min="0" value={mileage}
+                onChange={onNumericChange(setMileage, { integer: true })}
+                onWheel={ignoreScrollOnNumberInput} onKeyDown={ignoreArrowKeysOnNumberInput}
+                placeholder="32400" />
+            )}
+          </label>
+          <label className="field">
+            <span>Fuel (optional)</span>
+            <select value={fuel} onChange={(e) => setFuel(e.target.value)}>
+              <option value="">— none —</option>
+              {FUEL_TYPES.map((f) => <option key={f} value={f}>{f}</option>)}
+            </select>
+          </label>
+        </div>
+      )}
+
+      {isEquipment && kind === 'Vehicle' && (
+        <label className="field">
+          <span>License plate (optional)</span>
+          <input value={plate} onChange={(e) => setPlate(e.target.value)} />
+        </label>
+      )}
+
+      {(isAnimal || isEquipment) && (
+        <label className="field">
+          <span>Bought for ($, optional)</span>
+          <input type="number" inputMode="decimal" min="0" value={price}
+            onChange={onNumericChange(setPrice)} onWheel={ignoreScrollOnNumberInput}
+            onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="350" />
+        </label>
       )}
 
       {type === 'group' && (
