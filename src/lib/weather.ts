@@ -65,8 +65,8 @@ export async function setFarmLocation(loc: FarmLocation) {
   const pg = await db()
   await pg.query(
     `update farm set latitude = $1, longitude = $2, place_name = $3,
-            updated_at = now()`,
-    [loc.latitude, loc.longitude, loc.placeName],
+            updated_at = $4`,
+    [loc.latitude, loc.longitude, loc.placeName, new Date().toISOString()],
   )
   // Location changed, so anything derived from it is stale.
   await setSyncState('weather:forecast', '')

@@ -31,7 +31,8 @@
     "@electric-sql/pglite": "^0.2.17",
     "@supabase/supabase-js": "^2.112.3",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "wa-sqlite": "^1.0.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.0",

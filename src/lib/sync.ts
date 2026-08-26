@@ -85,7 +85,7 @@ async function run(): Promise<SyncResult> {
 
 export async function pendingCount(): Promise<number> {
   const { rows } = await local.query<{ n: number }>(
-    `select count(*)::int as n from sync_outbox`,
+    `select count(*) as n from sync_outbox`,
   )
   return rows[0]?.n ?? 0
 }

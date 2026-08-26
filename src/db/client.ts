@@ -1,29 +1,46 @@
-import { PGliteWorker } from '@electric-sql/pglite/worker'
-
 // Table list lives with the algorithm that uses it.
 import { SYNCED_TABLES } from '../lib/syncCore'
 export { SYNCED_TABLES }
 
-let pending: Promise<PGliteWorker> | null = null
+export interface DbHandle {
+  query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>
+  exec(sql: string): Promise<void>
+}
+
+let pending: Promise<DbHandle> | null = null
 
 // The database itself runs in a Worker (see worker.ts) so a query never
-// blocks the UI thread — this is just an RPC handle to it. Its query/exec
-// API is identical to PGlite's, so every caller elsewhere is unaffected.
-export function db(): Promise<PGliteWorker> {
+// blocks the UI thread — this is just a postMessage RPC stub. wa-sqlite has
+// no built-in Worker wrapper the way PGlite did, so this file hand-rolls the
+// small piece PGliteWorker used to provide for free: a request id, a promise
+// per in-flight call, and a single message listener that resolves or rejects
+// the right one.
+export function db(): Promise<DbHandle> {
   if (!pending) pending = open()
   return pending
 }
 
-async function open(): Promise<PGliteWorker> {
+async function open(): Promise<DbHandle> {
   const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
 
-  // PGliteWorker.create() waits on a message the worker sends once it has
-  // booted — if the worker script itself fails to start (a module-worker
-  // quirk on an older WebKit, say), nothing ever posts that message and the
-  // promise hangs forever with no error. Race it against a startup error
-  // from the worker itself, or a flat timeout, so a broken worker surfaces
-  // as a message instead of an app that just sits on the boot screen.
-  const failure = new Promise<never>((_, reject) => {
+  let nextId = 1
+  const waiting = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
+
+  // Worker boot posts one unsolicited message with id 0 — a message the
+  // worker sends once it has booted. If the worker script itself fails to
+  // start (a module-worker quirk on an older WebKit, say), nothing ever
+  // posts that message and the promise hangs forever with no error. Raced
+  // against a startup error from the worker itself, or a flat timeout, so a
+  // broken worker surfaces as a message instead of an app that just sits on
+  // the boot screen.
+  const ready = new Promise<void>((resolve, reject) => {
+    const onReady = (ev: MessageEvent<{ id: number; error?: string }>) => {
+      if (ev.data.id !== 0) return
+      worker.removeEventListener('message', onReady)
+      if (ev.data.error) reject(new Error(ev.data.error))
+      else resolve()
+    }
+    worker.addEventListener('message', onReady)
     worker.addEventListener('error', (e) => {
       reject(new Error(`Database worker failed to start: ${e.message} (${e.filename}:${e.lineno})`))
     })
@@ -35,17 +52,45 @@ async function open(): Promise<PGliteWorker> {
     )), 20_000)
   })
 
-  return Promise.race([PGliteWorker.create(worker), failure])
+  worker.addEventListener('message', (ev: MessageEvent<{
+    id: number; result?: unknown; error?: string
+  }>) => {
+    const { id, result, error } = ev.data
+    const call = waiting.get(id)
+    if (!call) return
+    waiting.delete(id)
+    if (error) call.reject(new Error(error))
+    else call.resolve(result)
+  })
+
+  function send(method: 'query' | 'exec', args: unknown[]): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      const id = nextId++
+      waiting.set(id, { resolve, reject })
+      worker.postMessage({ id, method, args })
+    })
+  }
+
+  await ready
+  return {
+    // The worker's actual response shape does match `{ rows: T[] }` for
+    // whatever T the caller asked for; this is just where that boundary gets
+    // asserted, since `send()` itself only knows it got an `unknown` value
+    // back over postMessage.
+    query: <T = Record<string, unknown>>(sql: string, params?: unknown[]) =>
+      send('query', [sql, params]) as unknown as Promise<{ rows: T[] }>,
+    exec: (sql: string) => send('exec', [sql]) as Promise<void>,
+  }
 }
 
 /** Suppress outbox writes while applying rows pulled from the server. */
 export async function applying<T>(fn: () => Promise<T>): Promise<T> {
   const pg = await db()
-  await pg.query(`select set_config('farmhand.applying', 'on', false)`)
+  await pg.query(`update sync_control set applying = 1`)
   try {
     return await fn()
   } finally {
-    await pg.query(`select set_config('farmhand.applying', 'off', false)`)
+    await pg.query(`update sync_control set applying = 0`)
   }
 }
 
