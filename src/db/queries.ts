@@ -42,17 +42,28 @@ export async function createTerm(vocabulary: string, name: string): Promise<void
   )
 }
 
+/**
+ * SQL's `order by name` sorts as text, so a group of 15 reads 1, 10, 11,
+ * ..., 2, 3 — right once a name's numeric suffix hits double digits.
+ * `localeCompare`'s `numeric` option treats digit runs as numbers instead,
+ * putting "Spring 26 2" before "Spring 26 10" the way a person would read
+ * it, while still sorting non-numeric names (Bessie, Clover) normally.
+ */
+function sortByStatusThenName(rows: Asset[]): Asset[] {
+  return [...rows].sort((a, b) =>
+    a.status.localeCompare(b.status) || a.name.localeCompare(b.name, undefined, { numeric: true }))
+}
+
 export async function listAssets(types?: AssetType[]): Promise<Asset[]> {
   const pg = await db()
   const { rows } = await pg.query<Asset>(
     `select id, type, name, status, terminal_event, parent_id, attributes
        from asset
       where deleted_at is null
-        and ($1 is null or type in (select value from json_each($2)))
-      order by status, name`,
+        and ($1 is null or type in (select value from json_each($2)))`,
     [types ? JSON.stringify(types) : null, JSON.stringify(types ?? [])],
   )
-  return rows
+  return sortByStatusThenName(rows)
 }
 
 export async function createAsset(input: {
@@ -82,11 +93,10 @@ export async function childAssets(parentId: string): Promise<Asset[]> {
   const { rows } = await pg.query<Asset>(
     `select id, type, name, status, terminal_event, parent_id, attributes
        from asset
-      where parent_id = $1 and deleted_at is null
-      order by status, name`,
+      where parent_id = $1 and deleted_at is null`,
     [parentId],
   )
-  return rows
+  return sortByStatusThenName(rows)
 }
 
 /**
