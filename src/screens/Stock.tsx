@@ -297,15 +297,11 @@ export function Stock() {
   )
 }
 
-const LAST_ADD_TYPE_KEY = 'farmhand.lastAddType'
-
 function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void }) {
-  // Defaults to whatever was added last rather than always "Animals" — a
-  // farm that's mostly logging tractor maintenance shouldn't have to
-  // reselect Equipment from the top of the list every single time.
-  const [type, setType] = useState<AssetType>(
-    () => (localStorage.getItem(LAST_ADD_TYPE_KEY) as AssetType | null) ?? 'animal',
-  )
+  // Blank until chosen — defaulting to any one kind (Animals or otherwise)
+  // risks a tractor getting saved as a stray animal because nobody
+  // reselected the dropdown.
+  const [type, setType] = useState<AssetType | ''>('')
   const [name, setName] = useState('')
   const [species, setSpecies] = useState('')
   const [purpose, setPurpose] = useState<Purpose | undefined>(undefined)
@@ -339,6 +335,7 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
   const finalName = name.trim() || (isAnimal ? tag.trim() : '')
 
   const save = async () => {
+    if (!type) return
     if (isPlanting) {
       await createPlanting({
         name: finalName,
@@ -386,11 +383,8 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
     <Sheet title="Add" onClose={onClose}>
       <label className="field">
         <span>What kind?</span>
-        <select value={type} onChange={(e) => {
-          const next = e.target.value as AssetType
-          setType(next)
-          localStorage.setItem(LAST_ADD_TYPE_KEY, next)
-        }}>
+        <select value={type} onChange={(e) => setType(e.target.value as AssetType)}>
+          <option value="">— Select —</option>
           {GROUPS.map((g) => (
             <option key={g.type} value={g.type}>
               {g.heading}{g.blurb ? ` — ${g.blurb}` : ''}
@@ -580,7 +574,7 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
 
       <button
         className="primary"
-        disabled={!finalName || (isPlanting && !crop)}
+        disabled={!type || !finalName || (isPlanting && !crop)}
         onClick={save}
       >
         Save
