@@ -4,8 +4,10 @@ import { useSession } from './lib/useSession'
 import { useSync } from './lib/useSync'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import { linkFarm, type FarmLink } from './lib/farm'
+import { redeemInvite } from './lib/members'
+import { inviteLinkCode } from './lib/inviteLink'
 import { db, getSyncState, setSyncState } from './db/client'
-import { ensureCutover, type CutoverResult } from './db/cutover'
+import { consumeWipeIfPending, ensureCutover, type CutoverResult } from './db/cutover'
 import { resetFarmForTesting } from './db/queries'
 import { Today } from './screens/Today'
 import { Animals } from './screens/Animals'
@@ -16,6 +18,7 @@ import { SignIn } from './screens/SignIn'
 import { ResetPassword } from './screens/ResetPassword'
 import { SyncBar } from './screens/SyncBar'
 import { Setup, FarmName } from './screens/Setup'
+import { Settings } from './screens/Settings'
 
 type Tab = 'today' | 'animals' | 'stores' | 'analytics' | 'records'
 
@@ -32,8 +35,9 @@ export default function App() {
   const { session, checking, recovery, clearRecovery, linkError: badLink, clearLinkError } = useSession()
   const [link, setLink] = useState<FarmLink | null>(null)
   const [linkError, setLinkError] = useState<string | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
 
-  const ready = useAsync(async () => { await db(); return true }, [])
+  const ready = useAsync(async () => { await consumeWipeIfPending(); await db(); return true }, [])
 
   // A device still on the old (PGlite) local engine needs its outbox
   // drained before that database is thrown away — see db/cutover.ts. Needs
@@ -63,12 +67,41 @@ export default function App() {
 
   const cutoverDone = cutover?.ok === true
 
+  // An invite code — from a shared link, or typed into SignIn — must be
+  // redeemed BEFORE linkFarm() runs below. linkFarm() adopts whatever farm
+  // this account is already a member of, or creates a brand-new one if
+  // it's a member of none; redeeming first is what makes it land on the
+  // farm being joined instead of a fresh empty one.
+  const [pendingInvite, setPendingInvite] = useState<string | null>(inviteLinkCode)
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [skipInvite, setSkipInvite] = useState(false)
+  const [retryCode, setRetryCode] = useState(inviteLinkCode ?? '')
+
+  useEffect(() => {
+    if (!session || !ready.data || !cutoverDone || !pendingInvite) return
+    let live = true
+    redeemInvite(pendingInvite).then(
+      () => { if (live) { setInviteError(null); setPendingInvite(null) } },
+      (e: Error) => { if (live) setInviteError(e.message) },
+    )
+    return () => { live = false }
+  }, [session, ready.data, cutoverDone, pendingInvite])
+
   // Once signed in, make the local and remote farm identities agree. Syncing
-  // before that would push records into the wrong farm.
+  // before that would push records into the wrong farm. Held back while a
+  // just-entered invite code is still being resolved — see above — so a bad
+  // code can't be silently swallowed by falling through to a fresh farm;
+  // "Continue without joining a farm" is the only way past a failed one.
   useEffect(() => {
     if (!session || !ready.data || !cutoverDone) return
-    linkFarm().then(setLink, (e: Error) => setLinkError(e.message))
-  }, [session, ready.data, cutoverDone])
+    if (pendingInvite && !skipInvite) return
+    let live = true
+    linkFarm().then(
+      (l) => { if (live) setLink(l) },
+      (e: Error) => { if (live) setLinkError(e.message) },
+    )
+    return () => { live = false }
+  }, [session, ready.data, cutoverDone, pendingInvite, skipInvite])
 
   const linked = link?.state === 'linked' || link?.state === 'created'
   const sync = useSync(Boolean(session) && linked && cutoverDone)
@@ -111,7 +144,13 @@ export default function App() {
   if (recovery) return <ResetPassword onDone={clearRecovery} />
 
   if (supabaseConfigured && !session)
-    return <SignIn linkError={badLink} onDismissLinkError={clearLinkError} />
+    return (
+      <SignIn
+        linkError={badLink}
+        onDismissLinkError={clearLinkError}
+        onInviteCode={(code) => { setSkipInvite(false); setPendingInvite(code) }}
+      />
+    )
 
   if (cutover === null) {
     return (
@@ -138,6 +177,34 @@ export default function App() {
     )
   }
 
+  if (pendingInvite && !skipInvite) {
+    return (
+      <main className="screen boot">
+        <h1>FarmHand</h1>
+        {!inviteError ? (
+          <p className="muted">Joining your invited farm…</p>
+        ) : (
+          <>
+            <p className="error">That invite code didn't work: {inviteError}</p>
+            <label className="field">
+              <span>Invite code</span>
+              <input value={retryCode} onChange={(e) => setRetryCode(e.target.value)} />
+            </label>
+            <button className="primary" disabled={!retryCode.trim()} onClick={() => {
+              setInviteError(null)
+              setPendingInvite(retryCode.trim())
+            }}>
+              Try again
+            </button>
+            <button className="linkish" onClick={() => setSkipInvite(true)}>
+              Continue without joining a farm
+            </button>
+          </>
+        )}
+      </main>
+    )
+  }
+
   if (needsSetup) {
     return (
       <Setup onDone={async () => {
@@ -146,6 +213,8 @@ export default function App() {
       }} />
     )
   }
+
+  if (showSettings) return <Settings onClose={() => setShowSettings(false)} />
 
   return (
     <div className="app">
@@ -193,6 +262,11 @@ export default function App() {
           <FarmName />
           <span className="account-sep">·</span>
           {session.user.email}
+          {supabaseConfigured && (
+            <button className="linkish" onClick={() => setShowSettings(true)}>
+              Settings
+            </button>
+          )}
           <button className="linkish" onClick={() => supabase?.auth.signOut()}>
             Sign out
           </button>

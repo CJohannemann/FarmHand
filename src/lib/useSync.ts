@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { lastSyncedAt, pendingCount, syncNow } from './sync'
+import { checkStillMember } from './members'
+import { handleRevokedAccess } from './revocation'
 
 const INTERVAL_MS = 60_000
 
@@ -36,12 +38,22 @@ export function useSync(enabled: boolean) {
     }
   }, [enabled, refresh])
 
+  // Piggybacks on the same 60s cadence as sync() rather than its own timer —
+  // this is the revocation check: has an owner removed this account from
+  // the farm since last time? A `null` result (offline, a network error)
+  // means the check itself didn't complete and is never treated as
+  // revoked — only a successful query that comes back with zero rows is.
+  const checkRevocation = useCallback(async () => {
+    if (await checkStillMember() === false) await handleRevokedAccess()
+  }, [])
+
   useEffect(() => {
     refresh()
     if (!enabled) return
 
     sync()
-    const timer = setInterval(sync, INTERVAL_MS)
+    checkRevocation()
+    const timer = setInterval(() => { sync(); checkRevocation() }, INTERVAL_MS)
     // Cheap local count, so the badge reflects new records between syncs.
     const poll = setInterval(refresh, 8_000)
     const onOnline = () => sync()
@@ -55,7 +67,7 @@ export function useSync(enabled: boolean) {
       window.removeEventListener('online', onOnline)
       window.removeEventListener('offline', onOffline)
     }
-  }, [enabled, sync, refresh])
+  }, [enabled, sync, refresh, checkRevocation])
 
   return { status, pending, last, error, sync, refresh }
 }

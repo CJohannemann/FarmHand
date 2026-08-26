@@ -24,6 +24,45 @@ const CURRENT_ENGINE = 'sqlite-v1'
 // has ever used.
 const OLD_IDB_NAME = '/pglite/farmhand'
 
+// wa-sqlite's IDBBatchAtomicVFS uses its constructor argument directly as
+// the IndexedDB database name (confirmed in wa-sqlite/src/examples/
+// IDBBatchAtomicVFS.js) — worker.ts constructs it with `new
+// IDBBatchAtomicVFS('farmhand')`, so this is that same literal name.
+const CURRENT_IDB_NAME = 'farmhand'
+
+const WIPE_PENDING_KEY = 'farmhand.wipePending'
+
+/**
+ * Marks this device's local data for deletion on its next boot — used when
+ * a sync poll confirms the signed-in account no longer belongs to its farm
+ * (see checkStillMember() in lib/members.ts and lib/revocation.ts). Only
+ * sets flags here; the actual delete happens in consumeWipeIfPending(),
+ * from a later page load. Deleting immediately would hit the same
+ * permanently-blocked-delete problem this file already works around for
+ * the old PGlite engine — a WASM database connection open in the same page
+ * doing the deleting does not reliably release IndexedDB in time.
+ *
+ * Clearing ENGINE_KEY isn't about the engine choice (wa-sqlite stays
+ * current) — it puts this device back in the same "nothing decided yet"
+ * state a brand new install starts in, so the next boot's ensureCutover()
+ * re-derives it cleanly rather than trusting a marker about a database
+ * that's about to be wiped out from under it.
+ */
+export function markWipePending(): void {
+  localStorage.setItem(WIPE_PENDING_KEY, '1')
+  localStorage.removeItem(ENGINE_KEY)
+}
+
+/** Call once, early in boot, before db() opens the local database. */
+export async function consumeWipeIfPending(): Promise<void> {
+  if (localStorage.getItem(WIPE_PENDING_KEY) !== '1') return
+  try {
+    await deleteDatabase(CURRENT_IDB_NAME)
+  } finally {
+    localStorage.removeItem(WIPE_PENDING_KEY)
+  }
+}
+
 export type CutoverResult =
   | { ok: true }
   | { ok: false; reason: 'offline' }

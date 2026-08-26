@@ -1,24 +1,44 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { authErrorMessage, type AuthLinkError } from '../lib/authLink'
+import { inviteLinkCode } from '../lib/inviteLink'
+import { consumeRevokedFlag } from '../lib/revocation'
 
 type Mode = 'in' | 'up' | 'forgot'
 
-export function SignIn({ linkError, onDismissLinkError }: {
+export function SignIn({ linkError, onDismissLinkError, onInviteCode }: {
   linkError?: AuthLinkError | null
   onDismissLinkError?: () => void
+  /**
+   * Fired with whatever's in the invite-code field right as a sign-in or
+   * sign-up succeeds — App.tsx redeems it centrally (see its own comment
+   * on why), not here. Firing on both sign-in and sign-up, not just
+   * sign-up, is what lets someone retry: a first attempt with a since-
+   * expired or already-used code still creates their account, and the
+   * natural next step — signing back in — gets a fresh shot at redeeming
+   * a corrected code without making them start over.
+   */
+  onInviteCode?: (code: string) => void
 } = {}) {
   // A dead reset link lands here. Open on the form that fixes it rather than
   // making them find "Forgot your password?" again after being told to.
   const [mode, setMode] = useState<Mode>(linkError ? 'forgot' : 'in')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  // Arriving via a farm owner's shared link pre-fills this and jumps
+  // straight to sign-up — that's the whole point of the link. Editable
+  // regardless, for a code read aloud/texted as plain text instead.
+  const [inviteCode, setInviteCode] = useState(inviteLinkCode ?? '')
+  // Read (and cleared) once, on first mount — true only when this screen is
+  // showing because an owner just removed this account from its farm.
+  const [revoked] = useState(() => consumeRevokedFlag())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
   const dismissLink = () => onDismissLinkError?.()
   const switchTo = (m: Mode) => { setMode(m); setError(null); setNotice(null); dismissLink() }
+  const showInviteField = mode === 'up' || inviteCode.trim().length > 0
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -52,7 +72,9 @@ export function SignIn({ linkError, onDismissLinkError }: {
     if (mode === 'up' && !data.session) {
       setNotice('Check your email for a confirmation link, then sign in.')
       setMode('in')
+      return
     }
+    if (inviteCode.trim()) onInviteCode?.(inviteCode.trim())
   }
 
   return (
@@ -65,6 +87,7 @@ export function SignIn({ linkError, onDismissLinkError }: {
       </p>
 
       {linkError && <p className="error">{linkError.message}</p>}
+      {revoked && <p className="error">Your access to that farm was removed.</p>}
 
       <form onSubmit={submit}>
         <label className="field">
@@ -80,6 +103,15 @@ export function SignIn({ linkError, onDismissLinkError }: {
               autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
               value={password} onChange={(e) => setPassword(e.target.value)} />
             {mode === 'up' && <small className="hint">At least 8 characters.</small>}
+          </label>
+        )}
+
+        {showInviteField && (
+          <label className="field">
+            <span>Invite code</span>
+            <input value={inviteCode} onChange={(e) => setInviteCode(e.target.value)}
+              placeholder="From the person who invited you" />
+            <small className="hint">Leave blank to start your own farm instead.</small>
           </label>
         )}
 
