@@ -282,7 +282,7 @@ export async function recentLogs(limit = 50): Promise<LogWithDetail[]> {
             (select group_concat(a.name, ', ' order by a.name)
                from log_asset la join asset a on a.id = la.asset_id
               where la.log_id = l.id and la.role = 'subject') as subjects,
-            (select group_concat(q.value || ' ' || q.unit, ', ')
+            (select group_concat(printf('%.10g', q.value) || ' ' || q.unit, ', ')
                from quantity q where q.log_id = l.id
                  and q.deleted_at is null) as summary
        from log l
@@ -449,7 +449,7 @@ export async function logsForAsset(assetId: string): Promise<AssetEvent[]> {
   const pg = await db()
   const { rows } = await pg.query<AssetEvent>(
     `select l.id, l.type, l.timestamp, l.name, l.notes, la.role,
-            (select group_concat(q.value || ' ' || q.unit, ', ')
+            (select group_concat(printf('%.10g', q.value) || ' ' || q.unit, ', ')
                from quantity q
               where q.log_id = l.id and q.deleted_at is null) as summary
        from log_asset la

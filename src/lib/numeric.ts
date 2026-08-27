@@ -72,11 +72,11 @@ export function formatQty(n: number): string {
 }
 
 /**
- * Comma-groups the bare numbers inside a sentence someone else built —
- * SQL's `group_concat(value || ' ' || unit)` summaries ("28500.0 USD",
- * "18.0 each, 4.0 gal") being the one real caller. Never point this at text
- * that only looks numeric, like a serial number or a license plate — it
- * would cheerfully wreck a VIN.
+ * Comma-groups the bare numbers inside a sentence someone else built — SQL's
+ * `group_concat(printf('%.10g', value) || ' ' || unit)` summaries ("28500
+ * USD", "18 each, 4.5 gal") being the one real caller. Never point this at
+ * text that only looks numeric, like a serial number or a license plate —
+ * it would cheerfully wreck a VIN.
  */
 export function withThousands(text: string): string {
   return text.replace(/\d+(\.\d+)?/g, (match) => {

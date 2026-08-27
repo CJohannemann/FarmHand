@@ -414,8 +414,10 @@ function HarvestForm({ asset, endsSource, onDone, onClose }: {
       <div className="pair">
         <label className="field">
           <span>Quantity</span>
-          <input type="number" inputMode="decimal" min="0" autoFocus value={amount}
-            onChange={onNumericChange(setAmount)} onWheel={ignoreScrollOnNumberInput}
+          <input type="number" inputMode={unit === 'each' ? 'numeric' : 'decimal'}
+            min="0" autoFocus value={amount}
+            onChange={onNumericChange(setAmount, { integer: unit === 'each' })}
+            onWheel={ignoreScrollOnNumberInput}
             onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="240" />
         </label>
         <label className="field">
@@ -495,8 +497,10 @@ function CloseOutForm({ asset, producible, onDone, onClose }: {
           <div className="pair">
             <label className="field">
               <span>Quantity</span>
-              <input type="number" inputMode="decimal" min="0" value={amount}
-                onChange={onNumericChange(setAmount)} onWheel={ignoreScrollOnNumberInput}
+              <input type="number" inputMode={unit === 'each' ? 'numeric' : 'decimal'}
+                min="0" value={amount}
+                onChange={onNumericChange(setAmount, { integer: unit === 'each' })}
+                onWheel={ignoreScrollOnNumberInput}
                 onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="240" />
             </label>
             <label className="field">

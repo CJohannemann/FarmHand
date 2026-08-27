@@ -128,8 +128,10 @@ function ProduceForm({ spec, onDone, onClose }: FormProps & { spec: HarvestSpec 
       <label className="field">
         <span>{spec.prompt}</span>
         <input
-          type="number" inputMode="decimal" min="0" autoFocus value={amount}
-          onChange={onNumericChange(setAmount)} onWheel={ignoreScrollOnNumberInput}
+          type="number" inputMode={spec.measure === 'count' ? 'numeric' : 'decimal'}
+          min="0" autoFocus value={amount}
+          onChange={onNumericChange(setAmount, { integer: spec.measure === 'count' })}
+          onWheel={ignoreScrollOnNumberInput}
           onKeyDown={ignoreArrowKeysOnNumberInput} placeholder={spec.placeholder}
         />
       </label>
