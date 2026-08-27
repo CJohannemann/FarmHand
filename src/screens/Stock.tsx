@@ -171,7 +171,7 @@ export function Stock() {
 
   return (
     <div className="screen">
-      <h1>Stock</h1>
+      <h1>Inventory</h1>
       <p className="tagline">
         Animals, land, feed and machines — everything the records hang off.
       </p>

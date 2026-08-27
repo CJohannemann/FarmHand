@@ -29,7 +29,7 @@ type Tab = 'today' | 'stock' | 'analytics' | 'settings'
  */
 const TABS: { id: Tab; label: string; glyph: string }[] = [
   { id: 'today',     label: 'Today',     glyph: '☀️' },
-  { id: 'stock',     label: 'Stock',     glyph: '🐄' },
+  { id: 'stock',     label: 'Inventory', glyph: '🐄' },
   { id: 'analytics', label: 'Analytics', glyph: '📊' },
   { id: 'settings',  label: 'Settings',  glyph: '⚙️' },
 ]

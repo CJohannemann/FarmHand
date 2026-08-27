@@ -57,7 +57,7 @@ export function Today({ onGoToStock }: { onGoToStock: () => void }) {
             you add what you keep: eggs once there are birds, milk once there
             is a cow, picking once something is planted.
           </p>
-          <button className="primary" onClick={onGoToStock}>+ Add your stock</button>
+          <button className="primary" onClick={onGoToStock}>+ Add to your inventory</button>
         </div>
       )}
 
