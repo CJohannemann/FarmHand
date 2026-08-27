@@ -524,8 +524,14 @@ export interface CostEntry { timestamp: string; value: number; material: string 
 export async function costEntries(): Promise<CostEntry[]> {
   const pg = await db()
   const { rows } = await pg.query<CostEntry>(
+    // A lot (hay, feed, parts) carries its own material. An animal or
+    // group has none — species is the closest thing it has to one, so a
+    // bought cow lands under "Cattle" rather than a catch-all. Equipment
+    // has neither, but 'kind' (Tractor/Vehicle/...) plays the same role, so
+    // a tractor purchase doesn't drown out everything else under "Other".
     `select l.timestamp, q.value as value,
-            coalesce(a.attributes->>'material', 'Other') as material
+            coalesce(a.attributes->>'material', a.attributes->>'species',
+                     a.attributes->>'kind', 'Other') as material
        from log l
        join quantity q on q.log_id = l.id and q.deleted_at is null
             and q.measure = 'price'
