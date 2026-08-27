@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
-import { createLog, deleteAsset, listTerms, updateAsset } from '../db/queries'
+import {
+  createLog, deleteAsset, findOrCreateExternalParent, listTerms, updateAsset,
+} from '../db/queries'
 import type { Asset } from '../db/types'
 import { EQUIPMENT_KINDS, FUEL_TYPES, SPECIES_PURPOSES, type Purpose } from '../lib/tiles'
 import { purposeLabel, sexTermsFor } from '../lib/husbandry'
 import {
   hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
 } from '../lib/numeric'
+import { OTHER } from './AssetSelect'
 import { ParentField } from './ParentField'
 import { Sheet } from './Sheet'
 
@@ -40,9 +43,17 @@ export function EditAsset({
   )
   const [sex, setSex] = useState(String(asset.attributes?.sex ?? ''))
   const [tag, setTag] = useState(String(asset.attributes?.tag ?? ''))
-  const [sireId, setSireId] = useState(String(asset.attributes?.sireId ?? ''))
+  // A saved free-text name (no id) reopens on "Other", not "— none —", so
+  // the name field it belongs to is visible rather than silently hidden.
+  const [sireId, setSireId] = useState(
+    asset.attributes?.sireId ? String(asset.attributes.sireId)
+      : asset.attributes?.sireName ? OTHER : '',
+  )
   const [sireName, setSireName] = useState(String(asset.attributes?.sireName ?? ''))
-  const [damId, setDamId] = useState(String(asset.attributes?.damId ?? ''))
+  const [damId, setDamId] = useState(
+    asset.attributes?.damId ? String(asset.attributes.damId)
+      : asset.attributes?.damName ? OTHER : '',
+  )
   const [damName, setDamName] = useState(String(asset.attributes?.damName ?? ''))
   const [birthday, setBirthday] = useState('')
   const [price, setPrice] = useState('')
@@ -95,14 +106,17 @@ export function EditAsset({
       else delete attributes.sex
       if (tag.trim()) attributes.tag = tag.trim()
       else delete attributes.tag
-      // A parent is either a real record on this farm or just a name —
-      // never both, so picking one clears the other.
-      if (sireId) { attributes.sireId = sireId; delete attributes.sireName }
-      else if (sireName.trim()) { attributes.sireName = sireName.trim(); delete attributes.sireId }
-      else { delete attributes.sireId; delete attributes.sireName }
-      if (damId) { attributes.damId = damId; delete attributes.damName }
-      else if (damName.trim()) { attributes.damName = damName.trim(); delete attributes.damId }
-      else { delete attributes.damId; delete attributes.damName }
+      // A typed name becomes a real (if minimal) record behind the scenes,
+      // reusing one already saved under that name — so buying five calves
+      // off the same outside bull means typing his name once, not five.
+      delete attributes.sireName
+      delete attributes.damName
+      if (sireId && sireId !== OTHER) attributes.sireId = sireId
+      else if (sireName.trim()) attributes.sireId = await findOrCreateExternalParent(sireName, species)
+      else delete attributes.sireId
+      if (damId && damId !== OTHER) attributes.damId = damId
+      else if (damName.trim()) attributes.damId = await findOrCreateExternalParent(damName, species)
+      else delete attributes.damId
     }
     if (equipment) {
       if (kind) attributes.kind = kind

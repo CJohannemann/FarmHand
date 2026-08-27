@@ -87,6 +87,22 @@ export async function createAsset(input: {
   return id
 }
 
+/**
+ * A sire/dam typed by name (not on this farm) becomes a minimal "external"
+ * asset rather than a bare string, reusing one already saved under that
+ * exact name and species if there is one — buying five calves off the
+ * same outside bull means typing his name once, not five times, and every
+ * one of them ends up pointing at the same record.
+ */
+export async function findOrCreateExternalParent(name: string, species: string): Promise<string> {
+  const trimmed = name.trim()
+  const all = await listAssets(['animal'])
+  const existing = all.find((a) => a.status === 'active' && a.attributes?.external
+    && a.attributes?.species === species && a.name === trimmed)
+  if (existing) return existing.id
+  return createAsset({ type: 'animal', name: trimmed, attributes: { species, external: true } })
+}
+
 /** The individuals split out of a group — a herd's named-and-tracked members. */
 export async function childAssets(parentId: string): Promise<Asset[]> {
   const pg = await db()

@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import {
-  createAsset, createGroupWithMembers, createLog, createPlanting, listAssets, listTerms,
-  lotBalances, type LotBalance,
+  createAsset, createGroupWithMembers, createLog, createPlanting, findOrCreateExternalParent,
+  listAssets, listTerms, lotBalances, type LotBalance,
 } from '../db/queries'
 import type { Asset, AssetType } from '../db/types'
 import { EQUIPMENT_KINDS, FUEL_TYPES, SPECIES_PURPOSES, type Purpose } from '../lib/tiles'
@@ -11,6 +11,7 @@ import {
   formatQty, hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput,
   onNumericChange,
 } from '../lib/numeric'
+import { OTHER } from './AssetSelect'
 import { ParentField } from './ParentField'
 import { Sheet } from './Sheet'
 import { AssetDetail } from './AssetDetail'
@@ -155,7 +156,7 @@ export function Stock() {
 
   if (species !== undefined) {
     const mine = assets.filter((a) =>
-      a.type === 'animal' && !a.parent_id
+      a.type === 'animal' && !a.parent_id && !a.attributes?.external
       && (String(a.attributes?.species ?? '').trim() || null) === species)
     return (
       <div className="screen">
@@ -229,8 +230,11 @@ export function Stock() {
 
         // Members of a group are reached through that group, not listed
         // flatly here too — otherwise every named-out animal would show up
-        // twice.
-        const mine = assets.filter((a) => a.type === g.type && !a.parent_id)
+        // twice. An "external" stub (a sire/dam typed in once, kept around
+        // so it's pickable for the next animal too) isn't stock either —
+        // it only ever exists to be pointed at from a Bloodline field.
+        const mine = assets.filter((a) => a.type === g.type && !a.parent_id
+          && !a.attributes?.external)
         if (mine.length === 0) return null
 
         // Animals are tracked and named individually, so a flat list of "1",
@@ -366,12 +370,17 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
     if (isEquipment && kind === 'Vehicle' && plate.trim()) attributes.plate = plate.trim()
     if (isAnimal && sex) attributes.sex = sex
     if (isAnimal && tag.trim()) attributes.tag = tag.trim()
-    // A parent is either a real record on this farm or just a name — never
-    // both, so picking one clears the other.
-    if (isAnimal && sireId) attributes.sireId = sireId
-    else if (isAnimal && sireName.trim()) attributes.sireName = sireName.trim()
-    if (isAnimal && damId) attributes.damId = damId
-    else if (isAnimal && damName.trim()) attributes.damName = damName.trim()
+    // A typed name becomes a real (if minimal) record behind the scenes,
+    // reusing one already saved under that name — so buying five calves
+    // off the same outside bull means typing his name once, not five.
+    if (isAnimal && sireId && sireId !== OTHER) attributes.sireId = sireId
+    else if (isAnimal && sireName.trim()) {
+      attributes.sireId = await findOrCreateExternalParent(sireName, species)
+    }
+    if (isAnimal && damId && damId !== OTHER) attributes.damId = damId
+    else if (isAnimal && damName.trim()) {
+      attributes.damId = await findOrCreateExternalParent(damName, species)
+    }
     const id = type === 'group' && Number(headcount) > 0
       ? await createGroupWithMembers({ name: finalName, count: Number(headcount), attributes })
       : await createAsset({ type, name: finalName, attributes })

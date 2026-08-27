@@ -4,9 +4,12 @@ import { listAssets } from '../db/queries'
 import type { AssetType } from '../db/types'
 import { producibleMaterial } from '../lib/tiles'
 
+/** Sentinel `<option>` value for AssetSelect's `otherLabel` — never a real asset id. */
+export const OTHER = '__other__'
+
 export function AssetSelect({
   value, onChange, types, materials, producing, species, excludeId,
-  includeGroupMembers, label = 'Which one?', allowNone = true,
+  includeGroupMembers, otherLabel, includeExternal, label = 'Which one?', allowNone = true,
 }: {
   value: string
   onChange: (v: string) => void
@@ -34,6 +37,19 @@ export function AssetSelect({
    * instead, to avoid a 5-cow group listing as six confusing options.
    */
   includeGroupMembers?: boolean
+  /**
+   * Adds a trailing option (value `OTHER`) for "it's not in this list" —
+   * the caller decides what that means, typically revealing a free-text
+   * field of its own once `value === OTHER`.
+   */
+  otherLabel?: string
+  /**
+   * An "external" asset — a sire/dam typed in once because it isn't real
+   * stock, kept around only so the next animal can pick it instead of
+   * retyping it — isn't a farm-day answer to "which animal," so every
+   * other picker leaves it out by default.
+   */
+  includeExternal?: boolean
   label?: string
   allowNone?: boolean
 }) {
@@ -44,6 +60,7 @@ export function AssetSelect({
   // other place a lot gets listed, so it needs the same exclusion.
   const ofType = (data ?? []).filter((a) => a.status === 'active'
     && (includeGroupMembers || !a.parent_id)
+    && (includeExternal || !a.attributes?.external)
     && a.attributes?.origin !== 'service')
   const active = ofType.filter(
     (a) => (!materials || materials.includes(String(a.attributes?.material ?? '')))
@@ -68,6 +85,7 @@ export function AssetSelect({
         {active.map((a) => (
           <option key={a.id} value={a.id}>{a.name}</option>
         ))}
+        {otherLabel && <option value={OTHER}>{otherLabel}</option>}
       </select>
       {active.length === 0 && (
         <small className="hint">
