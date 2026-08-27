@@ -3,6 +3,11 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import './App.css'
 import App from './App.tsx'
+import { applyThemePref } from './lib/theme.ts'
+
+// Stamp the theme before first paint so a saved preference doesn't flash the
+// wrong colors for a frame.
+applyThemePref()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

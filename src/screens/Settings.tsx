@@ -6,6 +6,7 @@ import {
   type FarmRole, type FarmMember,
 } from '../lib/members'
 import { ago, lastSyncedAt, pendingCount, syncClockTime, syncNow } from '../lib/sync'
+import { getThemePref, setThemePref, type ThemePref } from '../lib/theme'
 import { FarmName } from './Setup'
 
 const ROLE_LABEL: Record<FarmRole, string> = {
@@ -37,6 +38,8 @@ export function Settings() {
         <FarmName />
       </label>
 
+      <AppearancePanel />
+
       <SyncPanel />
 
       {isOwner && <InvitePanel onCreated={members.reload} />}
@@ -52,6 +55,34 @@ export function Settings() {
           onChanged={members.reload}
         />
       )}
+    </div>
+  )
+}
+
+const THEME_LABEL: Record<ThemePref, string> = {
+  system: 'System', light: 'Light', dark: 'Dark',
+}
+
+/** A device display preference, not farm data — see lib/theme.ts. */
+function AppearancePanel() {
+  const [theme, setTheme] = useState<ThemePref>(getThemePref)
+
+  const choose = (t: ThemePref) => {
+    setThemePref(t)
+    setTheme(t)
+  }
+
+  return (
+    <div className="banner" style={{ marginTop: '1.25rem' }}>
+      <p><strong>Appearance</strong></p>
+      <div className="chipwrap" style={{ margin: '0.5rem 0' }}>
+        {(['system', 'light', 'dark'] as ThemePref[]).map((t) => (
+          <button key={t} type="button" className={`chip${theme === t ? ' on' : ''}`}
+            onClick={() => choose(t)}>
+            {THEME_LABEL[t]}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

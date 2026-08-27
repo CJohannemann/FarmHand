@@ -13,8 +13,16 @@
   -webkit-text-size-adjust: 100%;
 }
 
+/*
+ * Three-way theme: "system" (default, no attribute) follows the OS via the
+ * media query below; "light"/"dark" are an explicit choice from Settings,
+ * stamped as data-theme on <html> by lib/theme.ts. The media query is
+ * guarded with :not([data-theme="light"]) so an explicit light choice isn't
+ * overridden by a dark OS — the plain [data-theme="dark"] block below it
+ * then wins the explicit-dark case regardless of the OS setting.
+ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #141714;
     --card: #1c201c;
     --fg: #e8ebe8;
@@ -22,8 +30,18 @@
     --line: #2b302b;
     --accent: #7cb87c;
   }
-  button.primary { color: #10210f; }
+  :root:not([data-theme="light"]) button.primary { color: #10210f; }
 }
+
+:root[data-theme="dark"] {
+  --bg: #141714;
+  --card: #1c201c;
+  --fg: #e8ebe8;
+  --muted: #9aa39a;
+  --line: #2b302b;
+  --accent: #7cb87c;
+}
+:root[data-theme="dark"] button.primary { color: #10210f; }
 
 * { box-sizing: border-box; }
 
