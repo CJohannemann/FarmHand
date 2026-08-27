@@ -11,6 +11,7 @@ import { consumeWipeIfPending, ensureCutover, type CutoverResult } from './db/cu
 import { Today } from './screens/Today'
 import { Stock } from './screens/Stock'
 import { Analytics } from './screens/Analytics'
+import { Landing } from './screens/Landing'
 import { SignIn } from './screens/SignIn'
 import { ResetPassword } from './screens/ResetPassword'
 import { Setup, FarmName } from './screens/Setup'
@@ -37,6 +38,9 @@ const TABS: { id: Tab; label: string; glyph: string }[] = [
 export default function App() {
   const [tab, setTab] = useState<Tab>('today')
   const { session, checking, recovery, clearRecovery, linkError: badLink, clearLinkError } = useSession()
+  // A shared invite link or a dead password-reset link is a direct request
+  // to sign in, not an organic visit — skip the marketing page for those.
+  const [showAuth, setShowAuth] = useState(() => Boolean(inviteLinkCode))
   const [link, setLink] = useState<FarmLink | null>(null)
   const [linkError, setLinkError] = useState<string | null>(null)
 
@@ -126,7 +130,7 @@ export default function App() {
   if (ready.error) {
     return (
       <main className="screen">
-        <h1>FarmHand</h1>
+        <h1>Farmhand Management</h1>
         <p className="error">
           The local database failed to open. {ready.error.message}
         </p>
@@ -137,7 +141,7 @@ export default function App() {
   if (ready.loading || checking) {
     return (
       <main className="screen boot">
-        <h1>FarmHand</h1>
+        <h1>Farmhand Management</h1>
         <p className="muted">Setting up your local database…</p>
       </main>
     )
@@ -148,6 +152,9 @@ export default function App() {
   // but that shouldn't drop them straight into the app with the old
   // password's session still effectively "current".
   if (recovery) return <ResetPassword onDone={clearRecovery} />
+
+  if (supabaseConfigured && !session && !showAuth && !badLink)
+    return <Landing onSignIn={() => setShowAuth(true)} />
 
   if (supabaseConfigured && !session)
     return (
@@ -161,7 +168,7 @@ export default function App() {
   if (cutover === null) {
     return (
       <main className="screen boot">
-        <h1>FarmHand</h1>
+        <h1>Farmhand Management</h1>
         <p className="muted">Finishing an update…</p>
       </main>
     )
@@ -170,7 +177,7 @@ export default function App() {
   if (cutover.ok === false) {
     return (
       <main className="screen">
-        <h1>FarmHand</h1>
+        <h1>Farmhand Management</h1>
         <p className="error">
           {cutover.reason === 'offline'
             ? "Connect to the internet to finish updating — some records haven't synced yet."
@@ -186,7 +193,7 @@ export default function App() {
   if (pendingInvite && !skipInvite) {
     return (
       <main className="screen boot">
-        <h1>FarmHand</h1>
+        <h1>Farmhand Management</h1>
         {!inviteError ? (
           <p className="muted">Joining your invited farm…</p>
         ) : (
