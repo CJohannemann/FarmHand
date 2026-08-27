@@ -183,7 +183,7 @@ export function AssetDetail({
         {asset.status === 'active' && asset.type === 'group' && (
           <button onClick={() => setSheet('split')}>Name an individual</button>
         )}
-        <button onClick={() => { setSheet('edit'); setAutoEdit(false) }}>Edit</button>
+        <button onClick={() => setSheet('edit')}>Edit</button>
         {asset.status === 'active' && livestock && (
           <button onClick={() => setSheet('closeout')}>Close out</button>
         )}
