@@ -54,26 +54,6 @@ export function AssetDetail({
     setSheet(null); events.reload(); costs.reload(); weights.reload(); members.reload(); onChanged()
   }
 
-  // A freshly-added animal (or one just split out of a group, still
-  // carrying its auto-generated "Cattle 3" name) has none of its own facts
-  // filled in yet. Landing on the button page for that is a wasted tap —
-  // go straight to Edit instead. Decided synchronously, from attributes
-  // already sitting on `asset` — an async check (e.g. "does it have any
-  // history yet") leaves a window, right after jumping to a fresh member,
-  // where this renders the ordinary button page before the check resolves.
-  // A tap landing in that window opens Edit the ordinary way instead, which
-  // is indistinguishable from a deliberate edit and never returns to the
-  // list — which is exactly the bug this replaced.
-  const [autoEditFor, setAutoEditFor] = useState<string | null>(null)
-  const [autoEdit, setAutoEdit] = useState(false)
-  if (asset.id !== autoEditFor) {
-    setAutoEditFor(asset.id)
-    if (asset.status === 'active' && isBlankEntry(asset)) {
-      setSheet('edit')
-      setAutoEdit(true)
-    }
-  }
-
   const c = costs.data
   const showCosts = !!c && (c.purchaseCost > 0 || c.inputCost > 0 || c.outputs.length > 0)
   const showEquipmentDetails = equipment && (
@@ -278,19 +258,12 @@ export function AssetDetail({
           hasBirthday={!!birthEvent}
           hasPurchase={hasPurchase}
           onClose={() => setSheet(null)}
-          onChanged={autoEdit ? () => { refresh(); onBack() } : refresh}
+          onChanged={refresh}
           onDeleted={() => { onChanged(); onBack() }}
         />
       )}
     </div>
   )
-}
-
-/** None of its own facts set yet — still exactly what creation left it as. */
-function isBlankEntry(asset: Asset): boolean {
-  if (asset.type === 'animal') return !asset.attributes?.tag && !asset.attributes?.sex
-  if (asset.type === 'equipment') return !asset.attributes?.make && !asset.attributes?.model
-  return false
 }
 
 function Row({ label, value, strong }: {
