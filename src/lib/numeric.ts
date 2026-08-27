@@ -36,6 +36,18 @@ export function sanitizeNumeric(raw: string, opts?: { integer?: boolean }): stri
 }
 
 /**
+ * True for a sanitizeNumeric() string that's a real, complete value —
+ * including "0", which is a real answer ("born on the farm, cost nothing")
+ * and not the same thing as the field being left blank. `price > 0` was the
+ * wrong test for "was anything entered": it silently dropped a genuine $0
+ * without ever saving it. False for '', a bare '.', or anything else
+ * Number() can't parse as non-negative.
+ */
+export function hasNumericValue(raw: string): boolean {
+  return raw.trim() !== '' && Number(raw) >= 0
+}
+
+/**
  * Trims a float sum to something readable. Balances are summed in SQL, so
  * feeding 33.3 out of 100 lb three times leaves 0.10000000000000853 — true,
  * and not what anyone wants to read off a phone in a barn.

@@ -7,8 +7,8 @@ import {
 import type { Asset } from '../db/types'
 import { producibleMaterial } from '../lib/tiles'
 import {
-  formatMoney, formatQty, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput,
-  onNumericChange, withThousands,
+  formatMoney, formatQty, hasNumericValue, ignoreArrowKeysOnNumberInput,
+  ignoreScrollOnNumberInput, onNumericChange, withThousands,
 } from '../lib/numeric'
 import { AssetSelect } from './AssetSelect'
 import { logDate } from './LogList'
@@ -55,14 +55,17 @@ export function AssetDetail({
   }
 
   const c = costs.data
-  const showCosts = !!c && (c.purchaseCost > 0 || c.inputCost > 0 || c.outputs.length > 0)
+  const birthEvent = (events.data ?? []).find((e) => e.type === 'birth')
+  // From the log list, not `c!.purchaseCost > 0` — a $0 purchase (born on
+  // the farm, cost nothing) is a real recorded fact, not the absence of
+  // one, and a plain amount check can't tell those apart.
+  const hasPurchase = (events.data ?? []).some((e) => e.type === 'purchase')
+  const showCosts = !!c && (hasPurchase || c.inputCost > 0 || c.outputs.length > 0)
   const showEquipmentDetails = equipment && (
     asset.attributes?.year || asset.attributes?.serial
     || asset.attributes?.hours || asset.attributes?.mileage
     || asset.attributes?.fuel || asset.attributes?.plate
   )
-  const birthEvent = (events.data ?? []).find((e) => e.type === 'birth')
-  const hasPurchase = (events.data ?? []).some((e) => e.type === 'purchase')
   const liveMembers = (members.data ?? []).filter((m) => m.status === 'active').length
   const headcount = liveMembers || asset.attributes?.headcount
 
@@ -135,7 +138,7 @@ export function AssetDetail({
         <>
           <h2 className="section">Cost</h2>
           <div className="costbox">
-            {c!.purchaseCost > 0 && (
+            {hasPurchase && (
               <Row label="Bought for" value={formatMoney(c!.purchaseCost)} />
             )}
             <Row label="Inputs" value={formatMoney(c!.inputCost)} />
@@ -702,7 +705,7 @@ function AddMemberForm({ group, onDone, onClose }: {
           assets: [{ id, role: 'subject' }],
         })
       }
-      if (Number(price) > 0) {
+      if (hasNumericValue(price)) {
         await createLog({
           type: 'purchase', name: `Bought ${finalName}`,
           assets: [{ id, role: 'subject' }],

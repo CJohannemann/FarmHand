@@ -8,7 +8,8 @@ import type { Asset, AssetType } from '../db/types'
 import { EQUIPMENT_KINDS, FUEL_TYPES, SPECIES_PURPOSES, type Purpose } from '../lib/tiles'
 import { purposeLabel, sexTermsFor, speciesGlyph } from '../lib/husbandry'
 import {
-  formatQty, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
+  formatQty, hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput,
+  onNumericChange,
 } from '../lib/numeric'
 import { Sheet } from './Sheet'
 import { AssetDetail } from './AssetDetail'
@@ -369,7 +370,7 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
         assets: [{ id, role: 'subject' }],
       })
     }
-    if ((isAnimal || isEquipment) && Number(price) > 0) {
+    if ((isAnimal || isEquipment) && hasNumericValue(price)) {
       await createLog({
         type: 'purchase', name: `Bought ${finalName}`,
         assets: [{ id, role: 'subject' }],

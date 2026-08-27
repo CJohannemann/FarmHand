@@ -5,7 +5,7 @@ import type { Asset } from '../db/types'
 import { EQUIPMENT_KINDS, FUEL_TYPES, SPECIES_PURPOSES, type Purpose } from '../lib/tiles'
 import { purposeLabel, sexTermsFor } from '../lib/husbandry'
 import {
-  ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
+  hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
 } from '../lib/numeric'
 import { Sheet } from './Sheet'
 
@@ -119,7 +119,7 @@ export function EditAsset({
           assets: [{ id: asset.id, role: 'subject' }],
         })
       }
-      if (Number(price) > 0) {
+      if (hasNumericValue(price)) {
         await createLog({
           type: 'purchase', name: `Bought ${name.trim()}`,
           assets: [{ id: asset.id, role: 'subject' }],
