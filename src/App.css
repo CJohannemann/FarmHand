@@ -481,21 +481,36 @@ button.task-drop {
 .weatherstrip.warn   { border-color: #a4571c60; }
 .weatherstrip.severe { border-color: #c0392b60; }
 
+.wx-now-icon { font-size: 1.4rem; line-height: 1; }
 .wx-now { font-size: 1.3rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .wx-msg { flex: 1; }
 
 .wxdays { list-style: none; margin: 0; padding: 0; }
 
 .wxdays li {
-  display: flex; align-items: center; gap: 0.75rem;
-  padding: 0.45rem 0; border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.5rem 0; border-bottom: 1px solid var(--line);
   font-size: 0.9rem;
 }
 
-.wx-day { flex: 1; }
-.wx-temps { font-variant-numeric: tabular-nums; }
-.wx-low { color: var(--muted); margin-left: 0.4rem; }
-.wx-precip { width: 3rem; text-align: right; color: var(--accent); font-size: 0.85rem; }
+.wx-day { width: 2.4rem; flex: none; }
+.wx-icon { flex: none; font-size: 1.05rem; line-height: 1; }
+.wx-low { width: 2rem; flex: none; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.wx-high { width: 2rem; flex: none; text-align: right; font-variant-numeric: tabular-nums; }
+
+.wx-bar-track {
+  position: relative; flex: 1; height: 6px; border-radius: 3px;
+  background: var(--line);
+}
+.wx-bar-fill {
+  position: absolute; top: 0; bottom: 0; border-radius: 3px;
+  min-width: 6px;
+}
+
+.wx-precip {
+  width: 2.6rem; flex: none; text-align: right;
+  color: var(--accent); font-size: 0.78rem;
+}
 
 .warnlist { list-style: none; margin: 0; padding: 0; }
 

@@ -5,6 +5,7 @@ import {
   type Place,
 } from '../lib/weather'
 import type { Warning } from '../lib/weatherRules'
+import { weatherIcon, colorForTemp } from '../lib/weatherIcons'
 import { Sheet } from './Sheet'
 
 const dayName = (iso: string, i: number) =>
@@ -41,6 +42,7 @@ export function WeatherStrip() {
     <>
       <button className={`weatherstrip ${soon.length ? worst(f!.warnings) : ''}`}
         onClick={() => setOpen(true)}>
+        <span className="wx-now-icon">{weatherIcon(f?.currentCode)}</span>
         <span className="wx-now">
           {f?.currentF != null ? `${Math.round(f.currentF)}°` : '—'}
         </span>
@@ -104,25 +106,37 @@ function WeatherSheet({
         </>
       )}
 
-      {f && (
-        <>
-          <h3 className="section">Next seven days</h3>
-          <ul className="wxdays">
-            {f.days.map((d, i) => (
-              <li key={d.date}>
-                <span className="wx-day">{dayName(d.date, i)}</span>
-                <span className="wx-temps">
-                  <strong>{Math.round(d.maxF)}°</strong>
+      {f && (() => {
+        const weekMin = Math.min(...f.days.map((d) => d.minF))
+        const weekMax = Math.max(...f.days.map((d) => d.maxF))
+        const span = Math.max(1, weekMax - weekMin)
+        return (
+          <>
+            <h3 className="section">Next seven days</h3>
+            <ul className="wxdays">
+              {f.days.map((d, i) => (
+                <li key={d.date}>
+                  <span className="wx-day">{dayName(d.date, i)}</span>
+                  <span className="wx-icon">{weatherIcon(d.code)}</span>
                   <span className="wx-low">{Math.round(d.minF)}°</span>
-                </span>
-                <span className="wx-precip">
-                  {d.precipIn >= 0.05 ? `${d.precipIn.toFixed(1)}"` : ''}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+                  <span className="wx-bar-track">
+                    <span className="wx-bar-fill" style={{
+                      left: `${((d.minF - weekMin) / span) * 100}%`,
+                      width: `${((d.maxF - d.minF) / span) * 100}%`,
+                      backgroundImage:
+                        `linear-gradient(90deg, ${colorForTemp(d.minF)}, ${colorForTemp(d.maxF)})`,
+                    }} />
+                  </span>
+                  <strong className="wx-high">{Math.round(d.maxF)}°</strong>
+                  <span className="wx-precip">
+                    {d.precipIn >= 0.05 ? `${d.precipIn.toFixed(1)}"` : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )
+      })()}
 
       {c && (
         <>

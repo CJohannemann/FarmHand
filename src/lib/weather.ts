@@ -34,6 +34,7 @@ export interface Place {
 export interface Forecast {
   fetchedAt: string
   currentF: number | null
+  currentCode: number | null
   days: DayForecast[]
   warnings: Warning[]
 }
@@ -106,7 +107,7 @@ export async function getForecast(force = false): Promise<Forecast | null> {
     const url = `${FORECAST}?latitude=${loc.latitude}&longitude=${loc.longitude}` +
       `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,` +
       `snowfall_sum,wind_gusts_10m_max,weather_code` +
-      `&current=temperature_2m&forecast_days=7&timezone=auto&${UNITS}`
+      `&current=temperature_2m,weather_code&forecast_days=7&timezone=auto&${UNITS}`
     const res = await fetch(url)
     if (!res.ok) throw new Error(`Weather fetch failed (${res.status})`)
     const j = await res.json()
@@ -124,6 +125,7 @@ export async function getForecast(force = false): Promise<Forecast | null> {
     const forecast: Forecast = {
       fetchedAt: new Date().toISOString(),
       currentF: j.current?.temperature_2m ?? null,
+      currentCode: j.current?.weather_code ?? null,
       days,
       warnings: farmWarnings(days),
     }
