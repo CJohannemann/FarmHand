@@ -25,7 +25,7 @@ db.exec(fs.readFileSync(R + 'schema.local.sql', 'utf8'))
 const query = async (sql, params = []) => db.prepare(sql).run(...params)
 await seedLocalVocabulary(query)
 
-check('seeded vocabulary terms', db.prepare(`select count(*) n from term`).get().n, 143)
+check('seeded vocabulary terms', db.prepare(`select count(*) n from term`).get().n, 144)
 check('crop vocabulary present',
   db.prepare(`select count(*) n from term where vocabulary='crop'`).get().n, 43)
 check('quail is a species (added after the original seed)',
@@ -49,7 +49,7 @@ check('a breed carries its species as parent_id', angus?.parent, 'Cattle')
 // parity here rather than "should be empty" so this migration doesn't
 // silently change that pre-existing behavior.
 check('seeding queues the outbox, same as today (harmless — push filters it)',
-  db.prepare(`select count(*) n from sync_outbox where tbl = 'term'`).get().n, 143)
+  db.prepare(`select count(*) n from sync_outbox where tbl = 'term'`).get().n, 144)
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)

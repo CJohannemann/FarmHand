@@ -1,10 +1,11 @@
 /**
  * The local database's starting vocabulary — the union of db/seed.sql plus
  * every vocabulary migration that followed it on the Postgres side
- * (002_crop_vocabulary, 004_quail, 005_bale_units, 006_equipment), collapsed
- * into the current-state list. The local database is always built fresh (see
- * schema.local.sql), so there is no existing install to upgrade in place the
- * way those migrations upgrade a live Postgres database — 'bale' from the
+ * (002_crop_vocabulary, 004_quail, 005_bale_units, 006_equipment,
+ * 010_vet_office_call), collapsed into the current-state list. The local
+ * database is always built fresh (see schema.local.sql), so there is no
+ * existing install to upgrade in place the way those migrations upgrade a
+ * live Postgres database — 'bale' from the
  * original seed is left out entirely rather than seeded and then retired,
  * since 005 replaced it with Square Bale / Round Bale before any local
  * database will ever read this file.
@@ -49,7 +50,7 @@ const METHODS = [
 
 const TREATMENTS = [
   'Vaccination', 'Deworming', 'Antibiotic', 'Hoof trim',
-  'Castration', 'Dehorning', 'Mite treatment',
+  'Castration', 'Dehorning', 'Mite treatment', 'Office call',
 ]
 
 const SERVICE = [

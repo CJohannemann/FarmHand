@@ -114,7 +114,7 @@ check('meat yield', yield_.lb, 240)
 check('cost per lb', cost.input_cost / yield_.lb, 0.71)
 
 const [terms] = q(`select count(*) n from term`)
-check('seeded vocabulary terms', terms.n, 143)
+check('seeded vocabulary terms', terms.n, 144)
 const [crops] = q(`select count(*) n from term where vocabulary='crop'`)
 check('crop vocabulary present', crops.n, 43)
 
