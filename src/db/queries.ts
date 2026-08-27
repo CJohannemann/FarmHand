@@ -285,7 +285,9 @@ export async function createPurchase(input: {
 
   await createLog({
     type: 'purchase',
-    name: `Bought ${input.name}`,
+    // A service (a vet visit, an oil change) was paid for, not bought — you
+    // didn't buy the butcher.
+    name: input.origin === 'service' ? `Paid for ${input.name}` : `Bought ${input.name}`,
     assets: [{ id: lotId, role: 'subject' }],
     quantities,
   })
