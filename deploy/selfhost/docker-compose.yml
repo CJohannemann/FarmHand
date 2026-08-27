@@ -70,12 +70,15 @@ services:
       GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
       GOTRUE_DISABLE_SIGNUP: "false"
       GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
-      GOTRUE_MAILER_AUTOCONFIRM: "false"
+      # Live matches this: flipped to true in an earlier session so signup
+      # doesn't depend on mail. Revisit once SMTP is confirmed delivering —
+      # see deploy/selfhost/.env.example's SMTP section.
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
       GOTRUE_SMTP_HOST: ${SMTP_HOST}
       GOTRUE_SMTP_PORT: ${SMTP_PORT}
       GOTRUE_SMTP_USER: ${SMTP_USER}
       GOTRUE_SMTP_PASS: ${SMTP_PASS}
-      GOTRUE_SMTP_SENDER_NAME: FarmHand
+      GOTRUE_SMTP_SENDER_NAME: Farmhand Management
       GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL}
     ports:
       - "127.0.0.1:9999:9999"
