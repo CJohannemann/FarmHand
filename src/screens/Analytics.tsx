@@ -58,6 +58,20 @@ function Costs() {
   const [selected, setSelected] = useState(BUCKET_COUNT.month - 1)
   const { data: entries, loading } = useAsync(() => costEntries(), [])
 
+  // While `loading`, this renders as one short "Loading…" line; the chart
+  // and category list appear right after, growing the page. On iOS Safari,
+  // a scroll gesture that started (or landed) right around that moment
+  // keeps the old, shorter height as its rubber-band limit until the finger
+  // lifts and a new gesture begins — which reads as "can't reach the
+  // footer, then immediately can." Forcing a reflow right as the content
+  // arrives makes WebKit re-measure the page instead of waiting for that
+  // next gesture.
+  useEffect(() => {
+    if (loading) return
+    document.body.style.overflow = 'hidden'
+    requestAnimationFrame(() => { document.body.style.overflow = '' })
+  }, [loading])
+
   const buckets = useMemo(
     () => bucketize(entries ?? [], granularity),
     [entries, granularity],
