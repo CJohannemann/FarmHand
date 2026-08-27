@@ -167,7 +167,7 @@ function FeedForm({ onDone, onClose }: FormProps) {
       <AssetSelect value={subject} onChange={setSubject}
         types={['animal', 'group']} allowNone={false} label="Fed what?" />
       <AssetSelect value={lot} onChange={setLot} types={['lot']}
-        label="Which feed? (optional)" />
+        materials={['Feed', 'Hay']} label="Which feed? (optional)" />
       <label className="field">
         <span>Quantity ({unit}, optional)</span>
         <input type="number" inputMode="decimal" min="0" value={amount}

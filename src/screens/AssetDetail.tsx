@@ -518,6 +518,7 @@ function InputForm({
       </label>
 
       <AssetSelect value={lot} onChange={setLot} types={['lot']}
+        materials={vocabulary === 'treatment' ? ['Medicine', 'Mineral'] : ['Parts', 'Fuel']}
         label="From stores? (optional)" />
 
       {lot ? (
