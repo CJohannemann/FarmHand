@@ -17,17 +17,14 @@ const LABELS: Record<string, string> = {
 }
 
 /**
- * Shared by every history list. The year is dropped for anything in the
- * current one — on a phone the date sits in its own column beside the entry,
- * and "Aug 26, 2026" spends a third of a narrow screen saying something the
- * reader already knows.
+ * Shared by every history list. Always carries the year — dropping it for
+ * the current year read fine in isolation, but next to an older entry in
+ * the same list ("Aug 26" above "Nov 30, 2025") it looked like an
+ * inconsistency rather than a deliberate omission.
  */
 export function logDate(timestamp: string): string {
   const d = new Date(timestamp)
-  const thisYear = d.getFullYear() === new Date().getFullYear()
-  return d.toLocaleDateString(undefined,
-    thisYear ? { month: 'short', day: 'numeric' }
-      : { month: 'short', day: 'numeric', year: 'numeric' })
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 export function LogList({

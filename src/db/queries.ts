@@ -218,7 +218,15 @@ export async function createLog(input: {
   return logId
 }
 
-/** Recent activity, with subjects and quantities rolled into text. */
+/**
+ * Recent activity, with subjects and quantities rolled into text.
+ *
+ * Weight is left out: a weigh-in isn't really "activity" the way a
+ * purchase, harvest, or vet visit is — it's a routine measurement, and one
+ * animal weighed weekly would drown out everything else here. It already
+ * has its own place to live, the Growth chart on that animal's own profile
+ * (still fully editable there, or from that same page's own History).
+ */
 export async function recentLogs(limit = 50): Promise<LogWithDetail[]> {
   const pg = await db()
   const { rows } = await pg.query<LogWithDetail>(
@@ -230,7 +238,7 @@ export async function recentLogs(limit = 50): Promise<LogWithDetail[]> {
                from quantity q where q.log_id = l.id
                  and q.deleted_at is null) as summary
        from log l
-      where l.deleted_at is null and l.status <> 'planned'
+      where l.deleted_at is null and l.status <> 'planned' and l.type <> 'weight'
       order by l.timestamp desc, l.created_at desc
       limit $1`,
     [limit],
