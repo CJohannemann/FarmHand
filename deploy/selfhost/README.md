@@ -125,6 +125,13 @@ order. **Sanity check**: the script's last line runs `select auth.uid();`
 4 didn't finish the way it needed to; check `docker compose logs auth`
 again before going further.
 
+This script is for this brand-new database only, run this one time.
+Re-running it later — say, after pulling a commit that added a
+migration — fails immediately with something like `relation "farm"
+already exists`: `schema.sql` and `seed.sql` aren't written to be run
+twice. See "Applying a new migration" under Day to day, below, for that
+case instead.
+
 ## 6. Start the REST API
 
 ```bash
@@ -206,6 +213,22 @@ docker compose ps                  # is everything up?
 docker compose logs -f auth        # or rest, or db
 docker compose restart rest        # or auth, or db
 ```
+
+### Applying a new migration
+
+A commit that adds a file under `db/migrations/` needs its own step here —
+`../deploy.sh` only rebuilds and republishes the frontend, it never
+touches the database.
+
+```bash
+cd ~/FarmHand
+git pull
+bash deploy/selfhost/apply-migrations.sh
+```
+
+Safe to run anytime, including when nothing's new — every migration file
+guards itself against running twice. Don't reach for `apply-schema.sh`
+here; see the note on it in step 5 above.
 
 ## Backups
 

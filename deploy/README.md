@@ -85,6 +85,14 @@ Pulls, installs dependencies, rebuilds, and publishes to the web root.
 Refuses to run if `.env` is missing rather than quietly shipping a build
 with no Supabase config.
 
+This only ever touches static files — FarmHand has no backend of its own
+to restart. But if the update includes a new file under `db/migrations/`,
+the *database* needs its own separate step too, or the frontend ends up
+calling something the schema doesn't have yet. Self-hosting per
+`selfhost/README.md`: run `bash deploy/selfhost/apply-migrations.sh`.
+Still on hosted Supabase: apply the new migration file's SQL via the
+project's SQL editor.
+
 ## Space
 
 The local-database engine (PGlite) ships an ~8MB WASM build plus a ~5MB
