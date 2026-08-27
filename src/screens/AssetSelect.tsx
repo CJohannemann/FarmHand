@@ -2,9 +2,10 @@ import { useEffect } from 'react'
 import { useAsync } from '../lib/useAsync'
 import { listAssets } from '../db/queries'
 import type { AssetType } from '../db/types'
+import { producibleMaterial } from '../lib/tiles'
 
 export function AssetSelect({
-  value, onChange, types, materials, label = 'Which one?', allowNone = true,
+  value, onChange, types, materials, producing, label = 'Which one?', allowNone = true,
 }: {
   value: string
   onChange: (v: string) => void
@@ -15,6 +16,12 @@ export function AssetSelect({
    * fertilizer and a truck fill-up included, alongside actual medicine.
    */
   materials?: string[]
+  /**
+   * Narrows an animal/group list to whatever actually yields this — without
+   * it, "Where from?" on an egg collection offered every animal and group
+   * on the farm, cattle and pigs included alongside the actual layers.
+   */
+  producing?: 'eggs' | 'milk' | 'honey'
   label?: string
   allowNone?: boolean
 }) {
@@ -29,7 +36,8 @@ export function AssetSelect({
   const ofType = (data ?? []).filter((a) => a.status === 'active' && !a.parent_id
     && a.attributes?.origin !== 'service')
   const active = ofType.filter(
-    (a) => !materials || materials.includes(String(a.attributes?.material ?? '')),
+    (a) => (!materials || materials.includes(String(a.attributes?.material ?? '')))
+      && (!producing || producibleMaterial(a) === producing),
   )
 
   // Without a "— none —" option, a <select> with no matching value still
@@ -51,7 +59,7 @@ export function AssetSelect({
       </select>
       {active.length === 0 && (
         <small className="hint">
-          {materials && ofType.length > 0
+          {(materials || producing) && ofType.length > 0
             ? 'None on hand in a matching category yet.'
             : 'Nothing added yet — see Inventory.'}
         </small>

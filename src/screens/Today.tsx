@@ -100,6 +100,14 @@ function ProduceForm({ spec, onDone, onClose }: FormProps & { spec: HarvestSpec 
   const [amount, setAmount] = useState('')
   const [asset, setAsset] = useState('')
   const n = Number(amount)
+  // 'pick' (produce, from a planting) has no producibleMaterial concept —
+  // the type filter below already restricts it to plantings, which is all
+  // the narrowing it needs.
+  const producing =
+    spec.kind === 'eggs' ? 'eggs' as const :
+    spec.kind === 'milk' ? 'milk' as const :
+    spec.kind === 'honey' ? 'honey' as const :
+    undefined
 
   const save = async () => {
     await createLog({
@@ -124,7 +132,7 @@ function ProduceForm({ spec, onDone, onClose }: FormProps & { spec: HarvestSpec 
           onKeyDown={ignoreArrowKeysOnNumberInput} placeholder={spec.placeholder}
         />
       </label>
-      <AssetSelect value={asset} onChange={setAsset} types={spec.from}
+      <AssetSelect value={asset} onChange={setAsset} types={spec.from} producing={producing}
         label="Where from? (optional)" />
       <button className="primary" disabled={!(n > 0)} onClick={save}>Save</button>
     </Sheet>
