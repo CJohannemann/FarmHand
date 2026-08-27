@@ -3,7 +3,7 @@ import { useAsync } from '../lib/useAsync'
 import { deleteLog, quantitiesFor, setQuantity, updateLog } from '../db/queries'
 import type { LogWithDetail, Measure } from '../db/types'
 import {
-  ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, sanitizeNumeric,
+  hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, sanitizeNumeric,
 } from '../lib/numeric'
 import { Sheet } from './Sheet'
 
@@ -42,7 +42,7 @@ export function EditLog({
     })
     for (const [id, raw] of Object.entries(edited)) {
       const q = (qtys.data ?? []).find((x) => x.id === id)
-      if (q && Number(raw) > 0) await setQuantity(log.id, q.measure as Measure, Number(raw))
+      if (q && hasNumericValue(raw)) await setQuantity(log.id, q.measure as Measure, Number(raw))
     }
     setBusy(false)
     onChanged()

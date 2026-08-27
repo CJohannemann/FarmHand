@@ -102,9 +102,9 @@ export function EditAsset({
       else delete attributes.year
       if (serial.trim()) attributes.serial = serial.trim()
       else delete attributes.serial
-      if (kind === 'Tractor' && Number(hours) > 0) attributes.hours = Number(hours)
+      if (kind === 'Tractor' && hasNumericValue(hours)) attributes.hours = Number(hours)
       else delete attributes.hours
-      if (kind === 'Vehicle' && Number(mileage) > 0) attributes.mileage = Number(mileage)
+      if (kind === 'Vehicle' && hasNumericValue(mileage)) attributes.mileage = Number(mileage)
       else delete attributes.mileage
       if ((kind === 'Tractor' || kind === 'Vehicle') && fuel) attributes.fuel = fuel
       else delete attributes.fuel

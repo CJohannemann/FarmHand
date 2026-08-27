@@ -355,8 +355,8 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
     if (isEquipment && model.trim()) attributes.model = model.trim()
     if (isEquipment && Number(year) > 0) attributes.year = Number(year)
     if (isEquipment && serial.trim()) attributes.serial = serial.trim()
-    if (isEquipment && kind === 'Tractor' && Number(hours) > 0) attributes.hours = Number(hours)
-    if (isEquipment && kind === 'Vehicle' && Number(mileage) > 0) attributes.mileage = Number(mileage)
+    if (isEquipment && kind === 'Tractor' && hasNumericValue(hours)) attributes.hours = Number(hours)
+    if (isEquipment && kind === 'Vehicle' && hasNumericValue(mileage)) attributes.mileage = Number(mileage)
     if (isEquipment && (kind === 'Tractor' || kind === 'Vehicle') && fuel) attributes.fuel = fuel
     if (isEquipment && kind === 'Vehicle' && plate.trim()) attributes.plate = plate.trim()
     if (isAnimal && sex) attributes.sex = sex

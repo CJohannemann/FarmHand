@@ -286,7 +286,9 @@ export async function createPurchase(input: {
   })
 
   const quantities: QuantityInput[] = []
-  if (input.cost && input.cost > 0)
+  // Not `input.cost && input.cost > 0` — a genuine $0 (free stock, a
+  // no-charge recheck) is a real cost figure, not the absence of one.
+  if (input.cost != null && input.cost >= 0)
     quantities.push({ measure: 'price', value: input.cost, unit: 'USD' })
   if (input.amount && input.amount > 0)
     quantities.push({ measure: 'weight', value: input.amount, unit: input.unit ?? 'lb' })

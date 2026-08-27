@@ -7,7 +7,8 @@ import {
 import type { LogWithDetail } from '../db/types'
 import { HARVESTS, tilesFor, type HarvestSpec } from '../lib/tiles'
 import {
-  formatQty, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
+  formatQty, hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput,
+  onNumericChange,
 } from '../lib/numeric'
 import { Sheet } from './Sheet'
 import { AssetSelect } from './AssetSelect'
@@ -236,7 +237,7 @@ function BuyForm({ onDone, onClose }: FormProps) {
       name: name.trim() || material,
       amount: Number(amount) || undefined,
       unit,
-      cost: Number(cost) || undefined,
+      cost: hasNumericValue(cost) ? Number(cost) : undefined,
       supplier: supplier.trim() || undefined,
     })
     onDone()

@@ -64,10 +64,12 @@ export function AssetDetail({
   // one, and a plain amount check can't tell those apart.
   const hasPurchase = (events.data ?? []).some((e) => e.type === 'purchase')
   const showCosts = !!c && (hasPurchase || c.inputCost > 0 || c.outputs.length > 0)
+  // `!= null`, not `||` — 0 engine hours or 0 miles (a brand-new tractor or
+  // vehicle) is a real recorded fact, same reasoning as hasPurchase above.
   const showEquipmentDetails = equipment && (
-    asset.attributes?.year || asset.attributes?.serial
-    || asset.attributes?.hours || asset.attributes?.mileage
-    || asset.attributes?.fuel || asset.attributes?.plate
+    asset.attributes?.year != null || !!asset.attributes?.serial
+    || asset.attributes?.hours != null || asset.attributes?.mileage != null
+    || !!asset.attributes?.fuel || !!asset.attributes?.plate
   )
   const liveMembers = (members.data ?? []).filter((m) => m.status === 'active').length
   const headcount = liveMembers || asset.attributes?.headcount
@@ -486,7 +488,7 @@ function InputForm({
   const selected = lots?.find((l) => l.id === lot)
 
   const save = async () => {
-    const lotId = lot || (Number(cost) > 0
+    const lotId = lot || (hasNumericValue(cost)
       ? await createPurchase({
           material: kind, name: kind, cost: Number(cost), origin: 'service',
         })

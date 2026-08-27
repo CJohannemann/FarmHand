@@ -68,8 +68,15 @@ function Costs() {
   // next gesture.
   useEffect(() => {
     if (loading) return
+    // Toggling overflow (not just reading offsetHeight) is what actually
+    // makes WebKit resync its touch-scroll bounds here — a plain forced
+    // reflow doesn't reach the compositor thread that owns those. Restores
+    // whatever was there before rather than assuming '', so this can't
+    // clobber a real overflow lock (a scroll-locked modal, say) some other
+    // feature sets around the same moment this fires.
+    const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    requestAnimationFrame(() => { document.body.style.overflow = '' })
+    requestAnimationFrame(() => { document.body.style.overflow = prev })
   }, [loading])
 
   const buckets = useMemo(
