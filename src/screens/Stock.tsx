@@ -11,6 +11,7 @@ import {
   formatQty, hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput,
   onNumericChange,
 } from '../lib/numeric'
+import { ParentField } from './ParentField'
 import { Sheet } from './Sheet'
 import { AssetDetail } from './AssetDetail'
 import { TakeFromLot } from './TakeFromLot'
@@ -308,6 +309,10 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
   const [purpose, setPurpose] = useState<Purpose | undefined>(undefined)
   const [sex, setSex] = useState('')
   const [tag, setTag] = useState('')
+  const [sireId, setSireId] = useState('')
+  const [sireName, setSireName] = useState('')
+  const [damId, setDamId] = useState('')
+  const [damName, setDamName] = useState('')
   const [headcount, setHeadcount] = useState('')
   const [birthday, setBirthday] = useState('')
   const [price, setPrice] = useState('')
@@ -361,6 +366,12 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
     if (isEquipment && kind === 'Vehicle' && plate.trim()) attributes.plate = plate.trim()
     if (isAnimal && sex) attributes.sex = sex
     if (isAnimal && tag.trim()) attributes.tag = tag.trim()
+    // A parent is either a real record on this farm or just a name — never
+    // both, so picking one clears the other.
+    if (isAnimal && sireId) attributes.sireId = sireId
+    else if (isAnimal && sireName.trim()) attributes.sireName = sireName.trim()
+    if (isAnimal && damId) attributes.damId = damId
+    else if (isAnimal && damName.trim()) attributes.damName = damName.trim()
     const id = type === 'group' && Number(headcount) > 0
       ? await createGroupWithMembers({ name: finalName, count: Number(headcount), attributes })
       : await createAsset({ type, name: finalName, attributes })
@@ -451,6 +462,16 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
           <span>Birthday (optional)</span>
           <input type="date" value={birthday} onChange={(e) => setBirthday(e.target.value)} />
         </label>
+      )}
+
+      {isAnimal && (
+        <ParentField label="Sire" species={species}
+          id={sireId} onId={setSireId} name={sireName} onName={setSireName} />
+      )}
+
+      {isAnimal && (
+        <ParentField label="Dam" species={species}
+          id={damId} onId={setDamId} name={damName} onName={setDamName} />
       )}
 
       {isEquipment && (

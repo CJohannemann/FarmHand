@@ -99,6 +99,31 @@ export async function childAssets(parentId: string): Promise<Asset[]> {
   return sortByStatusThenName(rows)
 }
 
+/** Every animal on record naming this one as its sire or dam. */
+export async function offspringOf(assetId: string): Promise<Asset[]> {
+  const pg = await db()
+  const { rows } = await pg.query<Asset>(
+    `select id, type, name, status, terminal_event, parent_id, attributes
+       from asset
+      where type = 'animal' and deleted_at is null
+        and (attributes->>'sireId' = $1 or attributes->>'damId' = $1)`,
+    [assetId],
+  )
+  return sortByStatusThenName(rows)
+}
+
+/** One asset by id — used to resolve a sire/dam reference to its own record. */
+export async function getAsset(id: string): Promise<Asset | null> {
+  const pg = await db()
+  const { rows } = await pg.query<Asset>(
+    `select id, type, name, status, terminal_event, parent_id, attributes
+       from asset
+      where id = $1 and deleted_at is null`,
+    [id],
+  )
+  return rows[0] ?? null
+}
+
 /**
  * A roster plus one real animal record per head, not a bare headcount. "5
  * head" has no individual for a weight chart or a vet bill to point at —

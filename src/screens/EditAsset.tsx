@@ -7,6 +7,7 @@ import { purposeLabel, sexTermsFor } from '../lib/husbandry'
 import {
   hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
 } from '../lib/numeric'
+import { ParentField } from './ParentField'
 import { Sheet } from './Sheet'
 
 /**
@@ -39,6 +40,10 @@ export function EditAsset({
   )
   const [sex, setSex] = useState(String(asset.attributes?.sex ?? ''))
   const [tag, setTag] = useState(String(asset.attributes?.tag ?? ''))
+  const [sireId, setSireId] = useState(String(asset.attributes?.sireId ?? ''))
+  const [sireName, setSireName] = useState(String(asset.attributes?.sireName ?? ''))
+  const [damId, setDamId] = useState(String(asset.attributes?.damId ?? ''))
+  const [damName, setDamName] = useState(String(asset.attributes?.damName ?? ''))
   const [birthday, setBirthday] = useState('')
   const [price, setPrice] = useState('')
   const [kind, setKind] = useState(String(asset.attributes?.kind ?? ''))
@@ -90,6 +95,14 @@ export function EditAsset({
       else delete attributes.sex
       if (tag.trim()) attributes.tag = tag.trim()
       else delete attributes.tag
+      // A parent is either a real record on this farm or just a name —
+      // never both, so picking one clears the other.
+      if (sireId) { attributes.sireId = sireId; delete attributes.sireName }
+      else if (sireName.trim()) { attributes.sireName = sireName.trim(); delete attributes.sireId }
+      else { delete attributes.sireId; delete attributes.sireName }
+      if (damId) { attributes.damId = damId; delete attributes.damName }
+      else if (damName.trim()) { attributes.damName = damName.trim(); delete attributes.damId }
+      else { delete attributes.damId; delete attributes.damName }
     }
     if (equipment) {
       if (kind) attributes.kind = kind
@@ -204,6 +217,16 @@ export function EditAsset({
             ))}
           </div>
         </div>
+      )}
+
+      {asset.type === 'animal' && (
+        <ParentField label="Sire" species={species} excludeId={asset.id}
+          id={sireId} onId={setSireId} name={sireName} onName={setSireName} />
+      )}
+
+      {asset.type === 'animal' && (
+        <ParentField label="Dam" species={species} excludeId={asset.id}
+          id={damId} onId={setDamId} name={damName} onName={setDamName} />
       )}
 
       {equipment && (

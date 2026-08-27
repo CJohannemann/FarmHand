@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useAsync } from '../lib/useAsync'
 import {
   archiveAsset, assetCosts, childAssets, createAsset, createHarvest, createLog,
-  createPurchase, listTerms, logsForAsset, lotBalances, updateAsset, weightHistory,
-  type AssetEvent,
+  createPurchase, getAsset, listTerms, logsForAsset, lotBalances, offspringOf, updateAsset,
+  weightHistory, type AssetEvent,
 } from '../db/queries'
 import type { Asset } from '../db/types'
 import { producibleMaterial } from '../lib/tiles'
@@ -52,9 +52,24 @@ export function AssetDetail({
     () => (asset.type === 'group' ? childAssets(asset.id) : Promise.resolve([])),
     [asset.id, asset.type],
   )
+  const sireId = asset.type === 'animal' ? String(asset.attributes?.sireId ?? '') : ''
+  const damId = asset.type === 'animal' ? String(asset.attributes?.damId ?? '') : ''
+  const sireAsset = useAsync(
+    () => (sireId ? getAsset(sireId) : Promise.resolve(null)), [sireId],
+  )
+  const damAsset = useAsync(
+    () => (damId ? getAsset(damId) : Promise.resolve(null)), [damId],
+  )
+  const offspring = useAsync(
+    () => (asset.type === 'animal' ? offspringOf(asset.id) : Promise.resolve([])),
+    [asset.id, asset.type],
+  )
 
   const refresh = () => {
-    setSheet(null); events.reload(); costs.reload(); weights.reload(); members.reload(); onChanged()
+    setSheet(null)
+    events.reload(); costs.reload(); weights.reload(); members.reload()
+    sireAsset.reload(); damAsset.reload(); offspring.reload()
+    onChanged()
   }
 
   const c = costs.data
@@ -64,6 +79,9 @@ export function AssetDetail({
   // one, and a plain amount check can't tell those apart.
   const hasPurchase = (events.data ?? []).some((e) => e.type === 'purchase')
   const showCosts = !!c && (hasPurchase || c.inputCost > 0 || c.outputs.length > 0)
+  const showBloodline = asset.type === 'animal' && (
+    sireId || damId || !!asset.attributes?.sireName || !!asset.attributes?.damName
+  )
   // `!= null`, not `||` — 0 engine hours or 0 miles (a brand-new tractor or
   // vehicle) is a real recorded fact, same reasoning as hasPurchase above.
   const showEquipmentDetails = equipment && (
@@ -104,6 +122,51 @@ export function AssetDetail({
                   <span className="asset-name">{memberLabel(asset, m)}</span>
                   <span className="asset-meta">
                     {m.status === 'archived' ? (m.terminal_event ?? 'archived') : 'active'}
+                    <span className="chev">›</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {showBloodline && (
+        <>
+          <h2 className="section">Bloodline</h2>
+          <div className="costbox">
+            {(sireId || !!asset.attributes?.sireName) && (
+              <Row label="Sire" value={
+                sireAsset.data
+                  ? <button className="linkish" onClick={() => onSelect?.(sireAsset.data!)}>
+                      {sireAsset.data.name}
+                    </button>
+                  : String(asset.attributes?.sireName ?? '—')
+              } />
+            )}
+            {(damId || !!asset.attributes?.damName) && (
+              <Row label="Dam" value={
+                damAsset.data
+                  ? <button className="linkish" onClick={() => onSelect?.(damAsset.data!)}>
+                      {damAsset.data.name}
+                    </button>
+                  : String(asset.attributes?.damName ?? '—')
+              } />
+            )}
+          </div>
+        </>
+      )}
+
+      {(offspring.data ?? []).length > 0 && (
+        <>
+          <h2 className="section">Offspring</h2>
+          <ul className="assetlist">
+            {(offspring.data ?? []).map((o) => (
+              <li key={o.id} className={o.status === 'archived' ? 'gone' : ''}>
+                <button className="assetrow" onClick={() => onSelect?.(o)}>
+                  <span className="asset-name">{o.name}</span>
+                  <span className="asset-meta">
+                    {o.status === 'archived' ? (o.terminal_event ?? 'archived') : 'active'}
                     <span className="chev">›</span>
                   </span>
                 </button>
@@ -282,7 +345,7 @@ export function AssetDetail({
 }
 
 function Row({ label, value, strong }: {
-  label: string; value: string; strong?: boolean
+  label: string; value: ReactNode; strong?: boolean
 }) {
   return (
     <div className={strong ? 'costrow strong' : 'costrow'}>
