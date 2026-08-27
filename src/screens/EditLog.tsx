@@ -15,7 +15,14 @@ const forInput = (iso: string) => {
 
 export function EditLog({
   log, onClose, onChanged,
-}: { log: LogWithDetail; onClose: () => void; onChanged: () => void }) {
+}: {
+  // Only what this form actually reads — both Records' full LogWithDetail
+  // and AssetDetail's leaner AssetEvent (one row per subject/input/output
+  // role on a log, not per log) carry all of this.
+  log: Pick<LogWithDetail, 'id' | 'name' | 'notes' | 'timestamp'>
+  onClose: () => void
+  onChanged: () => void
+}) {
   const [name, setName] = useState(log.name ?? '')
   const [notes, setNotes] = useState(log.notes ?? '')
   const [date, setDate] = useState(forInput(log.timestamp))

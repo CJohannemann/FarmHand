@@ -3,6 +3,7 @@ import { useAsync } from '../lib/useAsync'
 import {
   archiveAsset, assetCosts, childAssets, createAsset, createHarvest, createLog,
   createPurchase, listTerms, logsForAsset, lotBalances, updateAsset, weightHistory,
+  type AssetEvent,
 } from '../db/queries'
 import type { Asset } from '../db/types'
 import { producibleMaterial } from '../lib/tiles'
@@ -14,6 +15,7 @@ import { AssetSelect } from './AssetSelect'
 import { logDate } from './LogList'
 import { Sheet } from './Sheet'
 import { EditAsset } from './EditAsset'
+import { EditLog } from './EditLog'
 import { GrowthChart } from './GrowthChart'
 
 const EVENT_LABELS: Record<string, string> = {
@@ -35,6 +37,7 @@ export function AssetDetail({
     | 'harvest' | 'pull' | 'closeout' | 'edit' | 'treat' | 'split' | 'weigh'
     | 'maintain' | 'retire' | 'addmember' | null
   >(null)
+  const [editingLog, setEditingLog] = useState<AssetEvent | null>(null)
 
   const livestock = asset.type === 'animal' || asset.type === 'group'
   const equipment = asset.type === 'equipment'
@@ -213,14 +216,14 @@ export function AssetDetail({
       <ul className="loglist">
         {(events.data ?? []).map((e) => (
           <li key={e.id + e.role}>
-            <div className="logbody">
+            <button className="logrow" onClick={() => setEditingLog(e)}>
               <div className="log-main">
                 <span className="log-type">{e.name ?? EVENT_LABELS[e.type] ?? e.type}</span>
                 {e.summary && <span className="log-qty">{withThousands(e.summary)}</span>}
               </div>
               {e.notes && <div className="log-note">{e.notes}</div>}
               <time className="log-time">{logDate(e.timestamp)}</time>
-            </div>
+            </button>
           </li>
         ))}
       </ul>
@@ -263,6 +266,13 @@ export function AssetDetail({
           onClose={() => setSheet(null)}
           onChanged={refresh}
           onDeleted={() => { onChanged(); onBack() }}
+        />
+      )}
+      {editingLog && (
+        <EditLog
+          log={editingLog}
+          onClose={() => setEditingLog(null)}
+          onChanged={() => { setEditingLog(null); refresh() }}
         />
       )}
     </div>
