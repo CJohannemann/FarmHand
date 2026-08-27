@@ -14,9 +14,9 @@ import { AssetSelect, OTHER } from './AssetSelect'
  * being hidden everywhere else (they're not real stock to feed or weigh).
  */
 export function ParentField({
-  label, species, excludeId, id, onId, name, onName,
+  role, species, excludeId, id, onId, name, onName,
 }: {
-  label: string
+  role: 'sire' | 'dam'
   species: string
   excludeId?: string
   id: string
@@ -24,10 +24,11 @@ export function ParentField({
   name: string
   onName: (v: string) => void
 }) {
+  const label = role === 'sire' ? 'Sire' : 'Dam'
   return (
     <>
       <AssetSelect value={id} onChange={(v) => { onId(v); if (v !== OTHER) onName('') }}
-        types={['animal']} species={species} excludeId={excludeId}
+        types={['animal']} species={species} excludeId={excludeId} role={role}
         includeGroupMembers includeExternal
         otherLabel="Other — not on this farm" label={`${label} (optional)`} />
       {id === OTHER && (

@@ -39,6 +39,43 @@ export function sexTermsFor(species: string | undefined | null): string[] {
 }
 
 /**
+ * Only the terms breeding actually cares about — a steer or a wether is
+ * just as male as a bull or a ram, but neither can sire anything, so
+ * "male" alone is the wrong question for a Sire picker. Juvenile terms
+ * (Calf, Piglet, Foal...) and anything not listed here are left
+ * unclassified on purpose: an unset or not-yet-obvious sex shouldn't
+ * quietly disappear from both pickers just because nobody's settled it
+ * yet, the way a definite wrong sex should.
+ */
+const SEX_ROLE: Record<string, Record<string, 'sire' | 'dam' | 'neither'>> = {
+  Cattle:  { Bull: 'sire', Steer: 'neither', Cow: 'dam', Heifer: 'dam' },
+  Pig:     { Boar: 'sire', Barrow: 'neither', Sow: 'dam', Gilt: 'dam' },
+  Sheep:   { Ram: 'sire', Wether: 'neither', Ewe: 'dam' },
+  Goat:    { Buck: 'sire', Wether: 'neither', Doe: 'dam', Doeling: 'dam' },
+  Horse:   { Stallion: 'sire', Gelding: 'neither', Mare: 'dam', Filly: 'dam', Colt: 'sire' },
+  Rabbit:  { Buck: 'sire', Doe: 'dam' },
+  Chicken: { Rooster: 'sire', Cockerel: 'sire', Hen: 'dam', Pullet: 'dam' },
+  Duck:    { Drake: 'sire', Duck: 'dam' },
+  Goose:   { Gander: 'sire', Goose: 'dam' },
+  Turkey:  { Tom: 'sire', Hen: 'dam' },
+  Quail:   { Cock: 'sire', Hen: 'dam' },
+}
+
+/** Whether a sex term (for a given species) could be a sire, a dam, or neither — unknown if unclassified. */
+export function sexRole(
+  species: string | undefined | null, sex: string | undefined | null,
+): 'sire' | 'dam' | 'neither' | 'unknown' {
+  if (!sex) return 'unknown'
+  const bySpecies = SEX_ROLE[String(species ?? '')]?.[sex]
+  if (bySpecies) return bySpecies
+  // A species outside SEX_TERMS falls back to the plain "Female"/"Male"
+  // chips (GENERIC_SEX_TERMS) — those are the terms to recognize here too.
+  if (sex === 'Female') return 'dam'
+  if (sex === 'Male') return 'sire'
+  return 'unknown'
+}
+
+/**
  * What a purpose is called for a given species. Cattle raised for meat are
  * beef, not "meat"; sheep are lamb; birds kept for eggs are layers. The
  * generic word is only right when nothing more specific exists, or when the

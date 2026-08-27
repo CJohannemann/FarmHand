@@ -375,11 +375,11 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
     // off the same outside bull means typing his name once, not five.
     if (isAnimal && sireId && sireId !== OTHER) attributes.sireId = sireId
     else if (isAnimal && sireName.trim()) {
-      attributes.sireId = await findOrCreateExternalParent(sireName, species)
+      attributes.sireId = await findOrCreateExternalParent(sireName, species, 'sire')
     }
     if (isAnimal && damId && damId !== OTHER) attributes.damId = damId
     else if (isAnimal && damName.trim()) {
-      attributes.damId = await findOrCreateExternalParent(damName, species)
+      attributes.damId = await findOrCreateExternalParent(damName, species, 'dam')
     }
     const id = type === 'group' && Number(headcount) > 0
       ? await createGroupWithMembers({ name: finalName, count: Number(headcount), attributes })
@@ -474,12 +474,12 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
       )}
 
       {isAnimal && (
-        <ParentField label="Sire" species={species}
+        <ParentField role="sire" species={species}
           id={sireId} onId={setSireId} name={sireName} onName={setSireName} />
       )}
 
       {isAnimal && (
-        <ParentField label="Dam" species={species}
+        <ParentField role="dam" species={species}
           id={damId} onId={setDamId} name={damName} onName={setDamName} />
       )}
 

@@ -3,13 +3,14 @@ import { useAsync } from '../lib/useAsync'
 import { listAssets } from '../db/queries'
 import type { AssetType } from '../db/types'
 import { producibleMaterial } from '../lib/tiles'
+import { sexRole } from '../lib/husbandry'
 
 /** Sentinel `<option>` value for AssetSelect's `otherLabel` — never a real asset id. */
 export const OTHER = '__other__'
 
 export function AssetSelect({
   value, onChange, types, materials, producing, species, excludeId,
-  includeGroupMembers, otherLabel, includeExternal, label = 'Which one?', allowNone = true,
+  includeGroupMembers, otherLabel, includeExternal, role, label = 'Which one?', allowNone = true,
 }: {
   value: string
   onChange: (v: string) => void
@@ -50,6 +51,14 @@ export function AssetSelect({
    * other picker leaves it out by default.
    */
   includeExternal?: boolean
+  /**
+   * A Sire picker excludes known dams (and known-castrated males, which
+   * are just as male but can't sire anything either); a Dam picker
+   * excludes known sires. An animal with no sex recorded, or a juvenile
+   * term (Calf, Piglet...) too young to say, is left in either list —
+   * "unknown" isn't the same claim as "wrong."
+   */
+  role?: 'sire' | 'dam'
   label?: string
   allowNone?: boolean
 }) {
@@ -62,12 +71,17 @@ export function AssetSelect({
     && (includeGroupMembers || !a.parent_id)
     && (includeExternal || !a.attributes?.external)
     && a.attributes?.origin !== 'service')
-  const active = ofType.filter(
-    (a) => (!materials || materials.includes(String(a.attributes?.material ?? '')))
+  const active = ofType.filter((a) => {
+    const wrongRole = role && (() => {
+      const r = sexRole(String(a.attributes?.species ?? ''), String(a.attributes?.sex ?? ''))
+      return r === 'neither' || (r !== 'unknown' && r !== role)
+    })()
+    return (!materials || materials.includes(String(a.attributes?.material ?? '')))
       && (!producing || producibleMaterial(a) === producing)
       && (!species || a.attributes?.species === species)
-      && a.id !== excludeId,
-  )
+      && a.id !== excludeId
+      && !wrongRole
+  })
 
   // Without a "— none —" option, a <select> with no matching value still
   // shows the first <option> — the browser picks it for display without

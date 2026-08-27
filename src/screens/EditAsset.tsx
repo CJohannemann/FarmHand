@@ -112,11 +112,13 @@ export function EditAsset({
       delete attributes.sireName
       delete attributes.damName
       if (sireId && sireId !== OTHER) attributes.sireId = sireId
-      else if (sireName.trim()) attributes.sireId = await findOrCreateExternalParent(sireName, species)
-      else delete attributes.sireId
+      else if (sireName.trim()) {
+        attributes.sireId = await findOrCreateExternalParent(sireName, species, 'sire')
+      } else delete attributes.sireId
       if (damId && damId !== OTHER) attributes.damId = damId
-      else if (damName.trim()) attributes.damId = await findOrCreateExternalParent(damName, species)
-      else delete attributes.damId
+      else if (damName.trim()) {
+        attributes.damId = await findOrCreateExternalParent(damName, species, 'dam')
+      } else delete attributes.damId
     }
     if (equipment) {
       if (kind) attributes.kind = kind
@@ -234,12 +236,12 @@ export function EditAsset({
       )}
 
       {asset.type === 'animal' && (
-        <ParentField label="Sire" species={species} excludeId={asset.id}
+        <ParentField role="sire" species={species} excludeId={asset.id}
           id={sireId} onId={setSireId} name={sireName} onName={setSireName} />
       )}
 
       {asset.type === 'animal' && (
-        <ParentField label="Dam" species={species} excludeId={asset.id}
+        <ParentField role="dam" species={species} excludeId={asset.id}
           id={damId} onId={setDamId} name={damName} onName={setDamName} />
       )}
 

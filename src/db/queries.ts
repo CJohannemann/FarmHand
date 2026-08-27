@@ -94,13 +94,20 @@ export async function createAsset(input: {
  * same outside bull means typing his name once, not five times, and every
  * one of them ends up pointing at the same record.
  */
-export async function findOrCreateExternalParent(name: string, species: string): Promise<string> {
+export async function findOrCreateExternalParent(
+  name: string, species: string, role: 'sire' | 'dam',
+): Promise<string> {
   const trimmed = name.trim()
   const all = await listAssets(['animal'])
   const existing = all.find((a) => a.status === 'active' && a.attributes?.external
     && a.attributes?.species === species && a.name === trimmed)
   if (existing) return existing.id
-  return createAsset({ type: 'animal', name: trimmed, attributes: { species, external: true } })
+  // A generic Male/Female sex (GENERIC_SEX_TERMS, recognized by sexRole()
+  // regardless of species) so this stub is excluded from the *other*
+  // role's picker — otherwise a bull typed in as a sire once would also
+  // show up as a pickable dam later.
+  const sex = role === 'sire' ? 'Male' : 'Female'
+  return createAsset({ type: 'animal', name: trimmed, attributes: { species, external: true, sex } })
 }
 
 /** The individuals split out of a group — a herd's named-and-tracked members. */
