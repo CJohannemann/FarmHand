@@ -127,6 +127,31 @@ export default function App() {
   const needsSetup =
     (forceSetup || (link?.state === 'created' && setupDone.data === false)) && !justSetUp
 
+  // Only long enough to read a persisted session from local storage — not
+  // gated on the local database, so it resolves before ready below does.
+  if (checking) {
+    return (
+      <main className="screen boot">
+        <h1>Farmhand Management</h1>
+      </main>
+    )
+  }
+
+  // Takes priority over the signed-in checks below — the recovery link
+  // signs the browser in as a side effect of proving the email is theirs,
+  // but that shouldn't drop them straight into the app with the old
+  // password's session still effectively "current".
+  if (recovery) return <ResetPassword onDone={clearRecovery} />
+
+  // A signed-out visitor has no local database to open yet, and the
+  // landing page doesn't need one — shown here, ahead of the ready checks
+  // below, so it isn't waiting on database setup meant for people who are
+  // already signed in. (db() itself still starts opening in the
+  // background on mount regardless — see the `ready` useAsync above — so
+  // it's typically already warm by the time someone actually signs in.)
+  if (supabaseConfigured && !session && !showAuth && !badLink)
+    return <Landing onSignIn={() => setShowAuth(true)} />
+
   if (ready.error) {
     return (
       <main className="screen">
@@ -138,7 +163,7 @@ export default function App() {
     )
   }
 
-  if (ready.loading || checking) {
+  if (ready.loading) {
     return (
       <main className="screen boot">
         <h1>Farmhand Management</h1>
@@ -146,15 +171,6 @@ export default function App() {
       </main>
     )
   }
-
-  // Takes priority over the signed-in checks below — the recovery link
-  // signs the browser in as a side effect of proving the email is theirs,
-  // but that shouldn't drop them straight into the app with the old
-  // password's session still effectively "current".
-  if (recovery) return <ResetPassword onDone={clearRecovery} />
-
-  if (supabaseConfigured && !session && !showAuth && !badLink)
-    return <Landing onSignIn={() => setShowAuth(true)} />
 
   if (supabaseConfigured && !session)
     return (
