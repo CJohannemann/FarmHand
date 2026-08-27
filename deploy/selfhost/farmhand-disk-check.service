@@ -1,0 +1,10 @@
+[Unit]
+Description=Warn when the VPS disk is getting full
+
+[Service]
+Type=oneshot
+# Adjust User= and WorkingDirectory= if FarmHand isn't cloned under this
+# user's home (check `whoami` and `pwd` from inside ~/FarmHand first).
+User=ubuntu
+WorkingDirectory=/home/ubuntu/FarmHand/deploy/selfhost
+ExecStart=/usr/bin/bash check-disk.sh

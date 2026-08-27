@@ -243,3 +243,37 @@ Worth turning into a cron job or a systemd timer (the baseball site's
 `ibc-backup.timer` is a working example of the latter, in `../../deploy/`
 of the IBC repo) once this is confirmed working — not blocking on that for
 the initial setup, but don't let it be the thing that's forgotten either.
+
+## Disk space warning
+
+At real-world data volumes this VPS's disk fills so slowly it's not worth
+routinely checking by hand — see the capacity-planning conversation this
+came out of. `check-disk.sh` checks the root filesystem daily and warns
+you once it crosses a threshold, so a slow, boring problem doesn't turn
+into a sudden one.
+
+```bash
+cd ~/FarmHand/deploy/selfhost
+cp check-disk.env.example check-disk.env
+nano check-disk.env   # fill in NTFY_TOPIC and/or MAIL_TO — both optional
+sudo cp farmhand-disk-check.service farmhand-disk-check.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now farmhand-disk-check.timer
+```
+
+**Sanity check**:
+
+```bash
+sudo systemctl start farmhand-disk-check.service   # runs it once, right now
+journalctl -u farmhand-disk-check.service -n 20
+```
+
+Should print the current usage percentage and free space. It's silent
+(exit 0, no output) below the threshold — the log line above only shows
+because you just ran it manually; the timer's real daily runs only leave
+a journal entry worth noticing once it actually fires a warning.
+
+The two service/timer files assume the repo lives at
+`/home/ubuntu/FarmHand` under a user named `ubuntu` — edit `User=` and
+`WorkingDirectory=` in `farmhand-disk-check.service` first if that's not
+this VPS.
