@@ -76,12 +76,18 @@
     color: var(--accent-deep);
   }
 
-  .wrap { max-width: 68rem; margin: 0 auto; padding: 0 clamp(1.25rem, 4vw, 3rem); }
+  /* The 1.5rem floor is what a phone gets: 4vw only overtakes it above a
+     ~500px viewport, so this value is the gutter on a handset and nowhere
+     else. */
+  .wrap { max-width: 68rem; margin: 0 auto; padding: 0 clamp(1.5rem, 4vw, 3rem); }
   .prose { max-width: 58ch; }
 
   /* -------- NAV -------- */
   nav.top { position: sticky; top: 0; z-index: 30; background: color-mix(in srgb, var(--mist) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
-  nav.top .wrap { display: flex; align-items: center; justify-content: space-between; padding: 1rem 0; }
+  /* padding-block, not the `padding: 1rem 0` shorthand — that resets the
+     left/right gutter .wrap sets above to zero, which put the wordmark and
+     the sign-in link hard against the screen edges on a phone. */
+  nav.top .wrap { display: flex; align-items: center; justify-content: space-between; padding-block: 1rem; }
   .wordmark { font-family: "Newsreader", serif; font-style: italic; font-size: 1.15rem; color: var(--ink); text-decoration: none; }
   .nav-cta { font-family: "Fragment Mono", monospace; font-size: 0.8rem; text-decoration: none; color: var(--accent-deep); }
   .nav-cta:hover { color: var(--ink); }
@@ -182,7 +188,7 @@
 
   /* -------- CLOSING FACTS (single rule, no cards) -------- */
   .facts { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-  .facts .wrap { display: flex; flex-wrap: wrap; gap: 0 2.5rem; padding: 2.2rem 0; }
+  .facts .wrap { display: flex; flex-wrap: wrap; gap: 0 2.5rem; padding-block: 2.2rem; }
   .fact { flex: 1 1 14rem; }
   .fact b { display: block; font-family: "Fragment Mono", monospace; font-size: 0.72rem; letter-spacing: 0.06em; color: var(--accent-deep); margin-bottom: 0.4rem; text-transform: uppercase; }
   .fact span { color: var(--ink-soft); font-size: 0.92rem; }
