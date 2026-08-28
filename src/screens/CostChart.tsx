@@ -11,36 +11,31 @@ const PAD_B = 30
 
 const money = (n: number) => n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${Math.round(n)}`
 
-/**
- * Money in and money out, per period, around a shared zero line.
- *
- * Diverging rather than paired bars. Twelve months of two side-by-side bars
- * on a 320-wide chart gives each one about eight pixels, which is a smear
- * rather than a reading; above/below the line keeps the full bar width and
- * makes the only question that matters — is there more above or below —
- * answerable at a glance, without reading a single number.
- *
- * One pixels-per-dollar scale for both directions, so a $40 sale can never
- * be drawn the same size as a $4,000 one — but the zero line is NOT fixed
- * at the middle. It sits where each side's own peak puts it, so the two
- * halves divide the height in proportion to what actually happened.
- *
- * That split is load-bearing. A fixed midpoint looked reasonable until it
- * was rendered with real numbers: one $1,450 sale against $200-400 monthly
- * costs flattened every cost bar to a few pixels, making the routine
- * spending — the thing you look at most — unreadable. It also left half the
- * chart empty for a farm that has never recorded a sale at all.
- */
-export type ChartMode = 'both' | 'in' | 'out'
+export type ChartMode = 'in' | 'out'
 
+/**
+ * One side of the ledger, per period. Money out, or money in — never both.
+ *
+ * Both together was tried and dropped. Drawn on one chart they are only
+ * comparable while they are of similar size, and a farm's months rarely
+ * are: $23,000 of spending against a $500 sale left the income side two
+ * pixels tall, which is an honest picture and an unreadable one. Split, each
+ * direction gets the full height and a scale of its own, and that same $500
+ * fills half its chart.
+ *
+ * The geometry still works by allocating height from each side's peak, with
+ * the suppressed side's peak set to zero. That puts the baseline flush
+ * against the top edge for money out, or the bottom edge for money in, with
+ * no separate single-series path to keep in step.
+ */
 export function CostChart({
-  buckets, granularity, selected, onSelect, mode = 'both',
+  buckets, granularity, selected, onSelect, mode = 'out',
 }: {
   buckets: Bucket[]
   granularity: Granularity
   selected: number
   onSelect: (i: number) => void
-  /** One direction at a time, for when the two are too lopsided to read together. */
+  /** Which side of the ledger to draw. Never both at once — see the header. */
   mode?: ChartMode
 }) {
   if (buckets.length === 0) return null
@@ -50,7 +45,7 @@ export function CostChart({
   // zero puts the line flush against the top or bottom edge and hands the
   // whole height to the other direction. No separate single-series path.
   const spentPeak = mode === 'in' ? 0 : Math.max(...buckets.map((b) => b.spent), 0)
-  const earnedPeak = mode === 'out' ? 0 : Math.max(...buckets.map((b) => b.earned), 0)
+  const earnedPeak = mode === 'in' ? Math.max(...buckets.map((b) => b.earned), 0) : 0
   // Rounded to clean ticks first, then divided — because earnH/earnMax and
   // spentH/spentMax both reduce to plotH/span, the two sides come out on an
   // identical scale despite having different amounts of room.
@@ -70,15 +65,12 @@ export function CostChart({
 
   const labelEvery = n <= 6 ? 1 : n <= 10 ? 2 : 3
   const active = buckets[selected]
-  const anyEarned = buckets.some((b) => b.earned > 0)
 
   return (
     <div className="costchart">
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H}>
-        {/* Only each side's peak and the zero line: on a chart this small
-            every extra rule costs more legibility than the reading it adds.
-            A side with nothing in it gets no tick rather than a $0 label
-            floating above an empty half. */}
+        {/* The baseline and the one peak: on a chart this small every extra
+            rule costs more legibility than the reading it adds. */}
         {[earnedMax, 0, -spentMax].filter((t, i) => i === 1 || t !== 0).map((t, i) => {
           const ty = zeroY - (t / span) * plotH
           // A side that got very little height puts its peak label right on
@@ -130,26 +122,11 @@ export function CostChart({
         })}
       </svg>
 
+      {/* One direction, so no legend and no swatches — the chip above the
+          chart already says which side is being read. */}
       <p className="chart-tooltip">
-        {mode === 'out' ? (
-          <><strong>{formatMoney(active.spent)}</strong> out · {rangeLabel(active.start, granularity)}</>
-        ) : mode === 'in' ? (
-          <><strong>{formatMoney(active.earned)}</strong> in · {rangeLabel(active.start, granularity)}</>
-        ) : anyEarned ? (
-          <>
-            <span className="swatch-in" /> in <strong>{formatMoney(active.earned)}</strong>
-            {'  '}
-            <span className="swatch-out" /> out <strong>{formatMoney(active.spent)}</strong>
-            {'  ·  '}
-            <strong className={active.net < 0 ? 'net-down' : 'net-up'}>
-              {active.net < 0 ? '−' : '+'}{formatMoney(Math.abs(active.net))}
-            </strong>
-          </>
-        ) : (
-          // Before anything has ever sold, a legend and a net of exactly
-          // minus-what-you-spent is just noise dressed as insight.
-          <><strong>{formatMoney(active.spent)}</strong> · {rangeLabel(active.start, granularity)}</>
-        )}
+        <strong>{formatMoney(mode === 'in' ? active.earned : active.spent)}</strong>
+        {' · '}{rangeLabel(active.start, granularity)}
       </p>
     </div>
   )

@@ -63,18 +63,17 @@ export function Analytics() {
 }
 
 const MODES: { id: ChartMode; label: string }[] = [
-  { id: 'both', label: 'Both' },
-  { id: 'in', label: 'Money in' },
   { id: 'out', label: 'Money out' },
+  { id: 'in', label: 'Money in' },
 ]
 
 function Costs() {
   const [granularity, setGranularity] = useState<Granularity>('month')
-  // Both directions on one chart is the useful default, but it stops being
-  // readable when they are wildly lopsided — a month of $23,000 spent
-  // against $500 earned leaves the income side two pixels tall. Split them
-  // and each gets the full height and its own scale.
-  const [mode, setMode] = useState<ChartMode>('both')
+  // One side at a time, never both together. Drawn on one chart they are
+  // unreadable the moment they are lopsided — a month of $23,000 spent
+  // against $500 earned leaves the income side two pixels tall — and money
+  // out is what a farm looks at most, so it leads.
+  const [mode, setMode] = useState<ChartMode>('out')
   const [selected, setSelected] = useState(BUCKET_COUNT.month - 1)
   const { data: entries, loading } = useAsync(() => costEntries(), [])
 
@@ -151,29 +150,17 @@ function Costs() {
       {hasAny && active && (
         <>
           <div className="stat">
-            {anyIncome && mode === 'out' ? (
-              <>
-                <span className="stat-value">{formatMoney(active.spent)}</span>
-                <span className="stat-label">out over {rangeLabel(active.start, granularity)}</span>
-              </>
-            ) : anyIncome && mode === 'in' ? (
+            {mode === 'in' ? (
               <>
                 <span className="stat-value net-up">{formatMoney(active.earned)}</span>
                 <span className="stat-label">in over {rangeLabel(active.start, granularity)}</span>
               </>
-            ) : anyIncome ? (
-              <>
-                <span className={`stat-value ${active.net < 0 ? 'net-down' : 'net-up'}`}>
-                  {active.net < 0 ? '−' : '+'}{formatMoney(Math.abs(active.net))}
-                </span>
-                <span className="stat-label">
-                  {active.net < 0 ? 'down' : 'up'} over {rangeLabel(active.start, granularity)}
-                </span>
-              </>
             ) : (
               <>
-                <span className="stat-value">{formatMoney(active.total)}</span>
-                <span className="stat-label">{rangeLabel(active.start, granularity)}</span>
+                <span className="stat-value out">{formatMoney(active.spent)}</span>
+                <span className="stat-label">
+                  {anyIncome ? 'out over ' : ''}{rangeLabel(active.start, granularity)}
+                </span>
               </>
             )}
           </div>
@@ -182,7 +169,7 @@ function Costs() {
               Before a first sale this would be a control with one real
               setting, on a screen that already carries two rows of chips. */}
           {anyIncome && (
-            <div className="chipwrap">
+            <div className="chipwrap modewrap">
               {MODES.map((m) => (
                 <button key={m.id} className={mode === m.id ? 'chip on' : 'chip'}
                   onClick={() => setMode(m.id)}>

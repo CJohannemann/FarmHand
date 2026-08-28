@@ -765,3 +765,14 @@ button.primary.danger:disabled { opacity: 0.4; }
 /* A history row is a record, not a link — nothing to open, so it must not
    look like the tappable rows elsewhere. */
 .assetrow.static { cursor: default; width: 100%; display: flex; }
+
+/* The direction toggle sits directly above the chart it controls, and
+   without this the chips touch its top edge. */
+.chipwrap.modewrap { margin-bottom: 0.85rem; }
+
+/* The headline follows the chart it sits above. .stat-value is the app's
+   accent green by default, which was fine when this screen only ever showed
+   spending — but the bars beneath it have always been red for money out, and
+   once there are two directions to tell apart, an identical green number for
+   both says nothing. */
+.stat-value.out { color: #c0392b; }
