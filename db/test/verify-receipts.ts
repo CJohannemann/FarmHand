@@ -135,6 +135,21 @@ check('plain value untouched', csvField('Co-op') === 'Co-op')
 check('null becomes empty', csvField(null) === '')
 check('number passes through', csvField(340.5) === '340.5')
 
+console.log("\nThe export is named after the farm, not the app")
+// A bookkeeper doing several farms' books needs to know whose archive this
+// is; "farmhand-receipts-2026.zip" only says which app made it.
+const slug = (name: string) => `${safeFileName(name, 'farmhand')}-receipts-2026.zip`
+check('an ordinary name', slug('Johannemann Homestead') === 'Johannemann-Homestead-receipts-2026.zip',
+  slug('Johannemann Homestead'))
+check('apostrophes and ampersands fold away',
+  slug("O'Brien & Sons Farm") === 'OBrien-Sons-Farm-receipts-2026.zip', slug("O'Brien & Sons Farm"))
+check('accents fold rather than vanish',
+  slug('Café Farm') === 'Cafe-Farm-receipts-2026.zip', slug('Café Farm'))
+check('a name that folds to nothing falls back rather than making "-receipts-"',
+  slug('!!!') === 'farmhand-receipts-2026.zip', slug('!!!'))
+check('a path separator cannot escape the filename',
+  !slug('../../etc/passwd').includes('/'), slug('../../etc/passwd'))
+
 // ------------------------------------------------------------ zip
 
 console.log('\nThe export is a ZIP that real unzip accepts')

@@ -162,6 +162,11 @@ export function safeFileName(name: string, fallback = 'receipt'): string {
   const folded = name
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')      // strip the combining accents NFD split out
+    // Apostrophes are inside words, not between them — dropped rather than
+    // turned into a separator, so O'Brien becomes OBrien and not O-Brien.
+    // Both the typewriter and typographic forms, since a phone keyboard
+    // produces the curly one.
+    .replace(/['’]/g, '')
     .replace(/[^A-Za-z0-9._-]+/g, '-')
     .replace(/-{2,}/g, '-')
     .replace(/^[-.]+|[-.]+$/g, '')

@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 import { applying } from '../db/client'
 import {
-  putReceiptData, receiptData, receiptsForYear, type ReceiptForExport,
+  getFarmName, putReceiptData, receiptData, receiptsForYear, type ReceiptForExport,
 } from '../db/queries'
 import { base64ToBytes, csvField, makeZip, safeFileName } from './zip'
 
@@ -108,10 +108,29 @@ export async function exportYear(
   })
 
   return {
-    filename: `farmhand-receipts-${year}.zip`,
+    filename: `${await farmSlug()}-receipts-${year}.zip`,
     bytes: makeZip(entries),
     included: entries.length - 1,
     missing,
+  }
+}
+
+/**
+ * The farm's own name, made safe for a filename — this archive gets saved
+ * into a downloads folder and emailed to a bookkeeper who may be doing the
+ * books for several farms, so "Johannemann Homestead-receipts-2026.zip"
+ * tells them whose it is where "farmhand-receipts-2026.zip" only says which
+ * app produced it.
+ *
+ * Capitalisation is kept as the owner typed it. The fallback matters: a farm
+ * named something that folds away entirely (only punctuation, or a script
+ * safeFileName strips) would otherwise produce "-receipts-2026.zip".
+ */
+async function farmSlug(): Promise<string> {
+  try {
+    return safeFileName(await getFarmName(), 'farmhand')
+  } catch {
+    return 'farmhand'
   }
 }
 
