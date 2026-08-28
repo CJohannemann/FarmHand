@@ -119,6 +119,44 @@ create table quantity (
 create index quantity_log on quantity (log_id);
 create index quantity_farm_measure on quantity (farm_id, measure);
 
+-- ----------------------------------------------------------------- receipts
+
+-- A photographed receipt, hanging off the log that records the purchase.
+--
+-- Split across two tables on purpose. Everything needed to LIST receipts —
+-- which purchase, when, how big — is small enough to sync like any other
+-- row, so a phone that never took the photo can still show that a receipt
+-- exists and include it in a year's export. The bytes are the opposite:
+-- pulling every receipt a farm has ever taken onto a new device, just
+-- because it signed in, would be tens of megabytes for something almost
+-- nobody looks at twice. So receipt_blob is push-only (see PUSH_ONLY_TABLES
+-- in src/lib/syncCore.ts) and fetched one at a time, on demand.
+create table receipt (
+  id          text primary key,
+  farm_id     text not null references farm(id),
+  log_id      text not null references log(id),
+  captured_at text not null,
+  mime        text not null default 'image/jpeg',
+  byte_size   integer not null default 0,
+  width       integer,
+  height      integer,
+  created_at  text not null,
+  updated_at  text not null,
+  deleted_at  text
+);
+create index receipt_log on receipt (log_id);
+create index receipt_farm_captured on receipt (farm_id, captured_at desc);
+
+-- Base64 rather than a BLOB: this column's whole job is to survive the trip
+-- through PostgREST's JSON, and text goes as-is where bytea would arrive
+-- hex-encoded and need decoding on both sides. The ~33% size premium over
+-- raw bytes is paid back by the client downscaling every image to roughly
+-- 200KB before it ever gets here (see src/lib/image.ts).
+create table receipt_blob (
+  receipt_id text primary key references receipt(id),
+  data       text not null
+);
+
 -- ------------------------------------------------------ local sync bookkeeping
 
 -- Absent from schema.sql: the server has no use for these, and they must
@@ -247,5 +285,32 @@ create trigger sync_quantity_update after update on quantity
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at) values ('quantity', new.id, datetime('now'))
+  on conflict (tbl, row_id) do update set queued_at = datetime('now');
+end;
+
+create trigger sync_receipt_insert after insert on receipt
+  when (select applying from sync_control) = 0
+begin
+  insert into sync_outbox (tbl, row_id, queued_at) values ('receipt', new.id, datetime('now'))
+  on conflict (tbl, row_id) do update set queued_at = datetime('now');
+end;
+create trigger sync_receipt_update after update on receipt
+  when (select applying from sync_control) = 0
+begin
+  insert into sync_outbox (tbl, row_id, queued_at) values ('receipt', new.id, datetime('now'))
+  on conflict (tbl, row_id) do update set queued_at = datetime('now');
+end;
+
+-- Insert only, no update trigger: a receipt's bytes are written once when
+-- the photo is taken and never edited (retaking one makes a new receipt).
+-- The same trigger also fires for a blob arriving from a lazy fetch, which
+-- would queue a pointless push straight back to the server it just came
+-- from — that path writes with sync_control.applying = 1, the same guard
+-- every pull already uses, so the WHEN clause skips it.
+create trigger sync_receipt_blob_insert after insert on receipt_blob
+  when (select applying from sync_control) = 0
+begin
+  insert into sync_outbox (tbl, row_id, queued_at)
+  values ('receipt_blob', new.receipt_id, datetime('now'))
   on conflict (tbl, row_id) do update set queued_at = datetime('now');
 end;

@@ -183,6 +183,44 @@ create table attachment (
   deleted_at  timestamptz
 );
 
+-- A photographed receipt, hanging off the log that records the purchase.
+-- Distinct from `attachment` above, which is unused and assumes an object
+-- store this deployment does not run (docker-compose.yml is db + rest +
+-- auth only, deliberately: "no Realtime, Storage, Studio, or Kong").
+--
+-- Split across two tables on purpose. Everything needed to LIST receipts is
+-- small enough to sync like any other row, so a device that never took the
+-- photo can still show one exists and include it in a year's export. The
+-- bytes are the opposite: pulling every receipt a farm ever took onto a new
+-- device just because it signed in would be tens of megabytes for something
+-- almost nobody looks at twice. receipt_blob is push-only (see
+-- PUSH_ONLY_TABLES in src/lib/syncCore.ts), fetched one at a time on demand.
+create table receipt (
+  id          uuid primary key default gen_random_uuid(),
+  farm_id     uuid not null references farm(id) on delete cascade,
+  log_id      uuid not null references log(id) on delete cascade,
+  captured_at timestamptz not null default now(),
+  mime        text not null default 'image/jpeg',
+  byte_size   bigint not null default 0,
+  width       integer,
+  height      integer,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  deleted_at  timestamptz
+);
+create index on receipt (log_id);
+create index on receipt (farm_id, captured_at desc);
+
+-- Base64 text, not bytea: this column's whole job is to survive the trip
+-- through PostgREST's JSON, and text goes as-is where bytea would arrive
+-- hex-encoded and need decoding on both sides. The ~33% premium over raw
+-- bytes is paid back by the client downscaling every image to roughly 200KB
+-- before it ever gets here (see src/lib/image.ts).
+create table receipt_blob (
+  receipt_id uuid primary key references receipt(id) on delete cascade,
+  data       text not null
+);
+
 -- --------------------------------------------------------- row security --
 
 create or replace function has_farm_access(f uuid)
@@ -255,6 +293,19 @@ create policy tenant_all on quantity for all
 alter table attachment enable row level security;
 create policy tenant_all on attachment for all
   using (has_farm_access(farm_id)) with check (has_farm_access(farm_id));
+
+alter table receipt enable row level security;
+create policy tenant_all on receipt for all
+  using (has_farm_access(farm_id)) with check (has_farm_access(farm_id));
+
+-- receipt_blob carries no farm_id of its own; it inherits via its receipt,
+-- the same shape log_asset uses below.
+alter table receipt_blob enable row level security;
+create policy receipt_blob_access on receipt_blob for all
+  using (exists (select 1 from receipt
+                 where receipt.id = receipt_id and has_farm_access(receipt.farm_id)))
+  with check (exists (select 1 from receipt
+                 where receipt.id = receipt_id and has_farm_access(receipt.farm_id)));
 
 -- log_asset carries no farm_id of its own; it inherits via its log.
 alter table log_asset enable row level security;

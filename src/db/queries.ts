@@ -322,6 +322,12 @@ export async function createPurchase(input: {
   cost?: number
   supplier?: string
   origin?: 'purchased' | 'service'
+  /**
+   * A photographed receipt, attached to the purchase log this creates.
+   * Taken here rather than by the caller afterwards because the caller is
+   * handed the lot id, not the log id, and the receipt belongs to the log.
+   */
+  receipt?: { data: string; mime: string; byteSize: number; width: number; height: number }
 }): Promise<string> {
   const lotId = await createAsset({
     type: 'lot',
@@ -341,7 +347,7 @@ export async function createPurchase(input: {
   if (input.amount && input.amount > 0)
     quantities.push({ measure: 'weight', value: input.amount, unit: input.unit ?? 'lb' })
 
-  await createLog({
+  const logId = await createLog({
     type: 'purchase',
     // A service (a vet visit, an oil change) was paid for, not bought — you
     // didn't buy the butcher.
@@ -349,6 +355,7 @@ export async function createPurchase(input: {
     assets: [{ id: lotId, role: 'subject' }],
     quantities,
   })
+  if (input.receipt) await addReceipt(logId, input.receipt)
   return lotId
 }
 
@@ -953,5 +960,148 @@ export async function cancelTask(id: string) {
   await pg.query(
     `update log set status = 'cancelled', updated_at = $2 where id = $1`,
     [id, new Date().toISOString()],
+  )
+}
+
+// -------------------------------------------------------------- receipts
+
+export interface ReceiptMeta {
+  id: string
+  log_id: string
+  captured_at: string
+  mime: string
+  byte_size: number
+  /** False when only the metadata row has reached this device — see hasLocalData. */
+  local: boolean
+}
+
+/** One row per receipt for a year's export: the receipt plus what it documents. */
+export interface ReceiptForExport extends ReceiptMeta {
+  purchase_name: string | null
+  supplier: string | null
+  amount: number | null
+  timestamp: string
+}
+
+/**
+ * Store a captured receipt against a purchase log.
+ *
+ * Two rows, matching the two tables: the small `receipt` row syncs with
+ * everything else, while the bytes go to receipt_blob, which is pushed but
+ * never bulk-pulled. Written in that order so the blob's foreign key has
+ * something to point at.
+ */
+export async function addReceipt(logId: string, image: {
+  data: string; mime: string; byteSize: number; width: number; height: number
+}): Promise<string> {
+  const pg = await db()
+  const farm = await getFarmId()
+  const id = crypto.randomUUID()
+  const now = new Date().toISOString()
+
+  await pg.query(
+    `insert into receipt
+       (id, farm_id, log_id, captured_at, mime, byte_size, width, height, created_at, updated_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [id, farm, logId, now, image.mime, image.byteSize, image.width, image.height, now, now],
+  )
+  await pg.query(
+    `insert into receipt_blob (receipt_id, data) values ($1, $2)`,
+    [id, image.data],
+  )
+  return id
+}
+
+/** Metadata for one purchase's receipts. Never selects `data` — see receiptData. */
+export async function receiptsForLog(logId: string): Promise<ReceiptMeta[]> {
+  const pg = await db()
+  // SQLite counts, so `local` arrives as 0/1 and is mapped to a boolean
+  // below. Omit rather than intersect: `boolean & number` is `never`.
+  const { rows } = await pg.query<Omit<ReceiptMeta, "local"> & { local: number }>(
+    `select r.id, r.log_id, r.captured_at, r.mime, r.byte_size,
+            (select count(*) from receipt_blob b where b.receipt_id = r.id) as local
+       from receipt r
+      where r.log_id = $1 and r.deleted_at is null
+      order by r.captured_at`,
+    [logId],
+  )
+  return rows.map((r) => ({ ...r, local: Number(r.local) > 0 }))
+}
+
+/**
+ * The image itself, if this device happens to hold it — null means it lives
+ * on the server and has not been fetched yet (lib/receipts.ts does that).
+ * Kept separate from the metadata queries so a list never drags hundreds of
+ * megabytes of base64 through a SELECT to render a row of filenames.
+ */
+export async function receiptData(id: string): Promise<string | null> {
+  const pg = await db()
+  const { rows } = await pg.query<{ data: string }>(
+    `select data from receipt_blob where receipt_id = $1`, [id],
+  )
+  return rows[0]?.data ?? null
+}
+
+/** Caches a blob fetched from the server. Callers must be inside applying(). */
+export async function putReceiptData(id: string, data: string): Promise<void> {
+  const pg = await db()
+  await pg.query(
+    `insert into receipt_blob (receipt_id, data) values ($1, $2)
+     on conflict (receipt_id) do update set data = excluded.data`,
+    [id, data],
+  )
+}
+
+/** Calendar years that have at least one receipt, newest first. */
+export async function receiptYears(): Promise<number[]> {
+  const pg = await db()
+  const { rows } = await pg.query<{ y: string }>(
+    `select distinct substr(l.timestamp, 1, 4) as y
+       from receipt r join log l on l.id = r.log_id
+      where r.deleted_at is null and l.deleted_at is null
+      order by y desc`,
+  )
+  return rows.map((r) => Number(r.y)).filter((y) => Number.isFinite(y))
+}
+
+/**
+ * Everything a year's export needs, in one pass: the receipt, the purchase
+ * it documents, and what that purchase cost. Dated by the purchase's own
+ * timestamp rather than when the photo was taken — a receipt photographed in
+ * January for a December purchase belongs in December's tax year.
+ */
+export async function receiptsForYear(year: number): Promise<ReceiptForExport[]> {
+  const pg = await db()
+  const { rows } = await pg.query<Omit<ReceiptForExport, "local"> & { local: number }>(
+    `select r.id, r.log_id, r.captured_at, r.mime, r.byte_size,
+            (select count(*) from receipt_blob b where b.receipt_id = r.id) as local,
+            l.name as purchase_name, l.timestamp,
+            (select value from quantity q
+              where q.log_id = l.id and q.measure = 'price' and q.deleted_at is null
+              limit 1) as amount,
+            -- Supplier lives on the lot the purchase created, not on the
+            -- price quantity: createPurchase() writes it into the asset's
+            -- attributes alongside material and origin.
+            (select a.attributes->>'supplier' from log_asset la
+               join asset a on a.id = la.asset_id
+              where la.log_id = l.id and la.role = 'subject'
+                and a.deleted_at is null
+              limit 1) as supplier
+       from receipt r
+       join log l on l.id = r.log_id
+      where r.deleted_at is null and l.deleted_at is null
+        and substr(l.timestamp, 1, 4) = $1
+      order by l.timestamp`,
+    [String(year)],
+  )
+  return rows.map((r) => ({ ...r, local: Number(r.local) > 0 }))
+}
+
+/** Soft delete, same as everything else — a device offline must be told it died. */
+export async function deleteReceipt(id: string): Promise<void> {
+  const pg = await db()
+  const now = new Date().toISOString()
+  await pg.query(
+    `update receipt set deleted_at = $2, updated_at = $2 where id = $1`, [id, now],
   )
 }

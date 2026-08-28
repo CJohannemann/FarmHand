@@ -582,3 +582,92 @@ button.farmname {
 
 .account-sep { color: var(--line); }
 .account { flex-wrap: wrap; }
+
+/* -------------------------------------------------------------- receipts */
+
+/* Doubles as the drag target and the camera/file-picker button, so it has to
+   read as tappable on a phone (where nothing is ever dragged onto it) as
+   well as droppable on a desktop. */
+.dropzone {
+  margin-top: 0.35rem;
+  padding: 1.25rem 1rem;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.dropzone:hover { border-color: var(--accent); }
+.dropzone.over { border-color: var(--accent); border-style: solid; }
+.dropzone.has-image { padding: 0.5rem; }
+.dropzone p { margin: 0; font-size: 0.9rem; }
+
+.receipt-thumb {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  margin: 0 auto;
+  border-radius: 4px;
+}
+
+.receipt-years { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.receipt-year { border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+.receipt-year > .primary,
+.receipt-year > .hint,
+.receipt-year > .notice,
+.receipt-year > .error,
+.receipt-year > .muted { margin: 0 0.9rem 0.9rem; }
+.receipt-year > .primary { width: calc(100% - 1.8rem); }
+
+.receipt-year-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.85rem 0.9rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.receipt-year-label { font-weight: 600; font-size: 1.05rem; }
+/* Pushes the chevron to the far edge whether or not the count is rendered. */
+.receipt-year-head .muted { margin-left: auto; font-size: 0.85rem; }
+.receipt-year-chevron { color: var(--muted); }
+.receipt-year-head .muted + .receipt-year-chevron { margin-left: 0; }
+.receipt-year-head > .receipt-year-chevron:nth-child(2) { margin-left: auto; }
+
+.receipt-list { list-style: none; margin: 0 0 0.9rem; padding: 0 0.9rem; }
+.receipt-row { border-top: 1px solid var(--line); }
+
+.receipt-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.6rem 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.receipt-date { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+/* Takes the slack so the amount stays right-aligned, and ellipsises rather
+   than wrapping a long supplier name onto a second line. */
+.receipt-what { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.receipt-amount { font-variant-numeric: tabular-nums; }
+.receipt-remote { color: var(--muted); font-size: 0.8rem; }
+
+.receipt-full {
+  display: block;
+  max-width: 100%;
+  margin: 0 0 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}

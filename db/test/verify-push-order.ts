@@ -26,7 +26,11 @@ function makeLocal(queuedIds: string[], assetRowsInDbOrder: Row[]): Local {
         return { rows: rows as unknown as T[] }
       }
       if (sql.startsWith('delete from sync_outbox')) return { rows: [] as T[] }
-      if (sql.includes('from "asset" where id')) {
+      // Matches the key column quoted or bare. localRowsFor() now selects by
+      // whatever that table's key actually is — receipt_blob is keyed
+      // receipt_id and has no `id` column — so it quotes the identifier the
+      // same way it already quoted the table name.
+      if (/from "asset" where "?id"? in/.test(sql)) {
         return { rows: assetRowsInDbOrder as unknown as T[] }
       }
       return { rows: [] as T[] }

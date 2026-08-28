@@ -11,8 +11,24 @@ export type Row = Record<string, unknown>
 
 /** Tables that sync, in an order that satisfies their foreign keys. */
 export const SYNCED_TABLES = [
-  'farm', 'term', 'location', 'asset', 'log', 'log_asset', 'quantity',
+  'farm', 'term', 'location', 'asset', 'log', 'log_asset', 'quantity', 'receipt',
 ] as const
+
+/**
+ * Pushed like any other table, but never pulled in bulk.
+ *
+ * receipt_blob holds the actual image bytes. Pulling every receipt a farm
+ * has ever photographed onto a device just because it signed in would be
+ * tens of megabytes to show a list that the small `receipt` rows already
+ * describe — so the bytes come down one at a time, when something actually
+ * needs to display or export that image (see fetchReceiptData in
+ * lib/receipts.ts). Pushing is not optional in the same way: a photo taken
+ * in the barn exists nowhere else until it reaches the server.
+ *
+ * Ordered after SYNCED_TABLES on push, since a blob's receipt row has to
+ * land before the row that references it.
+ */
+export const PUSH_ONLY_TABLES = ['receipt_blob'] as const
 
 export const PAGE = 500
 const EPOCH = '1970-01-01T00:00:00Z'
@@ -25,8 +41,21 @@ const EPOCH = '1970-01-01T00:00:00Z'
 export const OVERLAP_MS = 60_000
 
 /** Composite keys, for tables without a single id column. */
-const CONFLICT: Record<string, string[]> = { log_asset: ['log_id', 'asset_id', 'role'] }
+const CONFLICT: Record<string, string[]> = {
+  log_asset: ['log_id', 'asset_id', 'role'],
+  receipt_blob: ['receipt_id'],
+}
 export const keyFor = (t: string) => CONFLICT[t] ?? ['id']
+
+/**
+ * Rows per request, per table. 500 suits rows that are a few hundred bytes
+ * each; a page of that many receipt images would be a ~100MB request that
+ * any sane proxy rejects and a barn's phone signal never finishes. Three at
+ * a time keeps each push around half a megabyte, and a failed page retries
+ * three images rather than five hundred.
+ */
+const PAGE_FOR: Record<string, number> = { receipt_blob: 3 }
+export const pageFor = (t: string) => PAGE_FOR[t] ?? PAGE
 
 export class SyncError extends Error {}
 
@@ -62,7 +91,7 @@ export async function runSync(local: Local, remote: Remote): Promise<SyncResult>
 export async function push(local: Local, remote: Remote): Promise<number> {
   let total = 0
 
-  for (const tbl of SYNCED_TABLES) {
+  for (const tbl of [...SYNCED_TABLES, ...PUSH_ONLY_TABLES]) {
     const { rows: queued } = await local.query<{ row_id: string }>(
       `select row_id from sync_outbox where tbl = $1 order by queued_at`, [tbl],
     )
@@ -89,9 +118,10 @@ export async function push(local: Local, remote: Remote): Promise<number> {
     }
 
     const ordered = orderByParent(outgoing)
-    for (let i = 0; i < ordered.length; i += PAGE) {
-      await remote.upsert(tbl, ordered.slice(i, i + PAGE), keyFor(tbl))
-      total += Math.min(PAGE, ordered.length - i)
+    const size = pageFor(tbl)
+    for (let i = 0; i < ordered.length; i += size) {
+      await remote.upsert(tbl, ordered.slice(i, i + size), keyFor(tbl))
+      total += Math.min(size, ordered.length - i)
     }
 
     // Only clear once the server has them, so a failed push retries.
@@ -168,8 +198,12 @@ async function localRowsFor(local: Local, tbl: string, ids: string[]): Promise<R
     )
     return rows
   }
+  // Keyed by whatever that table's key column actually is — receipt_blob is
+  // keyed receipt_id and has no `id` column at all, so a hardcoded `where
+  // id in (...)` would be a SQL error rather than an empty result.
+  const [key] = keyFor(tbl)
   const { rows } = await local.query(
-    `select * from "${tbl}" where id in (${placeholders(ids.length)})`,
+    `select * from "${tbl}" where "${key}" in (${placeholders(ids.length)})`,
     ids,
   )
   return rows

@@ -5,6 +5,8 @@ import {
   plannedLogs, recentLogs,
 } from '../db/queries'
 import type { LogWithDetail } from '../db/types'
+import type { PreparedImage } from '../lib/image'
+import { ReceiptCapture } from './ReceiptCapture'
 import { HARVESTS, tilesFor, type HarvestSpec } from '../lib/tiles'
 import {
   formatQty, hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput,
@@ -225,6 +227,7 @@ function NoteForm({ onDone, onClose }: FormProps) {
 
 function BuyForm({ onDone, onClose }: FormProps) {
   const [material, setMaterial] = useState('Feed')
+  const [receipt, setReceipt] = useState<PreparedImage | null>(null)
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [unit, setUnit] = useState('lb')
@@ -241,6 +244,7 @@ function BuyForm({ onDone, onClose }: FormProps) {
       unit,
       cost: hasNumericValue(cost) ? Number(cost) : undefined,
       supplier: supplier.trim() || undefined,
+      receipt: receipt ?? undefined,
     })
     onDone()
   }
@@ -287,6 +291,7 @@ function BuyForm({ onDone, onClose }: FormProps) {
         <input value={supplier} onChange={(e) => setSupplier(e.target.value)}
           placeholder="Co-op" />
       </label>
+      <ReceiptCapture onChange={setReceipt} />
       <button className="primary" disabled={!(Number(cost) > 0)} onClick={save}>
         Save
       </button>
