@@ -726,3 +726,42 @@ button.primary.danger:disabled { opacity: 0.4; }
   color: var(--muted);
 }
 .showclosed:hover { color: var(--fg); }
+
+/* --------------------------------------------------------- past stock */
+
+.paststock { border-bottom: 1px solid var(--line); padding: 0.25rem 0 0.75rem; }
+
+.paststock-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.7rem 0 0.2rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.paststock-name { font-weight: 600; }
+/* Pushes the count and chevron right regardless of name length. */
+.paststock-head .muted { margin-left: auto; font-size: 0.85rem; }
+.paststock-chevron { color: var(--muted); }
+
+/* The year's actual answer — outcomes and income — reads before the list
+   is ever opened, so the common case needs no tap at all. */
+.paststock-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+  padding: 0 0 0.35rem 2rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.paststock-outcome::first-letter { text-transform: uppercase; }
+.paststock-income { font-variant-numeric: tabular-nums; }
+
+/* A history row is a record, not a link — nothing to open, so it must not
+   look like the tappable rows elsewhere. */
+.assetrow.static { cursor: default; width: 100%; display: flex; }

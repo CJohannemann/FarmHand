@@ -9,6 +9,7 @@ import { formatMoney } from '../lib/numeric'
 import { CostChart } from './CostChart'
 import { Records } from './Records'
 import { Receipts } from './Receipts'
+import { PastStock } from './PastStock'
 
 const GRANULARITIES: { id: Granularity; label: string }[] = [
   { id: 'week', label: 'Week' },
@@ -17,7 +18,7 @@ const GRANULARITIES: { id: Granularity; label: string }[] = [
   { id: 'year', label: 'Year' },
 ]
 
-type View = 'costs' | 'records' | 'receipts'
+type View = 'costs' | 'records' | 'receipts' | 'stock'
 
 const VIEWS: { id: View; label: string; title: string; tagline: string }[] = [
   { id: 'costs', label: 'Costs', title: 'Analytics',
@@ -26,6 +27,8 @@ const VIEWS: { id: View; label: string; title: string; tagline: string }[] = [
     tagline: 'Everything, newest first. Tap one to fix it.' },
   { id: 'receipts', label: 'Receipts', title: 'Receipts',
     tagline: 'Filed by tax year. Export a year when it is time to do the books.' },
+  { id: 'stock', label: 'Past stock', title: 'Past stock',
+    tagline: 'What the farm ran each year, and what became of it.' },
 ]
 
 /**
@@ -53,6 +56,7 @@ export function Analytics() {
 
       {view === 'records' ? <Records />
         : view === 'receipts' ? <Receipts />
+        : view === 'stock' ? <PastStock />
         : <Costs />}
     </div>
   )

@@ -324,5 +324,64 @@ check('but both still on the record', after.length, 2)
 check('and the sold one says why it left',
   q(`select terminal_event as t from asset where id = ?`, [boar])[0].t === 'sold' ? 1 : 0, 1)
 
+
+// ----------------------------------------------------- past stock by year
+// Inventory is present tense, so closed-out animals have to be findable
+// somewhere else. Mirrors closedOutStock() in src/db/queries.ts.
+console.log('\nPast stock: what left, when, and for how much')
+const gone1 = uuid(), gone2 = uuid(), stub = uuid(), kid = uuid()
+run(`insert into asset (id, farm_id, type, name, attributes, status, terminal_event, created_at, updated_at)
+     values (?,?,'animal','Hog A','{"species":"Pig"}','archived','sold',?,?)`,
+  [gone1, farm, now(), '2026-10-02T00:00:00.000Z'])
+run(`insert into asset (id, farm_id, type, name, attributes, status, terminal_event, created_at, updated_at)
+     values (?,?,'animal','Hog B','{"species":"Pig"}','archived','died',?,?)`,
+  [gone2, farm, now(), '2026-07-11T00:00:00.000Z'])
+// An external sire stub and a group member: neither is stock that left.
+run(`insert into asset (id, farm_id, type, name, attributes, status, terminal_event, created_at, updated_at)
+     values (?,?,'animal','Outside boar','{"species":"Pig","external":true}','archived','sold',?,?)`,
+  [stub, farm, now(), '2026-10-02T00:00:00.000Z'])
+run(`insert into asset (id, farm_id, type, name, attributes, parent_id, status, terminal_event, created_at, updated_at)
+     values (?,?,'animal','Broiler 1','{"species":"Chicken"}',?,'archived','processed',?,?)`,
+  [kid, farm, flock, now(), '2026-06-14T00:00:00.000Z'])
+
+// Hog A sold for $450.
+const hogSale = uuid()
+run(`insert into log (id, farm_id, type, timestamp, name, created_at, updated_at)
+     values (?,?,'sale','2026-10-02T00:00:00.000Z','Sold Hog A',?,?)`, [hogSale, farm, now(), now()])
+run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`, [hogSale, gone1])
+run(`insert into quantity (id,farm_id,log_id,measure,value,unit,created_at,updated_at)
+     values (?,?,?,'price',450,'USD',?,?)`, [uuid(), farm, hogSale, now(), now()])
+
+const past = q(`select a.id, a.name,
+         json_extract(a.attributes,'$.species') as species,
+         a.terminal_event as outcome,
+         coalesce((select max(l.timestamp) from log_asset la
+                     join log l on l.id = la.log_id and l.deleted_at is null
+                    where la.asset_id = a.id and la.role = 'subject'
+                      and l.type in ('sale','harvest')), a.updated_at) as left_at,
+         (select coalesce(sum(qq.value),0) from log_asset la
+            join log l on l.id = la.log_id and l.type='sale' and l.deleted_at is null
+            join quantity qq on qq.log_id = l.id and qq.measure='price' and qq.deleted_at is null
+           where la.asset_id = a.id and la.role='subject') as income
+    from asset a
+   where a.type in ('animal','group') and a.status='archived' and a.deleted_at is null
+     and a.parent_id is null and json_extract(a.attributes,'$.external') is null
+   order by left_at desc`)
+
+check('external stub excluded', past.filter((r) => r.id === stub).length, 0)
+check('group member excluded', past.filter((r) => r.id === kid).length, 0)
+// Scoped to this block's own animals: earlier blocks already archived a
+// pig, so counting every Pig would assert about their setup.
+const pigs = past.filter((r) => r.id === gone1 || r.id === gone2)
+check('both real hogs listed', pigs.length, 2)
+check('the sold one carries its price', pigs.find((r) => r.id === gone1).income, 450)
+check('the one that died carries none', pigs.find((r) => r.id === gone2).income, 0)
+check('dated from the sale, not the row edit',
+  pigs.find((r) => r.id === gone1).left_at.slice(0, 10) === '2026-10-02' ? 1 : 0, 1)
+check('a death falls back to updated_at',
+  pigs.find((r) => r.id === gone2).left_at.slice(0, 10) === '2026-07-11' ? 1 : 0, 1)
+check('the harvested flock itself is past stock',
+  past.filter((r) => r.id === flock).length, 1)
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)

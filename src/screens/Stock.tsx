@@ -287,7 +287,15 @@ export function Stock() {
             <section key={g.type}>
               <h2 className="section">{g.heading}</h2>
               <div className="speciescards">
-                {groupBySpecies(mine).map(({ species, items }) => (
+                {/* A species disappears when its last animal does.
+                    Inventory answers "what do I have"; a pig icon over
+                    "0 animals" answers it wrongly, and a farm that sells
+                    out every autumn would be told it still has pigs for
+                    months. The records are not gone — Analytics > Past
+                    stock browses them by year. */}
+                {groupBySpecies(mine)
+                  .filter(({ items }) => items.some((a) => a.status === 'active'))
+                  .map(({ species, items }) => (
                   <button key={species ?? '—'} type="button" className="speciescard"
                     onClick={() => setSpecies(species)}>
                     <span className="glyph">{speciesGlyph(species)}</span>

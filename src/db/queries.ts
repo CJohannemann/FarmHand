@@ -1171,3 +1171,74 @@ export async function sellAsset(input: {
   })
   await archiveAsset(input.assetId, 'sold')
 }
+
+// ------------------------------------------------------------ past stock
+
+export interface ClosedOutAsset {
+  id: string
+  name: string
+  species: string | null
+  /** sold | died | culled | processed | harvested — why it left. */
+  outcome: string | null
+  /** ISO date it left the farm. */
+  leftAt: string
+  /** What it sold for, 0 if it wasn't sold. */
+  income: number
+}
+
+/**
+ * Animals and groups that have left the farm.
+ *
+ * Inventory is present tense — a species with nothing left stops appearing
+ * there, because a pig icon over "0 animals" tells someone they have pigs
+ * when they have none. This is where those records go instead: browsable by
+ * the year they left, which is also the shape a season summary wants.
+ *
+ * Dated by the sale or harvest that ended it where there is one, falling
+ * back to updated_at. That fallback is not ideal — editing an old record
+ * moves its updated_at, and closing out as died or culled writes no log at
+ * all to date from — but it is the only timestamp those paths leave behind,
+ * and being a year out on a culled animal beats omitting it.
+ *
+ * Excludes group members (reached through their group, and archived with it,
+ * so counting both would double every bird in a flock) and the external
+ * sire/dam stubs that only exist to be pointed at from a Bloodline field.
+ */
+export async function closedOutStock(): Promise<ClosedOutAsset[]> {
+  const pg = await db()
+  const { rows } = await pg.query<{
+    id: string; name: string; species: string | null
+    outcome: string | null; left_at: string; income: number
+  }>(
+    `select a.id, a.name,
+            a.attributes->>'species' as species,
+            a.terminal_event as outcome,
+            coalesce(
+              (select max(l.timestamp) from log_asset la
+                 join log l on l.id = la.log_id and l.deleted_at is null
+                where la.asset_id = a.id and la.role = 'subject'
+                  and l.type in ('sale', 'harvest')),
+              a.updated_at) as left_at,
+            (select coalesce(sum(q.value), 0) from log_asset la
+               join log l on l.id = la.log_id
+                    and l.type = 'sale' and l.deleted_at is null
+               join quantity q on q.log_id = l.id
+                    and q.measure = 'price' and q.deleted_at is null
+              where la.asset_id = a.id and la.role = 'subject') as income
+       from asset a
+      where a.type in ('animal', 'group')
+        and a.status = 'archived'
+        and a.deleted_at is null
+        and a.parent_id is null
+        and a.attributes->>'external' is null
+      order by left_at desc`,
+  )
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    species: r.species,
+    outcome: r.outcome,
+    leftAt: r.left_at,
+    income: Number(r.income) || 0,
+  }))
+}
