@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
   createAsset, createGroupWithMembers, createLog, createPlanting, findOrCreateExternalParent,
@@ -399,6 +400,7 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
     }
     onDone()
   }
+  const { run, busy, error } = useSave(save)
 
   return (
     <Sheet title="Add" onClose={onClose}>
@@ -605,11 +607,12 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
 
       <button
         className="primary"
-        disabled={!type || !finalName || (isPlanting && !crop)}
-        onClick={save}
+        disabled={busy || !type || !finalName || (isPlanting && !crop)}
+        onClick={run}
       >
-        Save
+        {busy ? 'Saving…' : 'Save'}
       </button>
+      {error && <p className="error">{error}</p>}
     </Sheet>
   )
 }

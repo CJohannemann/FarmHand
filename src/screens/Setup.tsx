@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
   createAsset, createGroupWithMembers, createPlanting, createTerm, getFarmName,
@@ -45,6 +46,7 @@ function NameStep({ onNext }: { onNext: () => void }) {
     if (name.trim()) await renameFarm(name.trim())
     onNext()
   }
+  const { run, busy, error } = useSave(save)
 
   return (
     <>
@@ -57,14 +59,15 @@ function NameStep({ onNext }: { onNext: () => void }) {
       <label className="field">
         <span>What's the name of your farm?</span>
         <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') save() }}
+          onKeyDown={(e) => { if (e.key === 'Enter') run() }}
           placeholder="Sonny Side Acres" />
         <small className="hint">You can change this whenever you like.</small>
       </label>
 
-      <button className="primary" onClick={save}>
-        {name.trim() ? 'Next' : 'Skip for now'}
+      <button className="primary" disabled={busy} onClick={run}>
+        {busy ? 'Saving…' : name.trim() ? 'Next' : 'Skip for now'}
       </button>
+      {error && <p className="error">{error}</p>}
     </>
   )
 }
@@ -655,6 +658,7 @@ export function FarmName() {
     setEditing(false)
     reload()
   }
+  const { run, busy, error } = useSave(save)
 
   return (
     <>
@@ -664,11 +668,12 @@ export function FarmName() {
           <label className="field">
             <span>What do you call it?</span>
             <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') save() }} />
+              onKeyDown={(e) => { if (e.key === 'Enter') run() }} />
           </label>
-          <button className="primary" disabled={!name.trim()} onClick={save}>
-            Save
+          <button className="primary" disabled={busy || !name.trim()} onClick={run}>
+            {busy ? 'Saving…' : 'Save'}
           </button>
+          {error && <p className="error">{error}</p>}
         </Sheet>
       )}
     </>

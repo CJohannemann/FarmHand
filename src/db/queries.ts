@@ -471,6 +471,8 @@ export async function logsForAsset(assetId: string): Promise<AssetEvent[]> {
 export interface CostSummary {
   purchaseCost: number
   inputCost: number
+  /** What it sold for, if it has been sold. Zero when it has not. */
+  saleIncome: number
   outputs: { name: string; amount: number | null; unit: string | null }[]
   outputAmount: number
   costPerUnit: number | null
@@ -563,8 +565,23 @@ export async function assetCosts(assetId: string): Promise<CostSummary> {
     [assetId],
   )
 
+  // The other half of the ledger. Same shape as the purchase query above,
+  // reading a sale log rather than a purchase one — sellAsset() writes the
+  // price into the identical measure so nothing here needs a special case.
+  const sale = await pg.query<{ sale_income: number }>(
+    `select coalesce(sum(q.value), 0) as sale_income
+       from log_asset la
+       join log sl on sl.id = la.log_id
+            and sl.type = 'sale' and sl.deleted_at is null
+       join quantity q on q.log_id = sl.id
+            and q.deleted_at is null and q.measure = 'price'
+      where la.asset_id = $1 and la.role = 'subject'`,
+    [assetId],
+  )
+
   const purchaseCost = purchase.rows[0]?.purchase_cost ?? 0
   const inputCost = cost.rows[0]?.input_cost ?? 0
+  const saleIncome = sale.rows[0]?.sale_income ?? 0
   const outputs = outs.rows
   const outputAmount = outputs.reduce((s, o) => s + (o.amount ?? 0), 0)
   const unit = outputs.find((o) => o.unit)?.unit ?? null
@@ -572,6 +589,7 @@ export async function assetCosts(assetId: string): Promise<CostSummary> {
   return {
     purchaseCost,
     inputCost,
+    saleIncome,
     outputs,
     outputAmount,
     unit,
@@ -1104,4 +1122,39 @@ export async function deleteReceipt(id: string): Promise<void> {
   await pg.query(
     `update receipt set deleted_at = $2, updated_at = $2 where id = $1`, [id, now],
   )
+}
+
+/**
+ * Sell an animal, a group or a lot: archive it, and record what it fetched.
+ *
+ * Until this existed the app could tell you everything a pig cost and
+ * nothing about what it earned, so "did we make money on those pigs?" — the
+ * question a farm actually asks — had no answer anywhere in the data. The
+ * money is a `sale` log with a price quantity, deliberately the same shape a
+ * purchase uses, so anything that already understands prices can read it
+ * without a special case.
+ *
+ * Price is optional. A closed-out animal with the amount left blank is still
+ * a truthful record of it leaving; refusing to archive without a number
+ * would just push people to type a fake one.
+ */
+export async function sellAsset(input: {
+  assetId: string
+  price?: number
+  buyer?: string
+  notes?: string
+}): Promise<void> {
+  const name = (await getAsset(input.assetId))?.name ?? 'stock'
+  await createLog({
+    type: 'sale',
+    name: `Sold ${name}`,
+    notes: input.notes,
+    assets: [{ id: input.assetId, role: 'subject' }],
+    // Buyer rides in the price row's label, the same place createPurchase
+    // puts a supplier — one column, both directions of a transaction.
+    quantities: input.price != null && input.price >= 0
+      ? [{ measure: 'price', value: input.price, unit: 'USD', label: input.buyer }]
+      : [],
+  })
+  await archiveAsset(input.assetId, 'sold')
 }

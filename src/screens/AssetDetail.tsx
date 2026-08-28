@@ -1,8 +1,10 @@
 import { useState, type ReactNode } from 'react'
+import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
   archiveAsset, assetCosts, childAssets, createAsset, createHarvest, createLog,
-  createPurchase, getAsset, listTerms, logsForAsset, lotBalances, offspringOf, updateAsset,
+  createPurchase, getAsset, listTerms, logsForAsset, lotBalances, offspringOf, sellAsset,
+  updateAsset,
   weightHistory, type AssetEvent,
 } from '../db/queries'
 import type { Asset } from '../db/types'
@@ -78,7 +80,8 @@ export function AssetDetail({
   // the farm, cost nothing) is a real recorded fact, not the absence of
   // one, and a plain amount check can't tell those apart.
   const hasPurchase = (events.data ?? []).some((e) => e.type === 'purchase')
-  const showCosts = !!c && (hasPurchase || c.inputCost > 0 || c.outputs.length > 0)
+  const showCosts = !!c && (hasPurchase || c.inputCost > 0 || c.outputs.length > 0
+    || c.saleIncome > 0)
   const showBloodline = asset.type === 'animal' && (
     sireId || damId || !!asset.attributes?.sireName || !!asset.attributes?.damName
   )
@@ -217,6 +220,16 @@ export function AssetDetail({
             {c!.costPerUnit != null && (
               <Row strong label={`Cost per ${c!.unit ?? 'unit'}`}
                 value={formatMoney(c!.costPerUnit)} />
+            )}
+            {/* Only once it has actually sold. The margin is the whole point
+                of recording the price — "what did this pig cost" was
+                answerable before, "did we make anything on it" was not. */}
+            {c!.saleIncome > 0 && (
+              <>
+                <Row label="Sold for" value={formatMoney(c!.saleIncome)} />
+                <Row strong label="Margin"
+                  value={formatMoney(c!.saleIncome - c!.purchaseCost - c!.inputCost)} />
+              </>
             )}
           </div>
           {c!.costPerUnit == null && (c!.purchaseCost > 0 || c!.inputCost > 0) && (
@@ -386,6 +399,7 @@ function HarvestForm({ asset, endsSource, onDone, onClose }: {
     })
     onDone()
   }
+  const { run, busy, error } = useSave(save)
 
   return (
     <Sheet
@@ -427,8 +441,9 @@ function HarvestForm({ asset, endsSource, onDone, onClose }: {
           </select>
         </label>
       </div>
-      <button className="primary" disabled={!name.trim() || !(Number(amount) > 0)}
-        onClick={save}>Save</button>
+      <button className="primary" disabled={busy || !name.trim() || !(Number(amount) > 0)}
+        onClick={run}>{busy ? "Saving…" : "Save"}</button>
+      {error && <p className="error">{error}</p>}
     </Sheet>
   )
 }
@@ -451,6 +466,10 @@ function CloseOutForm({ asset, producible, onDone, onClose }: {
   const [material, setMaterial] = useState(guess.material)
   const [unit, setUnit] = useState(guess.unit)
   const [amount, setAmount] = useState('')
+  // Selling was the half of the ledger the app never recorded: it could say
+  // what a pig cost and nothing about what it fetched.
+  const [price, setPrice] = useState('')
+  const [buyer, setBuyer] = useState('')
   const { data: materials } = useAsync(() => listTerms('material'), [])
   const { data: units } = useAsync(() => listTerms('unit'), [])
 
@@ -460,11 +479,18 @@ function CloseOutForm({ asset, producible, onDone, onClose }: {
         sourceId: asset.id, outputName: name.trim(),
         material, amount: Number(amount), unit, endsSource: true,
       })
+    } else if (reason === 'sold') {
+      await sellAsset({
+        assetId: asset.id,
+        price: hasNumericValue(price) ? Number(price) : undefined,
+        buyer: buyer.trim() || undefined,
+      })
     } else {
       await archiveAsset(asset.id, reason)
     }
     onDone()
   }
+  const { run, busy, error } = useSave(save)
 
   return (
     <Sheet title={`Close out ${asset.name}`} onClose={onClose}>
@@ -477,6 +503,28 @@ function CloseOutForm({ asset, producible, onDone, onClose }: {
           <option value="processed">Processed (for meat)</option>
         </select>
       </label>
+
+      {reason === 'sold' && (
+        <>
+          <label className="field">
+            <span>What did you get for it? ($)</span>
+            <input type="number" inputMode="decimal" min="0" value={price}
+              onChange={onNumericChange(setPrice)} onWheel={ignoreScrollOnNumberInput}
+              onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="450" />
+            {/* Optional on purpose: an animal that left is a true record
+                whether or not the cheque has been worked out yet, and
+                demanding a number here just gets a made-up one. */}
+            <small className="hint">
+              Leave blank if you don't know yet — you can add it later.
+            </small>
+          </label>
+          <label className="field">
+            <span>Buyer (optional)</span>
+            <input value={buyer} onChange={(e) => setBuyer(e.target.value)}
+              placeholder="Sale barn" />
+          </label>
+        </>
+      )}
 
       {reason === 'processed' && (
         <>
@@ -514,10 +562,11 @@ function CloseOutForm({ asset, producible, onDone, onClose }: {
       )}
 
       <button className="primary"
-        disabled={reason === 'processed' && (!name.trim() || !(Number(amount) > 0))}
-        onClick={save}>
-        Save
+        disabled={busy || (reason === 'processed' && (!name.trim() || !(Number(amount) > 0)))}
+        onClick={run}>
+        {busy ? 'Saving…' : 'Save'}
       </button>
+      {error && <p className="error">{error}</p>}
     </Sheet>
   )
 }
@@ -575,6 +624,7 @@ function InputForm({
     })
     onDone()
   }
+  const { run, busy, error } = useSave(save)
 
   return (
     <Sheet title={title} onClose={onClose}>
@@ -616,9 +666,10 @@ function InputForm({
         <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)}
           placeholder={notesPlaceholder} />
       </label>
-      <button className="primary" disabled={!kind} onClick={save}>
-        Save
+      <button className="primary" disabled={busy || !kind} onClick={run}>
+        {busy ? "Saving…" : "Save"}
       </button>
+      {error && <p className="error">{error}</p>}
     </Sheet>
   )
 }
@@ -652,6 +703,7 @@ function RetireForm({ asset, onDone, onClose }: {
     await archiveAsset(asset.id, reason)
     onDone()
   }
+  const { run, busy, error } = useSave(save)
 
   return (
     <Sheet title={`Retire ${asset.name}`} onClose={onClose}>
@@ -663,7 +715,8 @@ function RetireForm({ asset, onDone, onClose }: {
           <option value="scrapped">Scrapped</option>
         </select>
       </label>
-      <button className="primary" onClick={save}>Save</button>
+      <button className="primary" disabled={busy} onClick={run}>{busy ? "Saving…" : "Save"}</button>
+      {error && <p className="error">{error}</p>}
     </Sheet>
   )
 }
@@ -877,6 +930,7 @@ function WeightForm({ asset, onDone, onClose }: {
     })
     onDone()
   }
+  const { run, busy, error } = useSave(save)
 
   return (
     <Sheet title={`Weigh ${asset.name}`} onClose={onClose}>
@@ -890,7 +944,8 @@ function WeightForm({ asset, onDone, onClose }: {
         <span>When</span>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       </label>
-      <button className="primary" disabled={!(n > 0)} onClick={save}>Save</button>
+      <button className="primary" disabled={busy || !(n > 0)} onClick={run}>{busy ? "Saving…" : "Save"}</button>
+      {error && <p className="error">{error}</p>}
     </Sheet>
   )
 }

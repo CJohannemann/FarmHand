@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
   createLog, createPurchase, listAssets, listTerms, lotBalances, planTask,
@@ -124,6 +125,7 @@ function ProduceForm({ spec, onDone, onClose }: FormProps & { spec: HarvestSpec 
     })
     onDone()
   }
+  const { run, busy, error } = useSave(save)
 
   return (
     <Sheet title={spec.title} onClose={onClose}>
@@ -139,7 +141,8 @@ function ProduceForm({ spec, onDone, onClose }: FormProps & { spec: HarvestSpec 
       </label>
       <AssetSelect value={asset} onChange={setAsset} types={spec.from} producing={producing}
         label="Where from? (optional)" />
-      <button className="primary" disabled={!(n > 0)} onClick={save}>Save</button>
+      <button className="primary" disabled={busy || !(n > 0)} onClick={run}>{busy ? "Saving…" : "Save"}</button>
+      {error && <p className="error">{error}</p>}
     </Sheet>
   )
 }
@@ -174,6 +177,7 @@ function FeedForm({ onDone, onClose }: FormProps) {
     })
     onDone()
   }
+  const { run, busy, error } = useSave(save)
 
   return (
     <Sheet title="Feeding" onClose={onClose}>
@@ -192,7 +196,8 @@ function FeedForm({ onDone, onClose }: FormProps) {
           </small>
         )}
       </label>
-      <button className="primary" disabled={!subject} onClick={save}>Save</button>
+      <button className="primary" disabled={busy || !subject} onClick={run}>{busy ? "Saving…" : "Save"}</button>
+      {error && <p className="error">{error}</p>}
     </Sheet>
   )
 }
@@ -210,6 +215,7 @@ function NoteForm({ onDone, onClose }: FormProps) {
     })
     onDone()
   }
+  const { run, busy, error } = useSave(save)
 
   return (
     <Sheet title="Note" onClose={onClose}>
@@ -220,7 +226,8 @@ function NoteForm({ onDone, onClose }: FormProps) {
           placeholder="Third calf looks off — watching her." />
       </label>
       <AssetSelect value={asset} onChange={setAsset} label="About what? (optional)" />
-      <button className="primary" disabled={!text.trim()} onClick={save}>Save</button>
+      <button className="primary" disabled={busy || !text.trim()} onClick={run}>{busy ? "Saving…" : "Save"}</button>
+      {error && <p className="error">{error}</p>}
     </Sheet>
   )
 }
@@ -248,6 +255,7 @@ function BuyForm({ onDone, onClose }: FormProps) {
     })
     onDone()
   }
+  const { run, busy, error } = useSave(save)
 
   return (
     <Sheet title="Bought something" onClose={onClose}>
@@ -292,9 +300,10 @@ function BuyForm({ onDone, onClose }: FormProps) {
           placeholder="Co-op" />
       </label>
       <ReceiptCapture onChange={setReceipt} />
-      <button className="primary" disabled={!(Number(cost) > 0)} onClick={save}>
-        Save
+      <button className="primary" disabled={busy || !(Number(cost) > 0)} onClick={run}>
+        {busy ? "Saving…" : "Save"}
       </button>
+      {error && <p className="error">{error}</p>}
     </Sheet>
   )
 }
@@ -318,6 +327,7 @@ function PlanForm({ onDone, onClose }: FormProps) {
     })
     onDone()
   }
+  const { run, busy, error } = useSave(save)
 
   return (
     <Sheet title="Plan something" onClose={onClose}>
@@ -339,7 +349,8 @@ function PlanForm({ onDone, onClose }: FormProps) {
         <span>Notes (optional)</span>
         <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </label>
-      <button className="primary" disabled={!name.trim()} onClick={save}>Save</button>
+      <button className="primary" disabled={busy || !name.trim()} onClick={run}>{busy ? "Saving…" : "Save"}</button>
+      {error && <p className="error">{error}</p>}
     </Sheet>
   )
 }

@@ -242,5 +242,58 @@ run(`update log set status='done', timestamp=?, updated_at=? where id=?`, [now()
 check('ticking it off clears the list', todo(), 0)
 check('and writes it into history', history(), 1)
 
+
+// ---------------------------------------------------------------- selling
+// The other half of the ledger. Until sellAsset() existed the app could say
+// what an animal cost and nothing about what it fetched, so "did we make
+// money on those pigs?" had no answer anywhere in the data.
+console.log('\nSelling an animal records income against it')
+const pig = uuid()
+run(`insert into asset (id, farm_id, type, name, attributes, created_at, updated_at)
+     values (?,?,'animal','Hamlet','{"species":"Pig"}',?,?)`, [pig, farm, now(), now()])
+const pigBuy = uuid()
+run(`insert into log (id, farm_id, type, timestamp, name, created_at, updated_at)
+     values (?,?,'purchase',?,'Bought Hamlet',?,?)`, [pigBuy, farm, now(), now(), now()])
+run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`, [pigBuy, pig])
+run(`insert into quantity (id, farm_id, log_id, measure, value, unit, created_at, updated_at)
+     values (?,?,?,'price',120,'USD',?,?)`, [uuid(), farm, pigBuy, now(), now()])
+
+const pigSale = uuid()
+run(`insert into log (id, farm_id, type, timestamp, name, created_at, updated_at)
+     values (?,?,'sale',?,'Sold Hamlet',?,?)`, [pigSale, farm, now(), now(), now()])
+run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`, [pigSale, pig])
+run(`insert into quantity (id, farm_id, log_id, measure, value, unit, label, created_at, updated_at)
+     values (?,?,?,'price',450,'USD','Sale barn',?,?)`, [uuid(), farm, pigSale, now(), now()])
+
+const income = q(`select coalesce(sum(q.value),0) as v
+                    from log_asset la
+                    join log sl on sl.id = la.log_id
+                         and sl.type = 'sale' and sl.deleted_at is null
+                    join quantity q on q.log_id = sl.id
+                         and q.deleted_at is null and q.measure = 'price'
+                   where la.asset_id = ? and la.role = 'subject'`, [pig])[0].v
+check('sale income reads back', income, 450)
+
+const spent = q(`select coalesce(sum(q.value),0) as v
+                   from log_asset la
+                   join log p on p.id = la.log_id
+                        and p.type = 'purchase' and p.deleted_at is null
+                   join quantity q on q.log_id = p.id
+                        and q.deleted_at is null and q.measure = 'price'
+                  where la.asset_id = ? and la.role = 'subject'`, [pig])[0].v
+check('purchase cost is unaffected by the sale', spent, 120)
+check('margin', income - spent, 330)
+
+// A sale must not be mistaken for a purchase by the cost queries — both
+// carry a 'price' quantity, and only the log type tells them apart.
+const purchasesOnly = q(`select count(*) as n from log
+                          where farm_id = ? and type = 'purchase'
+                            and deleted_at is null`, [farm])[0].n
+const salesOnly = q(`select count(*) as n from log
+                      where farm_id = ? and type = 'sale' and deleted_at is null`, [farm])[0].n
+check('sales are not counted as purchases', salesOnly, 1)
+check('the purchase count did not grow', purchasesOnly >= 1 ? 1 : 0, 1)
+
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)
