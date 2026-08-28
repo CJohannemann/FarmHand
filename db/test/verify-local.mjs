@@ -295,5 +295,34 @@ check('sales are not counted as purchases', salesOnly, 1)
 check('the purchase count did not grow', purchasesOnly >= 1 ? 1 : 0, 1)
 
 
+
+// ------------------------------------------------- on hand vs on record
+// A sold animal keeps its record forever — that is what a soft delete is
+// for — but it must stop being counted as stock. Reported from real use:
+// Inventory said "Pig · 2 animals" with one of them already sold.
+console.log('\nA closed-out animal leaves the count but stays on the record')
+const sow = uuid(), boar = uuid()
+run(`insert into asset (id, farm_id, type, name, attributes, created_at, updated_at)
+     values (?,?,'animal','Tag 1','{"species":"Pig"}',?,?)`, [sow, farm, now(), now()])
+run(`insert into asset (id, farm_id, type, name, attributes, created_at, updated_at)
+     values (?,?,'animal','Tag 2','{"species":"Pig"}',?,?)`, [boar, farm, now(), now()])
+
+// Scoped to the two created here: earlier blocks in this file already put
+// pigs in the fixture, and a count over every Pig would be asserting about
+// their setup rather than this behaviour.
+const pigsOnRecord = () => q(
+  `select id, status from asset where id in (?,?) and deleted_at is null`, [sow, boar])
+check('both pigs are on hand to begin with',
+  pigsOnRecord().filter((a) => a.status === 'active').length, 2)
+
+run(`update asset set status = 'archived', terminal_event = 'sold', updated_at = ?
+      where id = ?`, [now(), boar])
+
+const after = pigsOnRecord()
+check('one on hand after the sale', after.filter((a) => a.status === 'active').length, 1)
+check('but both still on the record', after.length, 2)
+check('and the sold one says why it left',
+  q(`select terminal_event as t from asset where id = ?`, [boar])[0].t === 'sold' ? 1 : 0, 1)
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)

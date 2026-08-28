@@ -166,7 +166,15 @@ export function Stock() {
         </button>
         <h1>{species ?? 'No species set'}</h1>
         <p className="tagline">
-          {formatQty(mine.length)} {mine.length === 1 ? 'animal' : 'animals'}
+          {(() => {
+            const live = mine.filter((a) => a.status === 'active').length
+            const gone = mine.length - live
+            // The list below still shows the closed-out ones, greyed, so the
+            // count has to say why it disagrees with the number of rows.
+            return gone > 0
+              ? `${formatQty(live)} on hand · ${formatQty(gone)} closed out`
+              : `${formatQty(live)} ${live === 1 ? 'animal' : 'animals'}`
+          })()}
         </p>
         <ul className="assetlist">{mine.map((a) => row(a, true))}</ul>
       </div>
@@ -254,8 +262,15 @@ export function Stock() {
                     onClick={() => setSpecies(species)}>
                     <span className="glyph">{speciesGlyph(species)}</span>
                     <span className="speciescard-name">{species ?? 'No species set'}</span>
+                    {/* On hand, not on record. A sold or butchered animal
+                        keeps its record forever — that is the point of a soft
+                        delete — but counting it here would tell someone they
+                        have two pigs when one is in the freezer. */}
                     <span className="speciescard-count">
-                      {formatQty(items.length)} {items.length === 1 ? 'animal' : 'animals'}
+                      {(() => {
+                        const live = items.filter((a) => a.status === 'active').length
+                        return `${formatQty(live)} ${live === 1 ? 'animal' : 'animals'}`
+                      })()}
                     </span>
                   </button>
                 ))}
