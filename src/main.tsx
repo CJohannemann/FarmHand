@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import './App.css'
 import App from './App.tsx'
+import { ErrorBoundary } from './screens/ErrorBoundary.tsx'
 import { applyThemePref } from './lib/theme.ts'
 
 // Stamp the theme before first paint so a saved preference doesn't flash the
@@ -11,6 +12,8 @@ applyThemePref()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 )

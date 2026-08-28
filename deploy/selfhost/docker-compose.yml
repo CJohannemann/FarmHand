@@ -70,10 +70,22 @@ services:
       GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
       GOTRUE_DISABLE_SIGNUP: "false"
       GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
-      # Live matches this: flipped to true in an earlier session so signup
-      # doesn't depend on mail. Revisit once SMTP is confirmed delivering —
-      # see deploy/selfhost/.env.example's SMTP section.
-      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      # Was "true" while SMTP was unproven, so signup didn't depend on mail.
+      # That is not safe to leave on for a public signup page: it hands out a
+      # working account for an address nobody has proven they own, so a
+      # typo'd email becomes an account a stranger can take over via password
+      # reset, and nothing stops a bot opening farms until the disk fills.
+      # SMTP is confirmed delivering (a real reset email arrived via Brevo),
+      # so this is now off and new accounts must confirm.
+      #
+      # BEFORE APPLYING THIS ON THE LIVE SERVER: the confirmation link points
+      # at the bare /verify path, which needs the `location = /verify` block
+      # in nginx-farmhand-api.conf. That block is in this repo but was never
+      # copied to the live nginx (certbot rewrote that file in place — see
+      # commit 55af2f5). Turn this off before /verify works and every
+      # confirmation email 404s, which breaks signup completely. Apply the
+      # nginx block first, send yourself a test signup, then restart auth.
+      GOTRUE_MAILER_AUTOCONFIRM: "false"
       GOTRUE_SMTP_HOST: ${SMTP_HOST}
       GOTRUE_SMTP_PORT: ${SMTP_PORT}
       GOTRUE_SMTP_USER: ${SMTP_USER}
