@@ -151,18 +151,27 @@ function Costs() {
         <>
           <div className="stat">
             {mode === 'in' ? (
-              <>
-                <span className="stat-value net-up">{formatMoney(active.earned)}</span>
-                <span className="stat-label">in over {rangeLabel(active.start, granularity)}</span>
-              </>
+              <span className="stat-value net-up">{formatMoney(active.earned)}</span>
             ) : (
-              <>
-                <span className="stat-value out">{formatMoney(active.spent)}</span>
-                <span className="stat-label">
-                  {anyIncome ? 'out over ' : ''}{rangeLabel(active.start, granularity)}
-                </span>
-              </>
+              <span className="stat-value out">{formatMoney(active.spent)}</span>
             )}
+            <span className="stat-label">
+              {anyIncome ? (mode === 'in' ? 'in over ' : 'out over ') : ''}
+              {rangeLabel(active.start, granularity)}
+              {/* The headline is one side of the period; this is what the two
+                  sides came to together, and it is the only place the answer
+                  appears now that the chart draws one direction at a time.
+                  Hidden until something has sold, because until then it is
+                  exactly minus the number directly above it. */}
+              {anyIncome && (
+                <>
+                  {' · net '}
+                  <strong className={active.net < 0 ? 'net-down' : 'net-up'}>
+                    {active.net < 0 ? '−' : '+'}{formatMoney(Math.abs(active.net))}
+                  </strong>
+                </>
+              )}
+            </span>
           </div>
 
           {/* Only worth offering once there are two directions to separate.

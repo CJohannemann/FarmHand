@@ -776,3 +776,7 @@ button.primary.danger:disabled { opacity: 0.4; }
    once there are two directions to tell apart, an identical green number for
    both says nothing. */
 .stat-value.out { color: #c0392b; }
+
+/* The net figure sits inside the label line, so it needs to read as a number
+   rather than inherit the muted grey around it. */
+.stat-label strong { font-variant-numeric: tabular-nums; }
