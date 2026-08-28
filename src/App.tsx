@@ -6,12 +6,14 @@ import { supabase, supabaseConfigured } from './lib/supabase'
 import { linkFarm, type FarmLink } from './lib/farm'
 import { redeemInvite } from './lib/members'
 import { inviteLinkCode } from './lib/inviteLink'
+import { navigate, useRoute } from './lib/route'
 import { db, getSyncState, setSyncState } from './db/client'
 import { consumeWipeIfPending, ensureCutover, type CutoverResult } from './db/cutover'
 import { Today } from './screens/Today'
 import { Stock } from './screens/Stock'
 import { Analytics } from './screens/Analytics'
 import { Landing } from './screens/Landing'
+import { NotFound } from './screens/NotFound'
 import { SignIn } from './screens/SignIn'
 import { ResetPassword } from './screens/ResetPassword'
 import { Setup, FarmName } from './screens/Setup'
@@ -38,13 +40,34 @@ const TABS: { id: Tab; label: string; glyph: string }[] = [
 export default function App() {
   const [tab, setTab] = useState<Tab>('today')
   const { session, checking, recovery, clearRecovery, linkError: badLink, clearLinkError } = useSession()
-  // A shared invite link or a dead password-reset link is a direct request
-  // to sign in, not an organic visit — skip the marketing page for those.
-  const [showAuth, setShowAuth] = useState(() => Boolean(inviteLinkCode))
+  const route = useRoute()
   const [link, setLink] = useState<FarmLink | null>(null)
   const [linkError, setLinkError] = useState<string | null>(null)
 
   const ready = useAsync(async () => { await consumeWipeIfPending(); await db(); return true }, [])
+
+  /**
+   * The three redirects the routes can't express on their own. Kept in an
+   * effect rather than a navigate() mid-render, since changing history
+   * while React is rendering is a side effect during a phase that is
+   * supposed to be pure — and `replace` throughout, so none of these
+   * automatic corrections land in history for the back button to walk
+   * into and be bounced straight back out of.
+   *
+   * A shared invite link or a dead password-reset link is a direct request
+   * to deal with an account, not an organic visit, so both skip the
+   * marketing page the way they did before there were URLs to skip it with.
+   */
+  useEffect(() => {
+    if (checking || recovery || !supabaseConfigured) return
+    if (session && (route === '/login' || route === '/signup')) {
+      navigate('/app', { replace: true })
+    } else if (!session && route === '/app') {
+      navigate('/login', { replace: true })
+    } else if (!session && route === '/' && (inviteLinkCode || badLink)) {
+      navigate(inviteLinkCode ? '/signup' : '/login', { replace: true })
+    }
+  }, [route, session, checking, recovery, badLink])
 
   // A device still on the old (PGlite) local engine needs its outbox
   // drained before that database is thrown away — see db/cutover.ts. Needs
@@ -141,16 +164,39 @@ export default function App() {
   // signs the browser in as a side effect of proving the email is theirs,
   // but that shouldn't drop them straight into the app with the old
   // password's session still effectively "current".
-  if (recovery) return <ResetPassword onDone={clearRecovery} />
+  // A recovery link lands on '/' (SignIn's resetPasswordForEmail sends them
+  // to the origin), which is now the marketing page — so finishing the
+  // reset hands them to their farm rather than dropping them back on the
+  // pitch for a product they have just proved they own an account for.
+  if (recovery) {
+    return <ResetPassword onDone={() => { clearRecovery(); navigate('/app', { replace: true }) }} />
+  }
 
-  // A signed-out visitor has no local database to open yet, and the
-  // landing page doesn't need one — shown here, ahead of the ready checks
-  // below, so it isn't waiting on database setup meant for people who are
-  // already signed in. (db() itself still starts opening in the
-  // background on mount regardless — see the `ready` useAsync above — so
-  // it's typically already warm by the time someone actually signs in.)
-  if (supabaseConfigured && !session && !showAuth && !badLink)
-    return <Landing onSignIn={() => setShowAuth(true)} />
+  // Ahead of the landing page and the ready checks alike: an unrecognized
+  // URL is answerable without a session or a local database, and making a
+  // typo wait on database setup would be a slow way to say "no".
+  if (route === 'not-found') {
+    return <NotFound signedIn={Boolean(session)} onGo={(to) => navigate(to)} />
+  }
+
+  // '/' is the marketing page, for everyone — signed in or not. It is the
+  // public front door of a hosted product, so it can't be a screen someone
+  // loses access to by having an account; a signed-in reader gets the same
+  // page with its CTAs pointing at their farm instead of at a sign-up form.
+  //
+  // Ahead of the ready checks below because it needs no local database: a
+  // first-time visitor shouldn't wait on database setup meant for people
+  // who are already signed in. (db() still starts opening in the background
+  // on mount regardless — see the `ready` useAsync above — so it's
+  // typically already warm by the time someone actually signs in.)
+  if (supabaseConfigured && route === '/')
+    return (
+      <Landing
+        signedIn={Boolean(session)}
+        onSignIn={(mode) => navigate(mode === 'up' ? '/signup' : '/login')}
+        onOpenApp={() => navigate('/app')}
+      />
+    )
 
   if (ready.error) {
     return (
@@ -178,6 +224,12 @@ export default function App() {
         linkError={badLink}
         onDismissLinkError={clearLinkError}
         onInviteCode={(code) => { setSkipInvite(false); setPendingInvite(code) }}
+        initialMode={route === '/signup' ? 'up' : 'in'}
+        // Keeps the address bar honest when someone switches forms with the
+        // screen's own "No account yet?" link rather than by URL. 'forgot'
+        // has no route of its own — it's a step within signing in, not a
+        // place worth linking anyone to.
+        onModeChange={(mode) => navigate(mode === 'up' ? '/signup' : '/login', { replace: true })}
       />
     )
 

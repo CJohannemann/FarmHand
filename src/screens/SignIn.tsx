@@ -6,9 +6,13 @@ import { consumeRevokedFlag } from '../lib/revocation'
 
 type Mode = 'in' | 'up' | 'forgot'
 
-export function SignIn({ linkError, onDismissLinkError, onInviteCode }: {
+export function SignIn({ linkError, onDismissLinkError, onInviteCode, initialMode, onModeChange }: {
   linkError?: AuthLinkError | null
   onDismissLinkError?: () => void
+  /** Which form to open on, e.g. 'up' when arriving via a "create account" CTA. Defaults to 'in'. */
+  initialMode?: Mode
+  /** Fired when the reader switches forms from inside the screen, so the URL can follow. */
+  onModeChange?: (mode: Mode) => void
   /**
    * Fired with whatever's in the invite-code field right as a sign-in or
    * sign-up succeeds — App.tsx redeems it centrally (see its own comment
@@ -22,7 +26,7 @@ export function SignIn({ linkError, onDismissLinkError, onInviteCode }: {
 } = {}) {
   // A dead reset link lands here. Open on the form that fixes it rather than
   // making them find "Forgot your password?" again after being told to.
-  const [mode, setMode] = useState<Mode>(linkError ? 'forgot' : 'in')
+  const [mode, setMode] = useState<Mode>(linkError ? 'forgot' : initialMode ?? 'in')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   // Arriving via a farm owner's shared link pre-fills this and jumps
@@ -37,7 +41,9 @@ export function SignIn({ linkError, onDismissLinkError, onInviteCode }: {
   const [notice, setNotice] = useState<string | null>(null)
 
   const dismissLink = () => onDismissLinkError?.()
-  const switchTo = (m: Mode) => { setMode(m); setError(null); setNotice(null); dismissLink() }
+  const switchTo = (m: Mode) => {
+    setMode(m); setError(null); setNotice(null); dismissLink(); onModeChange?.(m)
+  }
   const showInviteField = mode === 'up' || inviteCode.trim().length > 0
 
   const submit = async (e: React.FormEvent) => {
