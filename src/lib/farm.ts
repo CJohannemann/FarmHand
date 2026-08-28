@@ -21,9 +21,24 @@ export async function linkFarm(): Promise<FarmLink> {
   const localId = await getFarmId()
   const localName = await getFarmName()
 
+  // farm_member is keyed (farm_id, user_id) — one account can belong to
+  // several farms, and does in practice: signing up creates an owned farm
+  // (create_farm, for anyone with no membership yet), so someone who signs
+  // up before redeeming their invite ends up owning a stray empty farm as
+  // well as belonging to the one they were invited to.
+  //
+  // Which of those a bare `.limit(1)` returns is not defined — Postgres
+  // promises no ordering without an `order by`, so the answer can differ
+  // between two calls by the same account. That is a farm identity that
+  // flips: this device adopts one farm and pulls its records, a later boot
+  // picks the other, and linkFarm() then reports a conflict against data it
+  // put there itself. Oldest membership wins, farm_id breaking a tie, so
+  // every device of every member resolves to the same farm every time.
   const { data: memberships, error } = await supabase
     .from('farm_member')
     .select('farm_id')
+    .order('created_at', { ascending: true })
+    .order('farm_id', { ascending: true })
     .limit(1)
 
   // No network, or the tables are not there yet — carry on locally. Logged

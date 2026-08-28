@@ -1,4 +1,5 @@
 import { describeError, supabase } from './supabase'
+import { getFarmId } from '../db/queries'
 
 export type FarmRole = 'owner' | 'manager' | 'member' | 'viewer'
 
@@ -63,10 +64,37 @@ export async function updateMemberRole(userId: string, role: FarmRole): Promise<
  * revoked": only a definitive, successful query that comes back with zero
  * rows means access was actually removed. A local-only install (no
  * Supabase configured) has no farm membership concept to revoke.
+ *
+ * Asks about *this device's* farm specifically, not "any farm at all". One
+ * account can hold several memberships — farm_member is keyed
+ * (farm_id, user_id) — so an unfiltered "do I belong to something?" answers
+ * yes for someone who was removed from the farm on this device but still
+ * owns another. That device would go on syncing against a farm it no longer
+ * belongs to — RLS quietly returning nothing — without ever firing the
+ * sign-out and local wipe that being removed is supposed to trigger.
+ *
+ * Reading zero rows is what "removed" looks like: farm_member's select
+ * policy is `using (has_farm_access(farm_id))`, so a farm you are no longer
+ * in filters out silently rather than erroring. Every other outcome —
+ * a failed query, or a local farm id that can't even be read — returns null
+ * and changes nothing, because the caller's response to `false` is to wipe
+ * this device (see handleRevokedAccess in lib/revocation.ts). That
+ * asymmetry is deliberate: a missed revocation is caught on the next poll
+ * five minutes later, while a wrong one destroys local records.
  */
 export async function checkStillMember(): Promise<boolean | null> {
   if (!supabase) return true
-  const { data, error } = await supabase.from('farm_member').select('farm_id').limit(1)
+
+  let farmId: string
+  try {
+    farmId = await getFarmId()
+  } catch (e) {
+    console.error('checkStillMember: no local farm id —', (e as Error).message)
+    return null
+  }
+
+  const { data, error } = await supabase
+    .from('farm_member').select('farm_id').eq('farm_id', farmId).limit(1)
   if (error) { console.error('checkStillMember:', describeError(error)); return null }
   return (data?.length ?? 0) > 0
 }

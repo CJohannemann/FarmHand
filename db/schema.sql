@@ -342,6 +342,72 @@ $fn$;
 revoke all on function create_invite(farm_role) from public;
 grant execute on function create_invite(farm_role) to authenticated;
 
+-- One account, one farm. farm_member is keyed (farm_id, user_id), so
+-- nothing here stops an account belonging to several farms — and signing up
+-- before redeeming an invite does exactly that: create_farm() fires for
+-- anyone with no membership yet, giving them an empty farm of their own,
+-- and the invite they were actually sent then adds a second membership
+-- beside it. The client has to pick one of those to be (linkFarm(), in
+-- src/lib/farm.ts), and the stray one winning means someone stares at an
+-- empty farm while their real records sit in the farm they were invited to.
+-- redeem_invite() below retires it at the moment it becomes redundant. See
+-- migration 011 for the full account.
+
+-- Provably an artifact nobody ever used: no records of any kind, and one
+-- lone member. Custom vocabulary counts as use — adding a species is a real
+-- edit someone made on purpose. Deliberately conservative; every extra
+-- condition can only ever mean fewer farms are touched.
+create or replace function farm_is_unused(f uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $fn$
+  select not exists (select 1 from asset    where asset.farm_id    = f)
+     and not exists (select 1 from log      where log.farm_id      = f)
+     and not exists (select 1 from location where location.farm_id = f)
+     and not exists (select 1 from quantity where quantity.farm_id = f)
+     and not exists (select 1 from term     where term.farm_id     = f)
+     and (select count(*) from farm_member where farm_member.farm_id = f) = 1;
+$fn$;
+
+-- Drops one user's membership in their own unused farms, never touching
+-- `keep`. The membership row goes, not the farm row: a farm with no members
+-- is already unreachable (every RLS policy here is written against
+-- farm_member), so this is as final as a delete from the outside while
+-- staying one re-insertable row rather than a cascade across seven tables.
+-- The `exists` guard refuses to act unless the user is left holding a
+-- membership in a farm that is NOT itself unused, so someone whose farms
+-- are all empty keeps every one of them rather than being stranded.
+create or replace function retire_stray_farms(for_user uuid, keep uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $fn$
+declare
+  removed integer;
+begin
+  delete from farm_member m
+   where m.user_id = for_user
+     and m.farm_id <> keep
+     and m.role = 'owner'
+     and farm_is_unused(m.farm_id)
+     and exists (
+       select 1 from farm_member o
+        where o.user_id = for_user
+          and o.farm_id <> m.farm_id
+          and not farm_is_unused(o.farm_id)
+     );
+  get diagnostics removed = row_count;
+  return removed;
+end
+$fn$;
+
+revoke all on function farm_is_unused(uuid) from public;
+revoke all on function retire_stray_farms(uuid, uuid) from public;
+
 -- Anyone signed in can call this — the invite code itself is what's
 -- authorizing, not the caller's existing membership (they usually have
 -- none yet). The only way a client ever touches farm_invite; the table's
@@ -379,6 +445,11 @@ begin
 
   update farm_invite set redeemed_at = now(), redeemed_by = auth.uid()
    where farm_invite.id = inv.id;
+
+  -- Joining a real farm is the moment an auto-created one becomes
+  -- redundant. Last, so the join itself is durable even when this finds
+  -- nothing to clean up.
+  perform retire_stray_farms(auth.uid(), inv.farm_id);
 
   return inv.farm_id;
 end
