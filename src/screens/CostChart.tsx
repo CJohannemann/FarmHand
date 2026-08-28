@@ -31,18 +31,26 @@ const money = (n: number) => n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${Math.
  * spending — the thing you look at most — unreadable. It also left half the
  * chart empty for a farm that has never recorded a sale at all.
  */
+export type ChartMode = 'both' | 'in' | 'out'
+
 export function CostChart({
-  buckets, granularity, selected, onSelect,
+  buckets, granularity, selected, onSelect, mode = 'both',
 }: {
   buckets: Bucket[]
   granularity: Granularity
   selected: number
   onSelect: (i: number) => void
+  /** One direction at a time, for when the two are too lopsided to read together. */
+  mode?: ChartMode
 }) {
   if (buckets.length === 0) return null
 
-  const spentPeak = Math.max(...buckets.map((b) => b.spent), 0)
-  const earnedPeak = Math.max(...buckets.map((b) => b.earned), 0)
+  // Suppressing a side is just zeroing its peak: the split below already
+  // gives each side room in proportion to its own maximum, so a maximum of
+  // zero puts the line flush against the top or bottom edge and hands the
+  // whole height to the other direction. No separate single-series path.
+  const spentPeak = mode === 'in' ? 0 : Math.max(...buckets.map((b) => b.spent), 0)
+  const earnedPeak = mode === 'out' ? 0 : Math.max(...buckets.map((b) => b.earned), 0)
   // Rounded to clean ticks first, then divided — because earnH/earnMax and
   // spentH/spentMax both reduce to plotH/span, the two sides come out on an
   // identical scale despite having different amounts of room.
@@ -94,8 +102,8 @@ export function CostChart({
         {buckets.map((b, i) => {
           const bx = x(i)
           const on = i === selected
-          const inH = b.earned > 0 ? Math.max(barH(b.earned), 2) : 0
-          const outH = b.spent > 0 ? Math.max(barH(b.spent), 2) : 0
+          const inH = mode !== 'out' && b.earned > 0 ? Math.max(barH(b.earned), 2) : 0
+          const outH = mode !== 'in' && b.spent > 0 ? Math.max(barH(b.spent), 2) : 0
           return (
             // eslint-disable-next-line jsx-a11y/no-static-element-interactions
             <g key={i} onClick={() => onSelect(i)} style={{ cursor: 'pointer' }}>
@@ -123,7 +131,11 @@ export function CostChart({
       </svg>
 
       <p className="chart-tooltip">
-        {anyEarned ? (
+        {mode === 'out' ? (
+          <><strong>{formatMoney(active.spent)}</strong> out · {rangeLabel(active.start, granularity)}</>
+        ) : mode === 'in' ? (
+          <><strong>{formatMoney(active.earned)}</strong> in · {rangeLabel(active.start, granularity)}</>
+        ) : anyEarned ? (
           <>
             <span className="swatch-in" /> in <strong>{formatMoney(active.earned)}</strong>
             {'  '}

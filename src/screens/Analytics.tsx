@@ -6,7 +6,7 @@ import {
   BUCKET_COUNT, type Granularity,
 } from '../lib/periods'
 import { formatMoney } from '../lib/numeric'
-import { CostChart } from './CostChart'
+import { CostChart, type ChartMode } from './CostChart'
 import { Records } from './Records'
 import { Receipts } from './Receipts'
 import { PastStock } from './PastStock'
@@ -62,8 +62,19 @@ export function Analytics() {
   )
 }
 
+const MODES: { id: ChartMode; label: string }[] = [
+  { id: 'both', label: 'Both' },
+  { id: 'in', label: 'Money in' },
+  { id: 'out', label: 'Money out' },
+]
+
 function Costs() {
   const [granularity, setGranularity] = useState<Granularity>('month')
+  // Both directions on one chart is the useful default, but it stops being
+  // readable when they are wildly lopsided — a month of $23,000 spent
+  // against $500 earned leaves the income side two pixels tall. Split them
+  // and each gets the full height and its own scale.
+  const [mode, setMode] = useState<ChartMode>('both')
   const [selected, setSelected] = useState(BUCKET_COUNT.month - 1)
   const { data: entries, loading } = useAsync(() => costEntries(), [])
 
@@ -140,7 +151,17 @@ function Costs() {
       {hasAny && active && (
         <>
           <div className="stat">
-            {anyIncome ? (
+            {anyIncome && mode === 'out' ? (
+              <>
+                <span className="stat-value">{formatMoney(active.spent)}</span>
+                <span className="stat-label">out over {rangeLabel(active.start, granularity)}</span>
+              </>
+            ) : anyIncome && mode === 'in' ? (
+              <>
+                <span className="stat-value net-up">{formatMoney(active.earned)}</span>
+                <span className="stat-label">in over {rangeLabel(active.start, granularity)}</span>
+              </>
+            ) : anyIncome ? (
               <>
                 <span className={`stat-value ${active.net < 0 ? 'net-down' : 'net-up'}`}>
                   {active.net < 0 ? '−' : '+'}{formatMoney(Math.abs(active.net))}
@@ -157,8 +178,22 @@ function Costs() {
             )}
           </div>
 
+          {/* Only worth offering once there are two directions to separate.
+              Before a first sale this would be a control with one real
+              setting, on a screen that already carries two rows of chips. */}
+          {anyIncome && (
+            <div className="chipwrap">
+              {MODES.map((m) => (
+                <button key={m.id} className={mode === m.id ? 'chip on' : 'chip'}
+                  onClick={() => setMode(m.id)}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           <CostChart buckets={buckets} granularity={granularity}
-            selected={idx} onSelect={setSelected} />
+            selected={idx} onSelect={setSelected} mode={mode} />
 
           {anyIncome && earnedBy.length > 0 && (
             <>

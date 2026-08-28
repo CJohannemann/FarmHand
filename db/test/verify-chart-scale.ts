@@ -50,6 +50,35 @@ const noSales = share(410, 0)
 check('with no sales at all the zero line sits at the very top',
   noSales.px === 0, `${noSales.px}px`)
 
+console.log('\nOne direction at a time gets the whole height')
+// The mode toggle works by zeroing the suppressed side's peak, so the split
+// above hands the full height to the other one — there is no separate
+// single-series geometry that could drift out of step with this.
+const modeShare = (spent: number, earned: number, mode: 'both' | 'in' | 'out') => {
+  const sp = mode === 'in' ? 0 : spent
+  const ea = mode === 'out' ? 0 : earned
+  const sm = sp > 0 ? niceMax(sp * 1.15) : 0
+  const em = ea > 0 ? niceMax(ea * 1.15) : 0
+  const span = sm + em || 1
+  return { zeroFromTop: plotH * (em / span), span }
+}
+const outOnly = modeShare(23501.26, 500, 'out')
+check('money out puts the zero line at the very top', outOnly.zeroFromTop === 0)
+check('and scales to spending alone', outOnly.span === 30000, String(outOnly.span))
+
+const inOnly = modeShare(23501.26, 500, 'in')
+check('money in puts the zero line at the very bottom',
+  Math.abs(inOnly.zeroFromTop - plotH) < 0.01, String(inOnly.zeroFromTop))
+check('and scales to income alone', inOnly.span === 1000, String(inOnly.span))
+check('so $500 fills half its own chart instead of vanishing',
+  (500 / inOnly.span) >= 0.5, `${((500 / inOnly.span) * 100).toFixed(0)}%`)
+
+// The reason the toggle exists at all.
+const bothMode = modeShare(23501.26, 500, 'both')
+check('where in "both" that same $500 is a sliver',
+  (plotH * (500 / bothMode.span)) < 5,
+  `${(plotH * (500 / bothMode.span)).toFixed(1)}px`)
+
 console.log('\nBoth directions land in the right bucket')
 const now = new Date()
 const iso = (d: Date) => d.toISOString()
