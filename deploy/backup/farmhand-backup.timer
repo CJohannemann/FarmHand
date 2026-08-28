@@ -1,0 +1,14 @@
+[Unit]
+Description=Push a FarmHand backup nightly
+
+[Timer]
+OnCalendar=daily
+# Spread the load off the hour, and don't hammer a home connection at the
+# same moment every other cron job on the internet fires.
+RandomizedDelaySec=30m
+# If the VPS was off (or the home server unreachable) when this was due,
+# run at the next opportunity rather than silently skipping a night.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

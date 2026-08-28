@@ -1,0 +1,12 @@
+[Unit]
+Description=Sweep the FarmHand backup drop directory hourly
+
+[Timer]
+# Hourly, not daily: a dump sitting unverified in the drop directory has not
+# really been backed up yet, and this is also what notices the VPS has
+# stopped pushing at all.
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

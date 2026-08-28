@@ -1,0 +1,11 @@
+[Unit]
+Description=Verify, archive and prune FarmHand backups received from the VPS
+
+[Service]
+Type=oneshot
+# Deliberately NOT the account the VPS logs in as. That account can only
+# create files in the drop directory; this one owns the archive. Keeping
+# them separate is what stops a compromised VPS from erasing history.
+User=farmhand-archive
+WorkingDirectory=/srv/farmhand-backup
+ExecStart=/usr/bin/bash /srv/farmhand-backup/rotate-backups.sh
