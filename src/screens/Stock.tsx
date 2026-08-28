@@ -98,6 +98,11 @@ export function Stock() {
   // bucket of animals with no species recorded — so `undefined` means "no
   // card open" and the two cannot be confused.
   const [species, setSpecies] = useState<string | null | undefined>(undefined)
+  // Closed-out stock is hidden by default. A farm that sells a hundred hogs
+  // a year would otherwise have this screen buried under years of sold
+  // animals within months, with the ones it actually has lost among them —
+  // and the records are not deleted, just not the thing you came here for.
+  const [showClosed, setShowClosed] = useState(false)
   const { data, loading, reload } = useAsync(() => listAssets(), [])
   const assets = data ?? []
   // Lots come from lotBalances() rather than the asset list, because a lot
@@ -110,6 +115,31 @@ export function Stock() {
   // `underOwnHeading` rows already sit under a heading naming their species
   // or their kind — repeating it on every row is just noise, so an animal
   // shows its ear tag instead and a machine drops straight to make and model.
+  /**
+   * A list of stock with the closed-out part folded away behind a count.
+   * The reveal is a line of text rather than a filter control: it states
+   * how much is hidden, which is the only thing worth knowing before
+   * deciding whether to look.
+   */
+  const assetList = (items: Asset[], underOwnHeading = false) => {
+    const live = items.filter((a) => a.status === 'active')
+    const closed = items.filter((a) => a.status !== 'active')
+    const shown = showClosed ? [...live, ...closed] : live
+    return (
+      <>
+        <ul className="assetlist">{shown.map((a) => row(a, underOwnHeading))}</ul>
+        {closed.length > 0 && (
+          <button type="button" className="linkish showclosed"
+            onClick={() => setShowClosed(!showClosed)}>
+            {showClosed
+              ? `Hide ${formatQty(closed.length)} closed out`
+              : `Show ${formatQty(closed.length)} closed out`}
+          </button>
+        )}
+      </>
+    )
+  }
+
   const row = (a: Asset, underOwnHeading = false) => {
     const liveMembers = assets.filter(
       (m) => m.parent_id === a.id && m.status === 'active',
@@ -176,7 +206,7 @@ export function Stock() {
               : `${formatQty(live)} ${live === 1 ? 'animal' : 'animals'}`
           })()}
         </p>
-        <ul className="assetlist">{mine.map((a) => row(a, true))}</ul>
+        {assetList(mine, true)}
       </div>
     )
   }
@@ -291,7 +321,7 @@ export function Stock() {
                     <h2 className="section">
                       {heading === g.heading ? heading : pluralKind(heading)}
                     </h2>
-                    <ul className="assetlist">{items.map((a) => row(a, true))}</ul>
+                    {assetList(items, true)}
                   </div>
                 ))}
             </section>
@@ -301,7 +331,7 @@ export function Stock() {
         return (
           <section key={g.type}>
             <h2 className="section">{g.heading}</h2>
-            <ul className="assetlist">{mine.map((a) => row(a))}</ul>
+            {assetList(mine)}
           </section>
         )
       })}

@@ -716,3 +716,13 @@ button.primary.danger:disabled { opacity: 0.4; }
 }
 .swatch-in  { background: var(--accent); }
 .swatch-out { background: #c0392b; }
+
+/* Deliberately quiet and below the list: closed-out stock is history, not a
+   filter someone is meant to notice before reading what they actually have. */
+.showclosed {
+  display: block;
+  margin: 0.25rem 0 1rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.showclosed:hover { color: var(--fg); }
