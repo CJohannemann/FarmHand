@@ -1,4 +1,4 @@
-import { axisLabel, rangeLabel, type Bucket, type Granularity } from '../lib/periods'
+import { axisLabel, niceMax, rangeLabel, type Bucket, type Granularity } from '../lib/periods'
 import { formatMoney } from '../lib/numeric'
 
 const W = 320
@@ -8,14 +8,6 @@ const PAD_R = 8
 const PAD_T = 12
 const PAD_B = 30
 
-/** Rounds a max value up to a clean tick — 42 -> 50, 340 -> 400. */
-function niceMax(n: number) {
-  if (n <= 0) return 1
-  const mag = 10 ** Math.floor(Math.log10(n))
-  const norm = n / mag
-  const step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10
-  return step * mag
-}
 
 const money = (n: number) => n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${Math.round(n)}`
 
@@ -81,12 +73,20 @@ export function CostChart({
             floating above an empty half. */}
         {[earnedMax, 0, -spentMax].filter((t, i) => i === 1 || t !== 0).map((t, i) => {
           const ty = zeroY - (t / span) * plotH
+          // A side that got very little height puts its peak label right on
+          // top of the zero one — $500 of income against $23,000 of spending
+          // leaves them under three pixels apart, and both become unreadable.
+          // The rule still gets drawn; only the number is dropped, and the
+          // exact figures are in the line under the chart regardless.
+          const crowded = t !== 0 && Math.abs(ty - zeroY) < 14
           return (
             <g key={i}>
               <line x1={PAD_L} x2={W - PAD_R} y1={ty} y2={ty}
                 stroke="var(--line)" strokeWidth={t === 0 ? 1.5 : 1} />
-              <text x={PAD_L - 6} y={ty} textAnchor="end" dominantBaseline="middle"
-                className="chart-tick">{money(Math.abs(t))}</text>
+              {!crowded && (
+                <text x={PAD_L - 6} y={ty} textAnchor="end" dominantBaseline="middle"
+                  className="chart-tick">{money(Math.abs(t))}</text>
+              )}
             </g>
           )
         })}

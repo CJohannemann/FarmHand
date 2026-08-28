@@ -123,3 +123,20 @@ export function rangeLabel(start: Date, g: Granularity): string {
   const opts = { month: 'short', day: 'numeric', year: 'numeric' } as const
   return `${start.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(undefined, opts)}`
 }
+
+/**
+ * Rounds a max value up to a clean tick — 42 -> 50, 340 -> 400.
+ *
+ * The 1/2/3/5 rungs matter more than they look. With only 1/2/5, a real
+ * month of $23,501 rounded to $50,000 — more than double, so the tallest
+ * bar filled under half the space it had and the axis claimed a scale the
+ * farm never reached. 3 closes the widest gap on the ladder.
+ */
+export function niceMax(n: number) {
+  if (n <= 0) return 1
+  const mag = 10 ** Math.floor(Math.log10(n))
+  const norm = n / mag
+  const step = norm <= 1 ? 1 : norm <= 1.5 ? 1.5 : norm <= 2 ? 2
+    : norm <= 3 ? 3 : norm <= 5 ? 5 : 10
+  return step * mag
+}
