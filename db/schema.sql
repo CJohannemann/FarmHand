@@ -598,3 +598,52 @@ $fn$;
 
 revoke all on function list_farm_members() from public;
 grant execute on function list_farm_members() to authenticated;
+
+-- ------------------------------------------------------ leaving entirely --
+
+-- "What you log is yours, and it stays yours" — so there has to be a way out
+-- that doesn't involve emailing whoever runs the server. Cannot be done from
+-- the client: auth.users is not reachable under RLS, and giving the browser a
+-- service_role key to reach it would hand it every other farm's data too.
+--
+-- The refusal is the important part. Every table cascades from farm, so
+-- deleting a farm erases every asset, log, quantity and receipt on it. If the
+-- caller owns a farm other people still use, that would destroy THEIR records
+-- on one person's click. See migration 013.
+create or replace function delete_own_account()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $fn$
+declare
+  me uuid := auth.uid();
+  shared_farm uuid;
+begin
+  if me is null then
+    raise exception 'not authenticated';
+  end if;
+
+  select fm.farm_id into shared_farm
+    from farm_member fm
+   where fm.user_id = me
+     and fm.role = 'owner'
+     and (select count(*) from farm_member o where o.farm_id = fm.farm_id) > 1
+   limit 1;
+
+  if shared_farm is not null then
+    raise exception 'other people are still on a farm you own — remove them, or make someone else the owner, before deleting your account';
+  end if;
+
+  delete from farm f
+   where f.id in (select farm_id from farm_member where user_id = me)
+     and (select count(*) from farm_member o where o.farm_id = f.id) = 1;
+
+  delete from farm_member where user_id = me;
+
+  delete from auth.users where id = me;
+end
+$fn$;
+
+revoke all on function delete_own_account() from public;
+grant execute on function delete_own_account() to authenticated;

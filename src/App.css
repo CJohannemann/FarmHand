@@ -671,3 +671,20 @@ button.farmname {
   border: 1px solid var(--line);
   border-radius: 4px;
 }
+
+/* --------------------------------------------------------- danger zone */
+
+/* Reuses .error's #c0392b rather than introducing a second red — one
+   colour means "something is wrong or dangerous" throughout the app.
+   Deliberately not styled like the primary action it sits under: deleting a
+   farm's entire history should not look like the obvious next tap. */
+.danger-head {
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+  font-size: 1rem;
+  color: #c0392b;
+}
+button.linkish.danger { color: #c0392b; }
+button.primary.danger { background: #c0392b; border-color: #c0392b; }
+button.primary.danger:disabled { opacity: 0.4; }

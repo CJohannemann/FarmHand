@@ -20,7 +20,7 @@
     "verify:husbandry": "node --experimental-strip-types db/test/verify-husbandry.ts",
     "verify:write-signal": "node --experimental-strip-types db/test/verify-write-signal.ts",
     "verify:sync": "node db/test/verify-sync.mjs",
-    "verify": "npm run verify:db && npm run verify:sync && npm run verify:push-order && npm run verify:pull-order && npm run verify:weather && npm run verify:tiles && npm run verify:numeric && npm run verify:equipment && npm run verify:purchase-delete && npm run verify:invites && npm run verify:stray-farms && npm run verify:receipts && npm run verify:seed-local && npm run verify:sync-local && npm run verify:local && npm run verify:equipment-local && npm run verify:purchase-delete-local && npm run verify:roundtrip-local && npm run verify:cutover-push && npm run verify:json-columns && npm run verify:husbandry && npm run verify:write-signal",
+    "verify": "npm run verify:db && npm run verify:sync && npm run verify:push-order && npm run verify:pull-order && npm run verify:weather && npm run verify:tiles && npm run verify:numeric && npm run verify:equipment && npm run verify:purchase-delete && npm run verify:invites && npm run verify:stray-farms && npm run verify:receipts && npm run verify:account-deletion && npm run verify:seed-local && npm run verify:sync-local && npm run verify:local && npm run verify:equipment-local && npm run verify:purchase-delete-local && npm run verify:roundtrip-local && npm run verify:cutover-push && npm run verify:json-columns && npm run verify:husbandry && npm run verify:write-signal",
     "verify:push-order": "node --experimental-strip-types db/test/verify-push-order.ts",
     "verify:pull-order": "node --experimental-strip-types db/test/verify-pull-order.ts",
     "verify:weather": "node --experimental-strip-types db/test/verify-weather.ts",
@@ -30,7 +30,8 @@
     "verify:purchase-delete": "node --experimental-strip-types db/test/verify-purchase-delete.ts",
     "verify:invites": "node --experimental-strip-types db/test/verify-invites.ts",
     "verify:stray-farms": "node --experimental-strip-types db/test/verify-stray-farms.ts",
-    "verify:receipts": "node --experimental-sqlite --experimental-strip-types db/test/verify-receipts.ts"
+    "verify:receipts": "node --experimental-sqlite --experimental-strip-types db/test/verify-receipts.ts",
+    "verify:account-deletion": "node --experimental-strip-types db/test/verify-account-deletion.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",

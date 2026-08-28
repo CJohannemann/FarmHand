@@ -8,6 +8,8 @@ import {
 import { ago, lastSyncedAt, pendingCount, syncClockTime, syncNow } from '../lib/sync'
 import { getThemePref, setThemePref, type ThemePref } from '../lib/theme'
 import { FarmName } from './Setup'
+import { deleteAccount, exportEverything } from '../lib/account'
+import { downloadZip } from '../lib/receipts'
 
 const ROLE_LABEL: Record<FarmRole, string> = {
   owner: 'Owner', manager: 'Manager', member: 'Member', viewer: 'Viewer',
@@ -55,6 +57,8 @@ export function Settings() {
           onChanged={members.reload}
         />
       )}
+
+      <YourDataPanel email={session?.user.email ?? null} />
     </div>
   )
 }
@@ -265,6 +269,105 @@ function Roster({ members, you, isOwner, onChanged }: {
           </li>
         ))}
       </ul>
+    </>
+  )
+}
+
+/**
+ * The way out.
+ *
+ * "What you log is yours, and it stays yours" is a promise the landing page
+ * makes, and a promise nobody can check until they try to leave. Export sits
+ * directly above delete on purpose: the moment someone is considering
+ * deleting is exactly when they should be offered their records first.
+ */
+function YourDataPanel({ email }: { email: string | null }) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [note, setNote] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  const [typed, setTyped] = useState('')
+
+  const runExport = async () => {
+    setBusy('Preparing…'); setError(null); setNote(null)
+    try {
+      const out = await exportEverything((p) =>
+        setBusy(`${p.label}… (${p.done}/${p.total})`))
+      downloadZip(out.filename, out.bytes)
+      setNote(
+        `Saved ${out.filename}.` +
+        (out.missing ? ` ${out.missing} receipt image(s) couldn't be fetched — try again with a connection.` : ''),
+      )
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const runDelete = async () => {
+    setBusy('Deleting…'); setError(null); setNote(null)
+    try {
+      await deleteAccount()
+      // deleteAccount signs out, which unmounts this screen — nothing to
+      // show afterwards, and no state worth setting on a dead component.
+    } catch (e) {
+      setError((e as Error).message)
+      setBusy(null)
+    }
+  }
+
+  return (
+    <>
+      <h2 style={{ marginTop: '1.5rem' }}>Your data</h2>
+
+      <p className="hint">
+        Everything this farm holds — animals, logs, costs and receipt photos —
+        as a ZIP you can open in a spreadsheet or keep as a backup.
+      </p>
+      <button className="primary" onClick={runExport} disabled={Boolean(busy)}>
+        {busy?.startsWith('Deleting') ? 'Export everything' : busy ?? 'Export everything'}
+      </button>
+
+      {note && <p className="notice">{note}</p>}
+
+      <h3 className="danger-head">Delete your account</h3>
+      {!confirming ? (
+        <>
+          <p className="hint">
+            Permanently deletes your account. If you are the last person on this
+            farm, every record on it goes too — animals, logs, costs and
+            receipts. This cannot be undone.
+          </p>
+          <button className="linkish danger" onClick={() => { setConfirming(true); setError(null) }}>
+            Delete my account…
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="hint">
+            Export your records first if you want to keep them — after this
+            there is nothing to export from.
+          </p>
+          <label className="field">
+            {/* Typing the address is the point: a button alone is one
+                mis-tap away from destroying a farm's entire history. */}
+            <span>Type <code>{email ?? 'your email'}</code> to confirm</span>
+            <input value={typed} onChange={(e) => setTyped(e.target.value)}
+              autoComplete="off" placeholder={email ?? ''} />
+          </label>
+          <button className="primary danger"
+            disabled={Boolean(busy) || typed.trim() !== (email ?? '')}
+            onClick={runDelete}>
+            {busy ?? 'Delete my account permanently'}
+          </button>
+          <button className="linkish" onClick={() => { setConfirming(false); setTyped('') }}>
+            Cancel
+          </button>
+        </>
+      )}
+
+      {error && <p className="error">{error}</p>}
     </>
   )
 }
