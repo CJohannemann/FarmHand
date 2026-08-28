@@ -95,12 +95,22 @@ function Costs() {
   const idx = Math.min(selected, buckets.length - 1)
   const active = buckets[idx]
 
-  const breakdown = useMemo(
+  const spentBy = useMemo(
     () => (entries && active
-      ? materialBreakdown(entries, active.start, bucketEnd(active.start, granularity))
+      ? materialBreakdown(entries, active.start, bucketEnd(active.start, granularity), 'purchase')
       : []),
     [entries, active, granularity],
   )
+  const earnedBy = useMemo(
+    () => (entries && active
+      ? materialBreakdown(entries, active.start, bucketEnd(active.start, granularity), 'sale')
+      : []),
+    [entries, active, granularity],
+  )
+  // Only once something has actually sold. Until then this is a costs page,
+  // and dressing it up with an empty income column and a net that is just
+  // minus-the-total helps nobody.
+  const anyIncome = (entries ?? []).some((e) => e.kind === 'sale')
 
   const hasAny = (entries?.length ?? 0) > 0
 
@@ -126,19 +136,46 @@ function Costs() {
       {hasAny && active && (
         <>
           <div className="stat">
-            <span className="stat-value">{formatMoney(active.total)}</span>
-            <span className="stat-label">{rangeLabel(active.start, granularity)}</span>
+            {anyIncome ? (
+              <>
+                <span className={`stat-value ${active.net < 0 ? 'net-down' : 'net-up'}`}>
+                  {active.net < 0 ? '−' : '+'}{formatMoney(Math.abs(active.net))}
+                </span>
+                <span className="stat-label">
+                  {active.net < 0 ? 'down' : 'up'} over {rangeLabel(active.start, granularity)}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="stat-value">{formatMoney(active.total)}</span>
+                <span className="stat-label">{rangeLabel(active.start, granularity)}</span>
+              </>
+            )}
           </div>
 
           <CostChart buckets={buckets} granularity={granularity}
             selected={idx} onSelect={setSelected} />
 
-          <h2 className="section">By category</h2>
-          {breakdown.length === 0 ? (
+          {anyIncome && earnedBy.length > 0 && (
+            <>
+              <h2 className="section">Money in</h2>
+              <div className="costbox">
+                {earnedBy.map((b) => (
+                  <div className="costrow" key={b.material}>
+                    <span>{b.material}</span>
+                    <span className="net-up">{formatMoney(b.total)}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          <h2 className="section">{anyIncome ? 'Money out' : 'By category'}</h2>
+          {spentBy.length === 0 ? (
             <p className="hint">Nothing bought in this period.</p>
           ) : (
             <div className="costbox">
-              {breakdown.map((b) => (
+              {spentBy.map((b) => (
                 <div className="costrow" key={b.material}>
                   <span>{b.material}</span>
                   <span>{formatMoney(b.total)}</span>

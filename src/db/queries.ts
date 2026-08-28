@@ -597,10 +597,17 @@ export async function assetCosts(assetId: string): Promise<CostSummary> {
   }
 }
 
-export interface CostEntry { timestamp: string; value: number; material: string }
+/** `kind` is the log type: a purchase is money out, a sale is money in. */
+export interface CostEntry {
+  timestamp: string
+  value: number
+  material: string
+  kind: 'purchase' | 'sale'
+}
 
 /**
- * Every dollar the farm has spent, flat — the raw material for the
+ * Every dollar through the farm, in both directions, flat — the raw
+ * material for the
  * Analytics page. Bucketing by week/month/quarter/year happens in the
  * browser (see lib/periods.ts), not here: that math depends on the
  * viewer's local calendar, and a purchase's timestamp is the only fact
@@ -609,12 +616,18 @@ export interface CostEntry { timestamp: string; value: number; material: string 
 export async function costEntries(): Promise<CostEntry[]> {
   const pg = await db()
   const { rows } = await pg.query<CostEntry>(
+    // Both directions of the ledger in one pass. A purchase is money out, a
+    // sale is money in; they are the same shape (a price quantity hanging
+    // off a log with a subject asset) and differ only by the log type, so
+    // one query with a sign is honest where two queries and a merge would
+    // just be the same thing with more places to drift apart.
+    //
     // A lot (hay, feed, parts) carries its own material. An animal or
     // group has none — species is the closest thing it has to one, so a
     // bought cow lands under "Cattle" rather than a catch-all. Equipment
     // has neither, but 'kind' (Tractor/Vehicle/...) plays the same role, so
     // a tractor purchase doesn't drown out everything else under "Other".
-    `select l.timestamp, q.value as value,
+    `select l.timestamp, q.value as value, l.type as kind,
             coalesce(a.attributes->>'material', a.attributes->>'species',
                      a.attributes->>'kind', 'Other') as material
        from log l
@@ -622,7 +635,7 @@ export async function costEntries(): Promise<CostEntry[]> {
             and q.measure = 'price'
        left join log_asset la on la.log_id = l.id and la.role = 'subject'
        left join asset a on a.id = la.asset_id
-      where l.type = 'purchase' and l.deleted_at is null
+      where l.type in ('purchase', 'sale') and l.deleted_at is null
       order by l.timestamp asc`,
   )
   return rows

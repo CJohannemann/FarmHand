@@ -8,8 +8,29 @@
 
 export type Granularity = 'week' | 'month' | 'quarter' | 'year'
 
-export interface CostEntry { timestamp: string; value: number; material: string }
-export interface Bucket { start: Date; total: number }
+/** `kind` is the log type: a purchase is money out, a sale is money in. */
+export interface CostEntry {
+  timestamp: string
+  value: number
+  material: string
+  kind: 'purchase' | 'sale'
+}
+
+/**
+ * A period, both directions kept apart.
+ *
+ * `total` stays as the money-out figure it always was, so everything that
+ * already reads a Bucket keeps meaning what it meant; `spent` is its
+ * explicit name, `earned` the other half, and `net` what the farm actually
+ * did over that period.
+ */
+export interface Bucket {
+  start: Date
+  total: number
+  spent: number
+  earned: number
+  net: number
+}
 
 /** How many bars the chart shows per granularity — enough history, not a smear. */
 export const BUCKET_COUNT: Record<Granularity, number> = {
@@ -50,26 +71,31 @@ const dayKey = (d: Date) =>
 /** Continuous buckets ending at "now", oldest first, zero-filled for gaps. */
 export function bucketize(entries: CostEntry[], granularity: Granularity): Bucket[] {
   const n = BUCKET_COUNT[granularity]
-  const sums = new Map<string, number>()
+  const sums = new Map<string, { spent: number; earned: number }>()
   for (const e of entries) {
     const k = dayKey(bucketStart(new Date(e.timestamp), granularity))
-    sums.set(k, (sums.get(k) ?? 0) + e.value)
+    const cur = sums.get(k) ?? { spent: 0, earned: 0 }
+    if (e.kind === 'sale') cur.earned += e.value
+    else cur.spent += e.value
+    sums.set(k, cur)
   }
   const nowStart = bucketStart(new Date(), granularity)
   const out: Bucket[] = []
   for (let i = n - 1; i >= 0; i--) {
     const start = stepBack(nowStart, granularity, i)
-    out.push({ start, total: sums.get(dayKey(start)) ?? 0 })
+    const { spent, earned } = sums.get(dayKey(start)) ?? { spent: 0, earned: 0 }
+    out.push({ start, total: spent, spent, earned, net: earned - spent })
   }
   return out
 }
 
 /** Cost by material for entries falling inside [start, end], highest first. */
 export function materialBreakdown(
-  entries: CostEntry[], start: Date, end: Date,
+  entries: CostEntry[], start: Date, end: Date, kind: 'purchase' | 'sale' = 'purchase',
 ): { material: string; total: number }[] {
   const sums = new Map<string, number>()
   for (const e of entries) {
+    if (e.kind !== kind) continue
     const t = new Date(e.timestamp)
     if (t < start || t > end) continue
     sums.set(e.material, (sums.get(e.material) ?? 0) + e.value)

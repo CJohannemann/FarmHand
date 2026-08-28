@@ -688,3 +688,31 @@ button.farmname {
 button.linkish.danger { color: #c0392b; }
 button.primary.danger { background: #c0392b; border-color: #c0392b; }
 button.primary.danger:disabled { opacity: 0.4; }
+
+/* ------------------------------------------------- money in / money out */
+
+/* Green is already the app's accent, so income needs no new colour — it is
+   the one the whole product is built around. Spending borrows .error's
+   #c0392b: not because a purchase is a mistake, but because one red across
+   the app is easier to read than two nearly-identical ones. Both are muted
+   when their bar isn't the selected period, so the reading you tapped for
+   stands out from the eleven you didn't. */
+.bar-in  { fill: var(--accent); opacity: 0.35; }
+.bar-out { fill: #c0392b; opacity: 0.35; }
+.bar-in.on, .bar-out.on { opacity: 1; }
+
+.net-up   { color: var(--accent); }
+.net-down { color: #c0392b; }
+
+/* Small squares in the tooltip line, so "in" and "out" are readable without
+   a separate legend taking a row of its own on a phone. */
+.swatch-in, .swatch-out {
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 2px;
+  margin-right: 0.15em;
+  vertical-align: baseline;
+}
+.swatch-in  { background: var(--accent); }
+.swatch-out { background: #c0392b; }
