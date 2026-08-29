@@ -37,6 +37,31 @@ const GROUPS: { type: AssetType; heading: string; blurb: string }[] = [
 ]
 
 /**
+ * Stores' card icon — there's no barn emoji in Unicode, and every close
+ * substitute (a plain house, a storefront) read as generic rather than
+ * "this is where the farm keeps things." An original two-tone glyph, sized
+ * to sit inline with the emoji glyphs every other card uses.
+ */
+function BarnIcon() {
+  return (
+    <svg viewBox="0 0 48 48" width="1.3em" height="1.3em" aria-hidden="true">
+      <path
+        d="M6 20 C6 20 6 11 24 4 C42 11 42 20 42 20 L34 20 C34 20 32 13 24 9
+           C16 13 14 20 14 20 Z"
+        fill="#1c3f66"
+      />
+      <circle cx="24" cy="13.5" r="4.5" fill="#5aa9dd" stroke="#fff" strokeWidth="1.2" />
+      <path d="M24 9v9M19.5 13.5h9" stroke="#fff" strokeWidth="1" />
+      <rect x="8" y="20" width="32" height="20" fill="#1c3f66" />
+      <rect x="17" y="24" width="14" height="2.6" rx="1.2" fill="#5aa9dd" />
+      <rect x="18" y="26.6" width="12" height="13.4" fill="#5aa9dd" stroke="#fff" strokeWidth="1" />
+      <path d="M18 26.6l12 13.4M30 26.6l-12 13.4" stroke="#fff" strokeWidth="1" />
+      <rect x="4" y="40" width="40" height="3" rx="1.5" fill="#1c3f66" />
+    </svg>
+  )
+}
+
+/**
  * Section headings come from what a thing IS, not from the table it lives
  * in. "Lots" is a word out of the schema — nobody buys a lot, they buy hay,
  * and hay belongs under Feed. Same for a tractor, which belongs under
@@ -402,7 +427,7 @@ export function Stock() {
             return (
               <button key={g.type} type="button" className="speciescard"
                 onClick={() => setSection('lot')}>
-                <span className="glyph">🏬</span>
+                <span className="glyph"><BarnIcon /></span>
                 <span className="speciescard-name">{g.heading}</span>
                 <span className="speciescard-count">{formatQty(all.length)} on hand</span>
               </button>
