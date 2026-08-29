@@ -32,28 +32,22 @@ const CURRENT_IDB_NAME = 'farmhand'
 
 const WIPE_PENDING_KEY = 'farmhand.wipePending'
 
-/**
- * Marks this device's local data for deletion on its next boot — used when
- * a sync poll confirms the signed-in account no longer belongs to its farm
- * (see checkStillMember() in lib/members.ts and lib/revocation.ts). Only
- * sets flags here; the actual delete happens in consumeWipeIfPending(),
- * from a later page load. Deleting immediately would hit the same
- * permanently-blocked-delete problem this file already works around for
- * the old PGlite engine — a WASM database connection open in the same page
- * doing the deleting does not reliably release IndexedDB in time.
- *
- * Clearing ENGINE_KEY isn't about the engine choice (wa-sqlite stays
- * current) — it puts this device back in the same "nothing decided yet"
- * state a brand new install starts in, so the next boot's ensureCutover()
- * re-derives it cleanly rather than trusting a marker about a database
- * that's about to be wiped out from under it.
- */
-export function markWipePending(): void {
-  localStorage.setItem(WIPE_PENDING_KEY, '1')
-  localStorage.removeItem(ENGINE_KEY)
-}
 
-/** Call once, early in boot, before db() opens the local database. */
+/**
+ * Honours a wipe flag left by an older build, and nothing sets one any more.
+ *
+ * Wiping used to mean flagging here and deleting the whole IndexedDB
+ * database on the next boot. That delete blocks while any other tab has the
+ * app open, and this waited five seconds and then reported success anyway —
+ * so with a second tab open the flag was cleared, nothing was deleted, and
+ * a fresh signup on that device inherited every record. Deleting an account
+ * and clearing a revoked member both go through db/client.ts's
+ * resetLocalData() now, which drops the tables through the open connection
+ * and cannot be blocked.
+ *
+ * Kept because a device flagged by an older build is still carrying that
+ * flag, and this is what finally clears it.
+ */
 export async function consumeWipeIfPending(): Promise<void> {
   if (localStorage.getItem(WIPE_PENDING_KEY) !== '1') return
   try {

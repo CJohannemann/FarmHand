@@ -8,6 +8,8 @@ export { onLocalWrite } from './writeSignal'
 export interface DbHandle {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>
   exec(sql: string): Promise<void>
+  /** Drop everything and rebuild empty — see the worker's reset(). */
+  reset(): Promise<void>
 }
 
 let pending: Promise<DbHandle> | null = null
@@ -66,7 +68,7 @@ async function open(): Promise<DbHandle> {
     else call.resolve(result)
   })
 
-  function send(method: 'query' | 'exec', args: unknown[]): Promise<unknown> {
+  function send(method: 'query' | 'exec' | 'reset', args: unknown[]): Promise<unknown> {
     return new Promise((resolve, reject) => {
       const id = nextId++
       waiting.set(id, { resolve, reject })
@@ -92,6 +94,8 @@ async function open(): Promise<DbHandle> {
       return { rows: parseJsonColumns(result.rows) }
     },
     exec: (sql: string) => send('exec', [sql]) as Promise<void>,
+    /** Empty this device and rebuild it — see the worker's reset(). */
+    reset: () => send('reset', []) as Promise<void>,
   }
 }
 
@@ -106,6 +110,18 @@ export async function applying<T>(fn: () => Promise<T>): Promise<T> {
     endApplying()
     await pg.query(`update sync_control set applying = 0`)
   }
+}
+
+/**
+ * Throw away everything this device holds and start it over.
+ *
+ * Rebuilds the tables through the open connection rather than deleting the
+ * IndexedDB database, which cannot be done while any other tab has the app
+ * open — see the worker's reset() for what that cost.
+ */
+export async function resetLocalData(): Promise<void> {
+  const pg = await db()
+  await pg.reset()
 }
 
 export async function getSyncState(key: string): Promise<string | null> {

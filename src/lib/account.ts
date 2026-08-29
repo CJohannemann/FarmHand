@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 import { describeError } from './supabase'
 import { db } from '../db/client'
-import { markWipePending } from '../db/cutover'
+import { resetLocalData } from '../db/client'
 import { getFarmName } from '../db/queries'
 import { fetchReceiptData } from './receipts'
 import { csvField, makeZip, safeFileName, base64ToBytes } from './zip'
@@ -148,12 +148,16 @@ export async function deleteAccount(): Promise<void> {
   if (error) throw new Error(describeError(error))
 
   // Deleting the server copy is only half of it: this device still holds a
-  // full local database. Left alone it would sit there after sign-out, and
-  // the next sign-in on this browser would find a non-empty local farm and
-  // adopt it as a brand new one — resurrecting the records that were just
-  // deleted. markWipePending clears it on the next boot, which is the same
-  // path a revoked member takes (see db/cutover.ts for why the delete
-  // cannot happen in this page).
-  markWipePending()
+  // full local database, and the next sign-in would find that non-empty
+  // local farm and adopt it as a brand new one — resurrecting exactly what
+  // was just deleted.
+  //
+  // Done here and now rather than flagged for the next boot. The old path
+  // flagged it and deleted the whole IndexedDB database on reload, which
+  // blocks while any other tab has the app open and reported success on a
+  // five-second timeout regardless — so with a second tab open the flag was
+  // cleared, nothing was deleted, and a fresh signup inherited the lot.
+  // Dropping the tables goes through this connection and cannot be blocked.
+  await resetLocalData()
   await supabase.auth.signOut()
 }

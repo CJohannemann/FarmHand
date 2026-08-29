@@ -76,6 +76,39 @@ async function migrate(fresh: boolean): Promise<void> {
   )
 }
 
+/**
+ * Empty this device's database and rebuild it as if the app had never run
+ * here — used when an account is deleted, and when someone signs in on a
+ * device holding another account's records.
+ *
+ * Drops the tables and re-runs the schema rather than deleting the whole
+ * IndexedDB database. That distinction is the entire point: deleting the
+ * IndexedDB file needs every connection to it closed, so it BLOCKS while
+ * any other tab has the app open — and the old code treated a five-second
+ * timeout as success, cleared the "wipe me" flag, and left the records in
+ * place with nobody any the wiser. A farm reported exactly that: deleted
+ * the account, signed up fresh, and the new farm arrived carrying the old
+ * one's chickens. Dropping tables goes through this same connection and
+ * cannot be blocked by another tab.
+ */
+async function reset(): Promise<void> {
+  // Triggers first: dropping a table takes its triggers with it, but a
+  // trigger left behind referencing a dropped table is a landmine.
+  const triggers = await queryRaw(
+    `select name from sqlite_master where type = 'trigger'`,
+  )
+  for (const t of triggers.rows) await execRaw(`drop trigger if exists "${t.name}"`)
+
+  const { rows } = await queryRaw(
+    `select name from sqlite_master where type = 'table' and name not like 'sqlite_%'`,
+  )
+  // Foreign keys are declared but not enforced by default here, so the
+  // order tables go in does not matter.
+  for (const r of rows) await execRaw(`drop table if exists "${r.name}"`)
+
+  await migrate(true)
+}
+
 /** Null on a database predating this marker, which is a database needing the upgrade. */
 async function schemaVersion(): Promise<string | null> {
   try {
@@ -129,7 +162,7 @@ async function execRaw(sql: string): Promise<void> {
 
 // ------------------------------------------------------------------- RPC
 
-interface Request { id: number; method: 'query' | 'exec'; args: unknown[] }
+interface Request { id: number; method: 'query' | 'exec' | 'reset'; args: unknown[] }
 interface Response { id: number; result?: unknown; error?: string }
 
 const ready = open()
@@ -158,6 +191,9 @@ async function handle(id: number, method: Request['method'], args: unknown[]): P
         args[0] as string, args[1] as SQLiteCompatibleType[] | undefined,
       )
       result = await queryRaw(sql, params)
+    } else if (method === 'reset') {
+      await reset()
+      result = undefined
     } else {
       await execRaw(args[0] as string)
       result = undefined

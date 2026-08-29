@@ -1,5 +1,6 @@
 import { describeError, supabase } from './supabase'
 import { adoptFarmId, getFarmId, getFarmName } from '../db/queries'
+import { getSyncState, resetLocalData, setSyncState } from '../db/client'
 
 export type FarmLink =
   | { state: 'linked'; farmId: string; name: string }
@@ -15,6 +16,36 @@ export type FarmLink =
  * the farm already exists and adopts the remote id instead — safe only while
  * that device has no data of its own.
  */
+/**
+ * Which account this device's database belongs to.
+ *
+ * Without it a device is nobody's, and that is not harmless: linkFarm()
+ * below hands a brand-new account the local farm id through create_farm()'s
+ * `wanted_id`, so signing up on a device still holding someone else's
+ * records adopts them wholesale and syncs them up as the new farm's own.
+ * Reported exactly that way — an account deleted, a new one signed up, and
+ * the new farm arrived carrying the old one's chickens.
+ *
+ * It is also what stands between two people sharing a laptop and one of
+ * them pushing their farm into the other's account.
+ */
+const OWNER_KEY = 'ownerUserId'
+
+/**
+ * Wipe this device if its records belong to a different account, and record
+ * the current owner either way.
+ *
+ * Must run before anything reads a local farm id. A device with no owner
+ * recorded is left alone — it is either brand new, or it predates this
+ * check and belongs to whoever is signing in on it now.
+ */
+export async function claimDeviceFor(userId: string): Promise<void> {
+  const owner = await getSyncState(OWNER_KEY)
+  if (owner === userId) return
+  if (owner !== null) await resetLocalData()
+  await setSyncState(OWNER_KEY, userId)
+}
+
 export async function linkFarm(): Promise<FarmLink> {
   if (!supabase) return { state: 'offline' }
 

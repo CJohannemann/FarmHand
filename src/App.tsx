@@ -3,7 +3,7 @@ import { useAsync } from './lib/useAsync'
 import { useSession } from './lib/useSession'
 import { useSync } from './lib/useSync'
 import { supabase, supabaseConfigured } from './lib/supabase'
-import { linkFarm, type FarmLink } from './lib/farm'
+import { claimDeviceFor, linkFarm, type FarmLink } from './lib/farm'
 import { redeemInvite } from './lib/members'
 import { inviteLinkCode } from './lib/inviteLink'
 import { navigate, useRoute } from './lib/route'
@@ -126,10 +126,17 @@ export default function App() {
     if (!session || !ready.data || !cutoverDone) return
     if (pendingInvite && !skipInvite) return
     let live = true
-    linkFarm().then(
-      (l) => { if (live) setLink(l) },
-      (e: Error) => { if (live) setLinkError(e.message) },
-    )
+    // Before anything reads a local farm id: if this device still holds a
+    // different account's records, they are wiped here. Otherwise linkFarm()
+    // would hand them to whoever just signed in — create_farm() takes the
+    // local farm id as its wanted_id, so a fresh account adopts the old farm
+    // wholesale and pushes it up as its own.
+    claimDeviceFor(session.user.id)
+      .then(linkFarm)
+      .then(
+        (l) => { if (live) setLink(l) },
+        (e: Error) => { if (live) setLinkError(e.message) },
+      )
     return () => { live = false }
   }, [session, ready.data, cutoverDone, pendingInvite, skipInvite])
 
