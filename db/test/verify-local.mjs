@@ -492,57 +492,59 @@ const topLevel = q(`select name from asset
 check('all six show individually in Inventory, none nested', topLevel.length, 6)
 
 
-// ------------------------------------------- correcting an outside parent
-// A sire/dam typed by name becomes a hidden "external" stub whose sex is
-// inferred from the role it was typed into. Reported: Smokey entered as a
-// dam and Syrup as a sire, when Smokey is a boy and Syrup is a girl.
-// Retyping them the right way round used to change nothing, because the
-// stub is matched on name and species alone and was handed straight back.
-console.log('\nRetyping an outside parent the other way round corrects it')
-const outsider = (name, sex) => {
+// ------------------------------------------- outside parents by role
+// A sire/dam typed by name becomes a hidden "external" stub. Which role it
+// was typed into is part of what identifies it, not just the name.
+//
+// Reported: "N/A" entered as the dam never showed in the dam list, though
+// it showed for sire. One stub had been created for the sire, matched by
+// name alone, and handed back to the dam unchanged — still male, so the
+// dam picker never offered it.
+console.log('\nAn outside parent belongs to the role it was typed into')
+const findOrCreate = (name, role) => {
+  const sex = role === "sire" ? "Male" : "Female"
+  const found = q(`select id from asset
+     where type='animal' and status='active' and deleted_at is null
+       and name = ? and json_extract(attributes,'$.external') = 1
+       and json_extract(attributes,'$.species') = 'Pig'
+       and json_extract(attributes,'$.sex') = ?`, [name, sex])
+  if (found.length) return found[0].id
   const id = uuid()
   run(`insert into asset (id, farm_id, type, name, attributes, created_at, updated_at)
        values (?,?,'animal',?,?,?,?)`,
-    [id, farm, name, JSON.stringify({ species: 'Pig', external: true, sex }), now(), now()])
+    [id, farm, name, JSON.stringify({ species: "Pig", external: true, sex }), now(), now()])
   return id
 }
-// The mistake as made: Smokey typed as a dam, Syrup as a sire.
-const smokey = outsider('Smokey', 'Female')
-const syrup = outsider('Syrup', 'Male')
 
-// findOrCreateExternalParent(), as it now behaves: same stub, corrected sex.
-const findOrFix = (name, wantedSex) => {
-  const found = q(`select id, attributes from asset
-     where type='animal' and status='active' and deleted_at is null
-       and name = ? and json_extract(attributes,'$.external') = 1`, [name])
-  if (found.length === 0) return null
-  const attrs = JSON.parse(found[0].attributes)
-  if (attrs.sex !== wantedSex) {
-    attrs.sex = wantedSex
-    run(`update asset set attributes = ?, updated_at = ? where id = ?`,
-      [JSON.stringify(attrs), now(), found[0].id])
-  }
-  return found[0].id
-}
+const naSire = findOrCreate("N/A", "sire")
+const naDam = findOrCreate("N/A", "dam")
+check("a placeholder used in both roles gets a record for each",
+  naSire !== naDam ? 1 : 0, 1)
 const sexOf = (id) =>
   JSON.parse(q(`select attributes from asset where id = ?`, [id])[0].attributes).sex
+check("the sire one is male", sexOf(naSire) === "Male" ? 1 : 0, 1)
+check("the dam one is female", sexOf(naDam) === "Female" ? 1 : 0, 1)
+// The bug: the dam picker filters by sex, so a male-only "N/A" never
+// appeared there however many times it was typed.
+check("a dam-role record exists to be picked",
+  q(`select id from asset where name='N/A'
+       and json_extract(attributes,'$.sex')='Female'`).length, 1)
 
-check('Smokey went in as female', sexOf(smokey) === 'Female' ? 1 : 0, 1)
-check('Syrup went in as male', sexOf(syrup) === 'Male' ? 1 : 0, 1)
+// A real outside bull across several calves is still one record — the
+// reason these are kept rather than stored as loose text.
+check("the same sire typed twice is reused",
+  findOrCreate("Duke", "sire") === findOrCreate("Duke", "sire") ? 1 : 0, 1)
+check("only one Duke", q(`select id from asset where name='Duke'`).length, 1)
 
-// Now typed the right way round.
-check('the same Smokey record is reused, not duplicated',
-  findOrFix('Smokey', 'Male') === smokey ? 1 : 0, 1)
-check('and Syrup too', findOrFix('Syrup', 'Female') === syrup ? 1 : 0, 1)
-check('Smokey is a boy now', sexOf(smokey) === 'Male' ? 1 : 0, 1)
-check('Syrup is a girl now', sexOf(syrup) === 'Female' ? 1 : 0, 1)
-check('still only one of each',
-  q(`select id from asset where name in ('Smokey','Syrup')
-       and json_extract(attributes,'$.external') = 1`).length, 2)
-
-// Anything already pointing at them keeps pointing at them: the id never
-// changed, so a calf's bloodline does not need touching.
-check('the ids did not change', findOrFix('Smokey', 'Male') === smokey ? 1 : 0, 1)
+// Smokey entered as a dam by mistake: asking for him as a sire makes a
+// sire record rather than flipping the dam one, which would have taken him
+// out of the dam picker for anything still pointing at him.
+const smokeyDam = findOrCreate("Smokey", "dam")
+const smokeySire = findOrCreate("Smokey", "sire")
+check("a name in the wrong role does not mutate the old record",
+  sexOf(smokeyDam) === "Female" ? 1 : 0, 1)
+check("and gets its own record for the right role",
+  sexOf(smokeySire) === "Male" ? 1 : 0, 1)
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)

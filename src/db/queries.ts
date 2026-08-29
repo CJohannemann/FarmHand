@@ -98,31 +98,28 @@ export async function findOrCreateExternalParent(
   name: string, species: string, role: 'sire' | 'dam',
 ): Promise<string> {
   const trimmed = name.trim()
+  // A stub belongs to the role it was typed into, so the sex it was given
+  // is part of what identifies it — not just the name and species.
+  //
+  // Matching on name alone was wrong in both directions. Typing "N/A" as a
+  // sire and again as a dam found the first stub and reused it unchanged,
+  // so the name appeared in the sire picker and never in the dam one;
+  // making that case update the sex instead just moved the problem, since
+  // the same record cannot be male for one field and female for the other.
+  // Placeholder names — "N/A", "Unknown" — go in both slots often enough
+  // that this is the common case, not the odd one.
+  //
+  // A real outside bull used across a dozen calves still resolves to one
+  // record, which is the whole point of keeping these at all.
+  const sex = role === 'sire' ? 'Male' : 'Female'
   const all = await listAssets(['animal'])
   const existing = all.find((a) => a.status === 'active' && a.attributes?.external
-    && a.attributes?.species === species && a.name === trimmed)
+    && a.attributes?.species === species && a.name === trimmed
+    && a.attributes?.sex === sex)
+  if (existing) return existing.id
 
-  // A stub's sex is only ever inferred from the role it was first typed
-  // into, so typing the same name into the other role is someone correcting
-  // that inference — a boar entered as a dam by mistake, say. Reusing the
-  // stub as-is made the mistake permanent: the match is by name and species
-  // alone, so retyping "Smokey" as a sire found the female Smokey and
-  // handed it straight back, and the correction looked like it had been
-  // ignored. Reported exactly that way. Update it instead.
-  if (existing) {
-    const wanted = role === 'sire' ? 'Male' : 'Female'
-    if (existing.attributes?.sex !== wanted) {
-      await updateAsset(existing.id, {
-        attributes: { ...existing.attributes, sex: wanted },
-      })
-    }
-    return existing.id
-  }
-  // A generic Male/Female sex (GENERIC_SEX_TERMS, recognized by sexRole()
-  // regardless of species) so this stub is excluded from the *other*
-  // role's picker — otherwise a bull typed in as a sire once would also
-  // show up as a pickable dam later.
-  const sex = role === 'sire' ? 'Male' : 'Female'
+  // GENERIC_SEX_TERMS, recognized by sexRole() whatever the species, so a
+  // stub is only ever offered for the role it was made for.
   return createAsset({ type: 'animal', name: trimmed, attributes: { species, external: true, sex } })
 }
 
