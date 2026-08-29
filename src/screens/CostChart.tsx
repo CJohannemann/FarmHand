@@ -65,6 +65,7 @@ export function CostChart({
 
   const labelEvery = n <= 6 ? 1 : n <= 10 ? 2 : 3
   const active = buckets[selected]
+  const anyEarned = buckets.some((b) => b.earned > 0)
 
   return (
     <div className="costchart">
@@ -124,9 +125,26 @@ export function CostChart({
 
       {/* One direction, so no legend and no swatches — the chip above the
           chart already says which side is being read. */}
+      {/* The only reading of the selected period on the screen. There used
+          to be a large headline above the chart repeating this exact figure;
+          it was the same number twice, so it went and this line took over —
+          coloured to match its own bars, and carrying the net, which is the
+          one thing the headline said that this did not. */}
       <p className="chart-tooltip">
-        <strong>{formatMoney(mode === 'in' ? active.earned : active.spent)}</strong>
+        <strong className={mode === 'in' ? 'net-up' : 'net-down'}>
+          {formatMoney(mode === 'in' ? active.earned : active.spent)}
+        </strong>
         {' · '}{rangeLabel(active.start, granularity)}
+        {/* Hidden until something has sold: before that the net is exactly
+            minus the figure beside it. */}
+        {anyEarned && (
+          <>
+            {' · net '}
+            <strong className={active.net < 0 ? 'net-down' : 'net-up'}>
+              {active.net < 0 ? '−' : '+'}{formatMoney(Math.abs(active.net))}
+            </strong>
+          </>
+        )}
       </p>
     </div>
   )

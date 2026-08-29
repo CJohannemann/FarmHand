@@ -335,6 +335,13 @@ button.back {
   font-size: 0.8rem; color: var(--muted);
 }
 .chart-tooltip strong { color: var(--fg); font-variant-numeric: tabular-nums; }
+/* .chart-tooltip strong is (0,1,1) and out-specifies a bare .net-up/.net-down
+   at (0,1,0), so without these the caption silently rendered every figure in
+   the default ink no matter which class it carried. Caught by reading the
+   computed colour rather than looking at it — near-black against dark grey is
+   not a difference a screenshot shows. */
+.chart-tooltip strong.net-up { color: var(--accent); }
+.chart-tooltip strong.net-down { color: #c0392b; }
 
 .costchart {
   border: 1px solid var(--line);
@@ -343,18 +350,6 @@ button.back {
   background: var(--card);
 }
 
-.stat { margin: 0.75rem 0 1.25rem; }
-
-.stat-value {
-  display: block;
-  font-size: 2rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
-}
-
-.stat-label { display: block; margin-top: 0.15rem; color: var(--muted); font-size: 0.85rem; }
 
 .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.25rem; }
 
@@ -770,16 +765,7 @@ button.primary.danger:disabled { opacity: 0.4; }
    without this the chips touch its top edge. */
 .chipwrap.modewrap { margin-bottom: 0.85rem; }
 
-/* The headline follows the chart it sits above. .stat-value is the app's
-   accent green by default, which was fine when this screen only ever showed
-   spending — but the bars beneath it have always been red for money out, and
-   once there are two directions to tell apart, an identical green number for
-   both says nothing. */
-.stat-value.out { color: #c0392b; }
 
-/* The net figure sits inside the label line, so it needs to read as a number
-   rather than inherit the muted grey around it. */
-.stat-label strong { font-variant-numeric: tabular-nums; }
 
 /* Settings lays its panels out centred (.banner sets text-align: center),
    but a chip row is a flex container and flex children take no notice of

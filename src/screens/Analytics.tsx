@@ -1,10 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import { costEntries } from '../db/queries'
-import {
-  bucketize, bucketEnd, materialBreakdown, rangeLabel,
-  BUCKET_COUNT, type Granularity,
-} from '../lib/periods'
+import { bucketize, bucketEnd, materialBreakdown, BUCKET_COUNT, type Granularity } from '../lib/periods'
 import { formatMoney } from '../lib/numeric'
 import { CostChart, type ChartMode } from './CostChart'
 import { Records } from './Records'
@@ -149,30 +146,10 @@ function Costs() {
 
       {hasAny && active && (
         <>
-          <div className="stat">
-            {mode === 'in' ? (
-              <span className="stat-value net-up">{formatMoney(active.earned)}</span>
-            ) : (
-              <span className="stat-value out">{formatMoney(active.spent)}</span>
-            )}
-            <span className="stat-label">
-              {anyIncome ? (mode === 'in' ? 'in over ' : 'out over ') : ''}
-              {rangeLabel(active.start, granularity)}
-              {/* The headline is one side of the period; this is what the two
-                  sides came to together, and it is the only place the answer
-                  appears now that the chart draws one direction at a time.
-                  Hidden until something has sold, because until then it is
-                  exactly minus the number directly above it. */}
-              {anyIncome && (
-                <>
-                  {' · net '}
-                  <strong className={active.net < 0 ? 'net-down' : 'net-up'}>
-                    {active.net < 0 ? '−' : '+'}{formatMoney(Math.abs(active.net))}
-                  </strong>
-                </>
-              )}
-            </span>
-          </div>
+          {/* No headline figure here any more. It restated, in large type,
+              the number the chart's own caption already gives — and once the
+              caption took the colour and the net there was nothing left for
+              it to say that was not said twice. */}
 
           {/* Only worth offering once there are two directions to separate.
               Before a first sale this would be a control with one real
