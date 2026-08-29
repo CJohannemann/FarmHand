@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import { costEntries } from '../db/queries'
-import { bucketize, bucketEnd, materialBreakdown, BUCKET_COUNT, type Granularity } from '../lib/periods'
+import {
+  bucketize, bucketEnd, materialBreakdown, rangeLabel,
+  BUCKET_COUNT, type Bucket, type Granularity,
+} from '../lib/periods'
 import { formatMoney } from '../lib/numeric'
 import { CostChart, type ChartMode } from './CostChart'
 import { Records } from './Records'
@@ -59,9 +62,17 @@ export function Analytics() {
   )
 }
 
-const MODES: { id: ChartMode; label: string }[] = [
+/**
+ * Two of these draw the chart; Net replaces it. Kept as one row of chips
+ * because from the reader's side they are the same choice — which reading
+ * of this period am I looking at — even though one of them is not a chart.
+ */
+type Panel = ChartMode | 'net'
+
+const MODES: { id: Panel; label: string }[] = [
   { id: 'out', label: 'Money out' },
   { id: 'in', label: 'Money in' },
+  { id: 'net', label: 'Net' },
 ]
 
 function Costs() {
@@ -70,7 +81,7 @@ function Costs() {
   // unreadable the moment they are lopsided — a month of $23,000 spent
   // against $500 earned leaves the income side two pixels tall — and money
   // out is what a farm looks at most, so it leads.
-  const [mode, setMode] = useState<ChartMode>('out')
+  const [mode, setMode] = useState<Panel>('out')
   const [selected, setSelected] = useState(BUCKET_COUNT.month - 1)
   const { data: entries, loading } = useAsync(() => costEntries(), [])
 
@@ -165,8 +176,12 @@ function Costs() {
             </div>
           )}
 
-          <CostChart buckets={buckets} granularity={granularity}
-            selected={idx} onSelect={setSelected} mode={mode} />
+          {mode === 'net' ? (
+            <NetPanel active={active} granularity={granularity} />
+          ) : (
+            <CostChart buckets={buckets} granularity={granularity}
+              selected={idx} onSelect={setSelected} mode={mode} />
+          )}
 
           {anyIncome && earnedBy.length > 0 && (
             <>
@@ -198,5 +213,37 @@ function Costs() {
         </>
       )}
     </>
+  )
+}
+
+/**
+ * The period's net, in place of the chart.
+ *
+ * A chart of net would be a chart of one number per period with no scale
+ * anyone could read against — the interesting thing about net is not its
+ * shape over time but whether this period was up or down, and by how much.
+ * So this is the figure, large, and the two sides it came from underneath
+ * so the number is not just asserted.
+ *
+ * The period follows the same Week/Month/Quarter/Year chips as the chart,
+ * and stays on whichever bar was last tapped over there — switching to Net
+ * and back should not move you to a different month.
+ */
+function NetPanel({ active, granularity }: { active: Bucket; granularity: Granularity }) {
+  const down = active.net < 0
+  return (
+    <div className="netpanel">
+      <span className={`netpanel-value ${down ? 'net-down' : 'net-up'}`}>
+        {down ? '−' : '+'}{formatMoney(Math.abs(active.net))}
+      </span>
+      <span className="netpanel-label">
+        {down ? 'down' : 'up'} over {rangeLabel(active.start, granularity)}
+      </span>
+      <span className="netpanel-parts">
+        <strong className="net-up">{formatMoney(active.earned)}</strong> in
+        {'  ·  '}
+        <strong className="net-down">{formatMoney(active.spent)}</strong> out
+      </span>
+    </div>
   )
 }

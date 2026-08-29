@@ -763,7 +763,7 @@ button.primary.danger:disabled { opacity: 0.4; }
 
 /* The direction toggle sits directly above the chart it controls, and
    without this the chips touch its top edge. */
-.chipwrap.modewrap { margin-bottom: 0.85rem; }
+.chipwrap.modewrap { margin: 0.85rem 0; }
 
 
 
@@ -774,3 +774,32 @@ button.primary.danger:disabled { opacity: 0.4; }
    component sits under a left-aligned heading, where centring it would be
    the mismatch instead. */
 .banner .chipwrap { justify-content: center; }
+
+/* --------------------------------------------------------------- net panel */
+
+/* Stands where the chart stands, so switching chips does not make the page
+   jump — same card, same border, roughly the same height. */
+.netpanel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 190px;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--card);
+  text-align: center;
+}
+.netpanel-value {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.netpanel-label { color: var(--muted); font-size: 0.85rem; }
+/* The two sides the net came from — enough that the big number is shown its
+   working rather than just asserted. */
+.netpanel-parts { margin-top: 0.5rem; color: var(--muted); font-size: 0.8rem; }
+.netpanel-parts strong { font-variant-numeric: tabular-nums; }
