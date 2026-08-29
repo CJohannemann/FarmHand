@@ -140,3 +140,26 @@ export function niceMax(n: number) {
     : norm <= 3 ? 3 : norm <= 5 ? 5 : 10
   return step * mag
 }
+
+export function money(n: number): string {
+  if (n < 1000) return `$${Math.round(n)}`
+  const k = n / 1000
+  // One decimal where it earns it: a $2,500 gridline read "$3k" before,
+  // which is worse than no gridline at all on an axis meant to be counted.
+  return `$${k % 1 === 0 ? k : k.toFixed(1)}k`
+}
+
+/**
+ * Gridline values from 0 up to `max`, at a step that stays a round number.
+ *
+ * niceMax only ever returns 1, 1.5, 2, 3, 5 or 10 times a power of ten, so
+ * the number of divisions can be chosen per leading digit and every label
+ * lands on something a person would actually say: 30k splits in three, not
+ * four, because 10k/20k/30k reads and 7.5k/15k/22.5k does not.
+ */
+export function ticksTo(max: number): number[] {
+  if (max <= 0) return [0]
+  const lead = max / 10 ** Math.floor(Math.log10(max))
+  const divisions = lead === 1.5 || lead === 3 ? 3 : lead === 5 ? 5 : 4
+  return Array.from({ length: divisions + 1 }, (_, i) => (i * max) / divisions)
+}

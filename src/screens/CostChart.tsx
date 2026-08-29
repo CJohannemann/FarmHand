@@ -1,4 +1,7 @@
-import { axisLabel, niceMax, rangeLabel, type Bucket, type Granularity } from '../lib/periods'
+import {
+  axisLabel, money, niceMax, rangeLabel, ticksTo,
+  type Bucket, type Granularity,
+} from '../lib/periods'
 import { formatMoney } from '../lib/numeric'
 
 const W = 320
@@ -7,9 +10,6 @@ const PAD_L = 40
 const PAD_R = 8
 const PAD_T = 12
 const PAD_B = 30
-
-
-const money = (n: number) => n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${Math.round(n)}`
 
 export type ChartMode = 'in' | 'out'
 
@@ -69,24 +69,24 @@ export function CostChart({
   return (
     <div className="costchart">
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H}>
-        {/* The baseline and the one peak: on a chart this small every extra
-            rule costs more legibility than the reading it adds. */}
-        {[earnedMax, 0, -spentMax].filter((t, i) => i === 1 || t !== 0).map((t, i) => {
-          const ty = zeroY - (t / span) * plotH
-          // A side that got very little height puts its peak label right on
-          // top of the zero one — $500 of income against $23,000 of spending
-          // leaves them under three pixels apart, and both become unreadable.
-          // The rule still gets drawn; only the number is dropped, and the
-          // exact figures are in the line under the chart regardless.
-          const crowded = t !== 0 && Math.abs(ty - zeroY) < 14
+        {/* Steps up the active side, not just the baseline and the peak.
+            With only those two, a bar reaching two thirds of the way up had
+            nothing to be read against — you could see it was large and not
+            how large. The inactive side has no scale to show, so it gets no
+            rules at all rather than a mirror of zeros. */}
+        {ticksTo(mode === 'in' ? earnedMax : spentMax).map((t) => {
+          const signed = mode === 'in' ? t : -t
+          const ty = zeroY - (signed / span) * plotH
+          const isZero = t === 0
           return (
-            <g key={i}>
+            <g key={t}>
               <line x1={PAD_L} x2={W - PAD_R} y1={ty} y2={ty}
-                stroke="var(--line)" strokeWidth={t === 0 ? 1.5 : 1} />
-              {!crowded && (
-                <text x={PAD_L - 6} y={ty} textAnchor="end" dominantBaseline="middle"
-                  className="chart-tick">{money(Math.abs(t))}</text>
-              )}
+                stroke="var(--line)" strokeWidth={isZero ? 1.5 : 1}
+                // The baseline is structure; the rest are a reference the
+                // bars have to stay readable through.
+                opacity={isZero ? 1 : 0.55} />
+              <text x={PAD_L - 6} y={ty} textAnchor="end" dominantBaseline="middle"
+                className="chart-tick">{money(t)}</text>
             </g>
           )
         })}
@@ -122,8 +122,6 @@ export function CostChart({
         })}
       </svg>
 
-      {/* One direction, so no legend and no swatches — the chip above the
-          chart already says which side is being read. */}
       {/* The only reading of the selected period on the screen — there used
           to be a large headline above repeating this exact figure. Coloured
           to match its own bars. The net lives in its own panel now, reached

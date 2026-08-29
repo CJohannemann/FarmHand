@@ -7,7 +7,9 @@
 // it — so the arithmetic behind them is pinned here.
 //
 //   npm run verify:chart-scale
-import { bucketize, niceMax, type CostEntry } from '../../src/lib/periods.ts'
+import {
+  bucketize, money, niceMax, ticksTo, type CostEntry,
+} from '../../src/lib/periods.ts'
 
 let fails = 0
 const check = (label: string, ok: boolean, detail = '') => {
@@ -49,6 +51,30 @@ check('an ordinary year leaves plenty — label stays',
 const noSales = share(410, 0)
 check('with no sales at all the zero line sits at the very top',
   noSales.px === 0, `${noSales.px}px`)
+
+console.log('\nGridlines land on numbers a person would say out loud')
+// With only a baseline and a peak, a bar two thirds of the way up could be
+// seen but not read. These are the steps between — and every one has to be
+// a round figure, or the axis is harder to count than no axis at all.
+const labels = (max: number) => ticksTo(max).map(money).join(' ')
+check('a $23.5k month (peak $30k) steps in tens of thousands',
+  labels(30000) === '$0 $10k $20k $30k', labels(30000))
+check('$1k steps in quarters', labels(1000) === '$0 $250 $500 $750 $1k', labels(1000))
+check('$1.5k steps in halves', labels(1500) === '$0 $500 $1k $1.5k', labels(1500))
+check('$500 steps in hundreds',
+  labels(500) === '$0 $100 $200 $300 $400 $500', labels(500))
+check('$10k splits in quarters, with the halfway point spelled out',
+  labels(10000) === '$0 $2.5k $5k $7.5k $10k', labels(10000))
+// The bug this formatter had: $2,500 rendered as "$3k".
+check('a fractional thousand keeps its decimal', money(2500) === '$2.5k', money(2500))
+check('a whole thousand does not gain one', money(2000) === '$2k', money(2000))
+check('under a thousand stays plain', money(750) === '$750', money(750))
+check('every tick is a round number', ticksTo(30000).every((t) => t % 1000 === 0))
+check('an empty axis is just zero', labels(0) === '$0', labels(0))
+check('the top tick is always the max',
+  ticksTo(30000).at(-1) === 30000 && ticksTo(1500).at(-1) === 1500)
+check('never more than six labels on a 148px axis',
+  [50, 500, 1000, 1500, 2000, 3000, 10000, 30000].every((m) => ticksTo(m).length <= 6))
 
 console.log('\nOne direction at a time gets the whole height')
 // The mode toggle works by zeroing the suppressed side's peak, so the split
