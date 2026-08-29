@@ -68,7 +68,24 @@ export function SignIn({ linkError, onDismissLinkError, onInviteCode, initialMod
 
     const fn = mode === 'in'
       ? supabase.auth.signInWithPassword({ email, password })
-      : supabase.auth.signUp({ email, password })
+      : supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            // Where the confirmation link lands. Without this it goes to
+            // SITE_URL, which is '/' — the marketing page — so someone who
+            // had just proved their email arrived signed in but looking at
+            // the pitch, with no sign that anything had happened. /app drops
+            // them straight into setting the farm up, which is the next
+            // thing they were going to do anyway.
+            //
+            // Allowed already by GOTRUE_URI_ALLOW_LIST's trailing /**; a
+            // redirect outside that list is silently ignored and falls back
+            // to SITE_URL, which is exactly the old behaviour and would look
+            // like this change had simply not worked.
+            emailRedirectTo: `${window.location.origin}/app`,
+          },
+        })
 
     const { data, error } = await fn
     setBusy(false)

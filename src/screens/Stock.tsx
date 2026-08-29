@@ -22,8 +22,13 @@ import { AssetDetail } from './AssetDetail'
 import { TakeFromLot } from './TakeFromLot'
 
 const GROUPS: { type: AssetType; heading: string; blurb: string }[] = [
-  { type: 'animal',    heading: 'Animals',   blurb: 'Tracked one by one' },
-  { type: 'group',     heading: 'Groups',    blurb: 'Flocks, batches, herds' },
+  // Named for what you end up with, not for what the table is called.
+  // "Groups — flocks, batches, herds" reads as the right answer to anyone
+  // adding five cows, because five cows are a herd; it is the wrong answer,
+  // because each of them wants its own tag and its own sale price. Reported
+  // twice by the same farm, which is a label problem rather than a bug.
+  { type: 'animal',    heading: 'Animals',   blurb: 'One record each — own tag, weights, sale price' },
+  { type: 'group',     heading: 'Group',     blurb: 'One record for the whole batch, however many head' },
   { type: 'planting',  heading: 'Plantings', blurb: 'A crop in a place, this season' },
   { type: 'lot',       heading: 'Stores',    blurb: 'Feed, seed, meat, produce' },
   { type: 'land',      heading: 'Land',      blurb: 'Fields, paddocks, beds' },
