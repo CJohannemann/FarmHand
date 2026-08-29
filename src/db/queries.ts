@@ -436,10 +436,17 @@ export async function createHarvest(input: {
       { id: outId, role: 'output' },
     ],
   })
+  const now = new Date().toISOString()
+  // id/created_at/updated_at have no default on the local SQLite dialect
+  // (only Postgres gets gen_random_uuid()/now() for free) — omitting them,
+  // as this insert used to, threw a NOT NULL constraint failure that
+  // aborted the function before the archive below ever ran. The animal
+  // (or crop) looked like it never left, even though its harvest and
+  // output lot had already been created.
   await pg.query(
-    `insert into quantity (farm_id, log_id, measure, value, unit, asset_id)
-     values ($1, $2, 'weight', $3, $4, $5)`,
-    [farm, logId, input.amount, input.unit ?? 'lb', outId],
+    `insert into quantity (id, farm_id, log_id, measure, value, unit, asset_id, created_at, updated_at)
+     values ($1, $2, $3, 'weight', $4, $5, $6, $7, $7)`,
+    [crypto.randomUUID(), farm, logId, input.amount, input.unit ?? 'lb', outId, now],
   )
   if (input.endsSource) await archiveAsset(input.sourceId, 'harvested')
   return outId
