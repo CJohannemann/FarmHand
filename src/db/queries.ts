@@ -8,7 +8,7 @@ let farmId: string | null = null
 export async function getFarmId(): Promise<string> {
   if (farmId) return farmId
   const pg = await db()
-  const { rows } = await pg.query<{ id: string }>(`select id from farm limit 1`)
+  const { rows } = await pg.query<{ id: string }>(`select id from active_farm limit 1`)
   farmId = rows[0].id
   return farmId
 }
@@ -16,8 +16,10 @@ export async function getFarmId(): Promise<string> {
 export async function listTerms(vocabulary: string): Promise<string[]> {
   const pg = await db()
   const { rows } = await pg.query<{ name: string }>(
-    `select name from term where vocabulary = $1 and deleted_at is null
-     order by name`,
+    `select name from term
+      where vocabulary = $1 and deleted_at is null
+        and (farm_id is null or farm_id = (select id from active_farm))
+      order by name`,
     [vocabulary],
   )
   return rows.map((r) => r.name)
@@ -37,6 +39,7 @@ export async function createTerm(vocabulary: string, name: string): Promise<void
      select $1, $2, $3, $4, $5, $6
      where not exists (
        select 1 from term where vocabulary = $7 and name = $8 and deleted_at is null
+          and (farm_id is null or farm_id = (select id from active_farm))
      )`,
     [crypto.randomUUID(), farm, vocabulary, name, now, now, vocabulary, name],
   )
@@ -60,6 +63,7 @@ export async function listAssets(types?: AssetType[]): Promise<Asset[]> {
     `select id, type, name, status, terminal_event, parent_id, attributes
        from asset
       where deleted_at is null
+        and farm_id = (select id from active_farm)
         and ($1 is null or type in (select value from json_each($2)))`,
     [types ? JSON.stringify(types) : null, JSON.stringify(types ?? [])],
   )
@@ -129,7 +133,8 @@ export async function childAssets(parentId: string): Promise<Asset[]> {
   const { rows } = await pg.query<Asset>(
     `select id, type, name, status, terminal_event, parent_id, attributes
        from asset
-      where parent_id = $1 and deleted_at is null`,
+      where parent_id = $1 and deleted_at is null
+        and farm_id = (select id from active_farm)`,
     [parentId],
   )
   return sortByStatusThenName(rows)
@@ -142,6 +147,7 @@ export async function offspringOf(assetId: string): Promise<Asset[]> {
     `select id, type, name, status, terminal_event, parent_id, attributes
        from asset
       where type = 'animal' and deleted_at is null
+        and farm_id = (select id from active_farm)
         and (attributes->>'sireId' = $1 or attributes->>'damId' = $1)`,
     [assetId],
   )
@@ -320,6 +326,7 @@ export async function recentLogs(
                  and q.deleted_at is null) as summary
        from log l
       where l.deleted_at is null and l.status <> 'planned' and l.type <> 'weight'
+        and l.farm_id = (select id from active_farm)
         and ($2 is null or l.timestamp >= $2)
       order by l.timestamp desc, l.created_at desc
       limit $1`,
@@ -333,6 +340,7 @@ export async function assetCounts(): Promise<Record<string, number>> {
   const { rows } = await pg.query<{ type: string; n: number }>(
     `select type, count(*) as n from asset
       where deleted_at is null and status = 'active'
+        and farm_id = (select id from active_farm)
       group by type`,
   )
   return Object.fromEntries(rows.map((r) => [r.type, r.n]))
@@ -689,6 +697,7 @@ export async function costEntries(): Promise<CostEntry[]> {
        join quantity q on q.log_id = l.id and q.deleted_at is null
             and q.measure = 'price'
       where l.type in ('purchase', 'sale') and l.deleted_at is null
+        and l.farm_id = (select id from active_farm)
       order by l.timestamp asc`,
   )
   return rows
@@ -717,16 +726,18 @@ export async function weightHistory(assetId: string): Promise<
 
 export async function getFarmName(): Promise<string> {
   const pg = await db()
-  const { rows } = await pg.query<{ name: string }>(`select name from farm limit 1`)
+  const { rows } = await pg.query<{ name: string }>(
+    `select f.name from farm f join active_farm a on a.id = f.id`,
+  )
   return rows[0]?.name ?? 'My farm'
 }
 
 export async function localIsEmpty(): Promise<boolean> {
   const pg = await db()
   const { rows } = await pg.query<{ n: number }>(
-    `select ((select count(*) from asset) +
-             (select count(*) from log) +
-             (select count(*) from location)) as n`,
+    `select ((select count(*) from asset    where farm_id = (select id from active_farm)) +
+             (select count(*) from log      where farm_id = (select id from active_farm)) +
+             (select count(*) from location where farm_id = (select id from active_farm))) as n`,
   )
   return (rows[0]?.n ?? 0) === 0
 }
@@ -740,13 +751,47 @@ export async function adoptFarmId(id: string, name: string): Promise<boolean> {
   if (!(await localIsEmpty())) return false
   const pg = await db()
   const now = new Date().toISOString()
-  await pg.exec(`delete from farm`)
+  // The placeholder farm this device made for itself goes; the farms it has
+  // legitimately synced do not. It used to delete every farm row, which was
+  // safe only while a device could hold exactly one.
   await pg.query(
-    `insert into farm (id, name, created_at, updated_at) values ($1, $2, $3, $4)`,
+    `delete from farm where id = (select id from active_farm) and id <> $1`,
+    [id],
+  )
+  await pg.query(
+    `insert into farm (id, name, created_at, updated_at) values ($1, $2, $3, $4)
+     on conflict (id) do update set name = excluded.name`,
     [id, name, now, now],
   )
-  farmId = null
+  await setActiveFarm(id)
   return true
+}
+
+/**
+ * Point this device at one of the farms it holds.
+ *
+ * Every read is scoped through active_farm, so this one row is the whole
+ * switch — no wipe, no re-pull, and it works with no signal, because the
+ * other farm's records are already here.
+ */
+export async function setActiveFarm(id: string): Promise<void> {
+  const pg = await db()
+  await pg.query(`delete from active_farm`)
+  await pg.query(`insert into active_farm (id) values ($1)`, [id])
+  farmId = null
+}
+
+/** Every farm this device holds, for the switcher. */
+export async function localFarms(): Promise<{ id: string; name: string; active: boolean }[]> {
+  const pg = await db()
+  const { rows } = await pg.query<{ id: string; name: string; active: number }>(
+    `select f.id, f.name,
+            (select count(*) from active_farm a where a.id = f.id) as active
+       from farm f
+      where f.deleted_at is null
+      order by f.name`,
+  )
+  return rows.map((r) => ({ id: r.id, name: r.name, active: Number(r.active) > 0 }))
 }
 
 export async function renameFarm(name: string) {
@@ -945,6 +990,7 @@ export async function lotBalances(): Promise<LotBalance[]> {
        left join taken    t on t.lot_id = a.id
        left join consumed u on u.lot_id = a.id
       where a.type = 'lot' and a.deleted_at is null
+        and a.farm_id = (select id from active_farm)
         and coalesce(a.attributes->>'origin', '') <> 'service'
       order by (coalesce(c.amount,0) - coalesce(t.amount,0)
                 - coalesce(u.amount,0)) > 0 desc, a.name`,
@@ -1003,6 +1049,7 @@ export async function plannedLogs(): Promise<LogWithDetail[]> {
             null as summary
        from log l
       where l.deleted_at is null and l.status = 'planned'
+        and l.farm_id = (select id from active_farm)
       order by l.timestamp asc`,
   )
   return rows
@@ -1106,6 +1153,7 @@ export async function receiptsForLog(logId: string): Promise<ReceiptMeta[]> {
             (select count(*) from receipt_blob b where b.receipt_id = r.id) as local
        from receipt r
       where r.log_id = $1 and r.deleted_at is null
+        and r.farm_id = (select id from active_farm)
       order by r.captured_at`,
     [logId],
   )
@@ -1143,6 +1191,7 @@ export async function receiptYears(): Promise<number[]> {
     `select distinct substr(l.timestamp, 1, 4) as y
        from receipt r join log l on l.id = r.log_id
       where r.deleted_at is null and l.deleted_at is null
+        and r.farm_id = (select id from active_farm)
       order by y desc`,
   )
   return rows.map((r) => Number(r.y)).filter((y) => Number.isFinite(y))
@@ -1174,6 +1223,7 @@ export async function receiptsForYear(year: number): Promise<ReceiptForExport[]>
        from receipt r
        join log l on l.id = r.log_id
       where r.deleted_at is null and l.deleted_at is null
+        and r.farm_id = (select id from active_farm)
         and substr(l.timestamp, 1, 4) = $1
       order by l.timestamp`,
     [String(year)],
@@ -1280,6 +1330,7 @@ export async function closedOutStock(): Promise<ClosedOutAsset[]> {
               where la.asset_id = a.id and la.role = 'subject') as income
        from asset a
       where a.type in ('animal', 'group')
+        and a.farm_id = (select id from active_farm)
         and a.status = 'archived'
         and a.deleted_at is null
         and a.parent_id is null

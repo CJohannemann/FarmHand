@@ -29,7 +29,7 @@ let db: number
  * table". That is exactly how `receipt` shipped broken: sync died on every
  * device that had been used before receipts were added.
  */
-const SCHEMA_VERSION = '2'
+const SCHEMA_VERSION = '3'
 const SCHEMA_VERSION_KEY = 'localSchema'
 
 async function open(): Promise<void> {
@@ -63,12 +63,24 @@ async function migrate(fresh: boolean): Promise<void> {
   await sqlite3.exec(db, schemaSql)
   if (fresh) {
     const now = new Date().toISOString()
+    const farmId = crypto.randomUUID()
     await runRaw(
       `insert into farm (id, name, created_at, updated_at) values (?, ?, ?, ?)`,
-      [crypto.randomUUID(), 'My farm', now, now],
+      [farmId, 'My farm', now, now],
     )
+    await runRaw(`insert into active_farm (id) values (?)`, [farmId])
     await seedLocalVocabulary((sql, params) => runRaw(sql, params as SQLiteCompatibleType[]))
   }
+  // An existing device has a farm but no active_farm row, and every read is
+  // scoped through that row — so without this the app upgrades into showing
+  // an empty farm. Picks the one farm such a device already has.
+  await runRaw(
+    `insert into active_farm (id)
+     select id from farm
+      where not exists (select 1 from active_farm)
+      limit 1`,
+  )
+
   await runRaw(
     `insert into sync_state (key, value) values (?, ?)
      on conflict (key) do update set value = excluded.value`,

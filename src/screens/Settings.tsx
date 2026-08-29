@@ -8,6 +8,7 @@ import {
 import { ago, lastSyncedAt, pendingCount, syncClockTime, syncNow } from '../lib/sync'
 import { getThemePref, setThemePref, type ThemePref } from '../lib/theme'
 import { FarmName } from './Setup'
+import { localFarms, setActiveFarm } from '../db/queries'
 import { deleteAccount, exportEverything } from '../lib/account'
 import { downloadZip } from '../lib/receipts'
 
@@ -39,6 +40,8 @@ export function Settings() {
         <span>Farm name</span>
         <FarmName />
       </label>
+
+      <FarmSwitcher />
 
       <AppearancePanel />
 
@@ -369,5 +372,56 @@ function YourDataPanel({ email }: { email: string | null }) {
 
       {error && <p className="error">{error}</p>}
     </>
+  )
+}
+
+/**
+ * Switch between the farms this account belongs to.
+ *
+ * Only appears when there is more than one, which for most people is never:
+ * an account belongs to one farm and a picker offering that single farm is
+ * furniture. It shows up for someone helping on a neighbour's place, or
+ * managing two.
+ *
+ * Switching is one row in active_farm — every read is scoped through it, so
+ * there is no wipe and no re-pull, and it works in a barn with no signal
+ * because both farms' records are already on the device.
+ */
+function FarmSwitcher() {
+  const { data } = useAsync(() => localFarms(), [])
+  const [busy, setBusy] = useState<string | null>(null)
+  const farms = data ?? []
+
+  if (farms.length < 2) return null
+
+  const choose = async (id: string) => {
+    setBusy(id)
+    try {
+      await setActiveFarm(id)
+      // A full reload rather than re-running the queries by hand: every
+      // screen's data was read under the old farm, and there is no single
+      // place that owns all of it.
+      window.location.reload()
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="banner" style={{ marginTop: '1.25rem' }}>
+      <p><strong>Your farms</strong></p>
+      <p>You belong to more than one. Records, costs and receipts all follow
+        whichever is showing.</p>
+      <div className="chipwrap" style={{ margin: '0.5rem 0' }}>
+        {farms.map((f) => (
+          <button key={f.id} type="button"
+            className={`chip${f.active ? ' on' : ''}`}
+            disabled={Boolean(busy) || f.active}
+            onClick={() => choose(f.id)}>
+            {busy === f.id ? 'Switching…' : f.name}
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }

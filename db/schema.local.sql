@@ -157,6 +157,25 @@ create table if not exists receipt_blob (
   data       text not null
 );
 
+-- ------------------------------------------------------------ active farm
+
+-- Which farm the app is currently showing.
+--
+-- One account can belong to several farms — farm_member is keyed
+-- (farm_id, user_id) and the server has always allowed it — and sync pulls
+-- every farm the account can see, so this database holds all of them at
+-- once. Every read scopes itself to whichever is active.
+--
+-- A one-row table rather than a value threaded through as a bind parameter,
+-- and that is deliberate: it lets a query say
+--   and farm_id = (select id from active_farm)
+-- without renumbering its $1, $2, $3. Fifty-odd queries had to gain that
+-- clause; doing it without touching a single existing placeholder is the
+-- difference between a mechanical change and a bug hunt.
+create table if not exists active_farm (
+  id text not null references farm(id)
+);
+
 -- ------------------------------------------------------ local sync bookkeeping
 
 -- Absent from schema.sql: the server has no use for these, and they must
