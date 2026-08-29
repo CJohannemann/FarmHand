@@ -9,7 +9,7 @@ import { purposeLabel, sexTermsFor } from '../lib/husbandry'
 import {
   hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
 } from '../lib/numeric'
-import { OTHER } from './AssetSelect'
+import { AssetSelect, OTHER } from './AssetSelect'
 import { ParentField } from './ParentField'
 import { Sheet } from './Sheet'
 
@@ -55,6 +55,7 @@ export function EditAsset({
       : asset.attributes?.damName ? OTHER : '',
   )
   const [damName, setDamName] = useState(String(asset.attributes?.damName ?? ''))
+  const [groupId, setGroupId] = useState(asset.parent_id ?? '')
   const [birthday, setBirthday] = useState('')
   const [price, setPrice] = useState('')
   const [kind, setKind] = useState(String(asset.attributes?.kind ?? ''))
@@ -141,7 +142,11 @@ export function EditAsset({
       else delete attributes.plate
     }
     try {
-      await updateAsset(asset.id, { name: name.trim(), attributes })
+      const groupChanged = asset.type === 'animal' && groupId !== (asset.parent_id ?? '')
+      await updateAsset(asset.id, {
+        name: name.trim(), attributes,
+        ...(groupChanged ? { parentId: groupId || null } : {}),
+      })
       if (birthday) {
         await createLog({
           type: 'birth', name: 'Born', timestamp: new Date(`${birthday}T12:00:00`),
@@ -243,6 +248,17 @@ export function EditAsset({
       {asset.type === 'animal' && (
         <ParentField role="dam" species={species} excludeId={asset.id}
           id={damId} onId={setDamId} name={damName} onName={setDamName} />
+      )}
+
+      {asset.type === 'animal' && (
+        <AssetSelect value={groupId} onChange={setGroupId} types={['group']}
+          species={species} label="Group (optional)" />
+      )}
+      {asset.type === 'animal' && groupId && (
+        <p className="hint">
+          Feeding, notes and other batch logs for this group cover every
+          animal in it at once — this one included.
+        </p>
       )}
 
       {equipment && (

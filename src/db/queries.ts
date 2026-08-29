@@ -804,6 +804,8 @@ export async function renameFarm(name: string) {
 export async function updateAsset(id: string, input: {
   name?: string
   attributes?: Record<string, unknown>
+  /** undefined leaves group membership untouched; null pulls the animal out of any group. */
+  parentId?: string | null
 }) {
   const pg = await db()
   const now = new Date().toISOString()
@@ -817,6 +819,12 @@ export async function updateAsset(id: string, input: {
     await pg.query(
       `update asset set attributes = $2, updated_at = $3 where id = $1`,
       [id, JSON.stringify(input.attributes), now],
+    )
+  }
+  if (input.parentId !== undefined) {
+    await pg.query(
+      `update asset set parent_id = $2, updated_at = $3 where id = $1`,
+      [id, input.parentId, now],
     )
   }
 }

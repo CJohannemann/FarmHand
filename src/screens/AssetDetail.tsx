@@ -887,7 +887,7 @@ function escapeRe(s: string) {
 }
 
 /** Whether a member still carries its auto-generated "<group> <n>" name — i.e. never named. */
-function isUnnamedMember(group: Asset, member: Asset) {
+export function isUnnamedMember(group: Asset, member: Asset) {
   return new RegExp(`^${escapeRe(group.name)} \\d+$`).test(member.name)
 }
 

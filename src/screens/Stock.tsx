@@ -19,7 +19,7 @@ import {
 import { OTHER } from './AssetSelect'
 import { ParentField } from './ParentField'
 import { Sheet } from './Sheet'
-import { AssetDetail } from './AssetDetail'
+import { AssetDetail, isUnnamedMember } from './AssetDetail'
 import { TakeFromLot } from './TakeFromLot'
 
 const GROUPS: { type: AssetType; heading: string; blurb: string }[] = [
@@ -94,6 +94,20 @@ function groupBySpecies(items: Asset[]): { species: string | null; items: Asset[
       if (b.species === null) return -1
       return a.species.localeCompare(b.species)
     })
+}
+
+/**
+ * A member someone actually named — Bacon, or a pig moved in from standalone
+ * — still reads as its own animal on Inventory; the group only takes over
+ * for feeding and other batch logs. Only a member that never got past its
+ * auto-generated "<group> N" placeholder stays folded into the group's own
+ * card, since a card for "Cattle (beef) 3" would say nothing a headcount
+ * doesn't already.
+ */
+function showsOwnCard(assets: Asset[], a: Asset): boolean {
+  if (!a.parent_id) return true
+  const group = assets.find((g) => g.id === a.parent_id)
+  return !group || !isUnnamedMember(group, a)
 }
 
 export function Stock() {
@@ -196,7 +210,7 @@ export function Stock() {
 
   if (species !== undefined) {
     const mine = assets.filter((a) =>
-      a.type === 'animal' && !a.parent_id && !a.attributes?.external
+      a.type === 'animal' && showsOwnCard(assets, a) && !a.attributes?.external
       && (String(a.attributes?.species ?? '').trim() || null) === species)
     return (
       <div className="screen">
@@ -276,12 +290,15 @@ export function Stock() {
           )
         }
 
-        // Members of a group are reached through that group, not listed
-        // flatly here too — otherwise every named-out animal would show up
-        // twice. An "external" stub (a sire/dam typed in once, kept around
-        // so it's pickable for the next animal too) isn't stock either —
-        // it only ever exists to be pointed at from a Bloodline field.
-        const mine = assets.filter((a) => a.type === g.type && !a.parent_id
+        // An unnamed member of a group is reached through that group, not
+        // listed flatly here too — a card for "Cattle (beef) 3" says
+        // nothing a headcount doesn't. A member that got its own name (or
+        // joined a group after already having one) keeps its own card. An
+        // "external" stub (a sire/dam typed in once, kept around so it's
+        // pickable for the next animal too) isn't stock either — it only
+        // ever exists to be pointed at from a Bloodline field.
+        const mine = assets.filter((a) => a.type === g.type
+          && (g.type === 'animal' ? showsOwnCard(assets, a) : !a.parent_id)
           && !a.attributes?.external)
         if (mine.length === 0) return null
 
