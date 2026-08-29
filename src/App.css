@@ -780,3 +780,11 @@ button.primary.danger:disabled { opacity: 0.4; }
 /* The net figure sits inside the label line, so it needs to read as a number
    rather than inherit the muted grey around it. */
 .stat-label strong { font-variant-numeric: tabular-nums; }
+
+/* Settings lays its panels out centred (.banner sets text-align: center),
+   but a chip row is a flex container and flex children take no notice of
+   text-align — so the chips sat hard left under centred headings. Scoped to
+   the panels rather than applied to .chipwrap itself: on Analytics the same
+   component sits under a left-aligned heading, where centring it would be
+   the mismatch instead. */
+.banner .chipwrap { justify-content: center; }
