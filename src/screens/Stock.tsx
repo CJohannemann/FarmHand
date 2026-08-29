@@ -6,7 +6,9 @@ import {
   listAssets, listTerms, lotBalances, type LotBalance,
 } from '../db/queries'
 import type { Asset, AssetType } from '../db/types'
-import { EQUIPMENT_KINDS, FUEL_TYPES, SPECIES_PURPOSES, type Purpose } from '../lib/tiles'
+import {
+  EQUIPMENT_KINDS, FUEL_TYPES, SPECIES_PURPOSES, purposeRequired, type Purpose,
+} from '../lib/tiles'
 import { purposeLabel, sexTermsFor, speciesGlyph } from '../lib/husbandry'
 import {
   formatQty, hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput,
@@ -394,6 +396,9 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
   const isPlanting = type === 'planting'
   const isEquipment = type === 'equipment'
   const purposeOptions = SPECIES_PURPOSES[species]
+  // Cattle, goats and sheep only: what the app puts on the home screen
+  // depends on the answer, and either guess is wrong for somebody.
+  const mustPickPurpose = wantsSpecies && purposeRequired(species) && !purpose
   // A commercial operation IDs by ear tag, never a name — a cow tracked
   // only that way shouldn't need a name invented for it just to save.
   const finalName = name.trim() || (isAnimal ? tag.trim() : '')
@@ -481,14 +486,21 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
       )}
 
       {wantsSpecies && purposeOptions && (
-        <div className="chipwrap" style={{ marginBottom: '1rem' }}>
-          {purposeOptions.map((p) => (
-            <button key={p} type="button" className={`chip${purpose === p ? ' on' : ''}`}
-              onClick={() => setPurpose(purpose === p ? undefined : p)}>
-              {purposeLabel(p, species)}
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="chipwrap" style={{ marginBottom: mustPickPurpose ? 0 : '1rem' }}>
+            {purposeOptions.map((p) => (
+              <button key={p} type="button" className={`chip${purpose === p ? ' on' : ''}`}
+                onClick={() => setPurpose(purpose === p ? undefined : p)}>
+                {purposeLabel(p, species)}
+              </button>
+            ))}
+          </div>
+          {mustPickPurpose && (
+            <p className="hint" style={{ marginBottom: '1rem' }}>
+              Pick one — it decides whether Milk appears on your Today screen.
+            </p>
+          )}
+        </>
       )}
 
       {/* Held back until a species is picked: the words themselves depend on
@@ -660,7 +672,7 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
 
       <button
         className="primary"
-        disabled={busy || !type || !finalName || (isPlanting && !crop)}
+        disabled={busy || !type || !finalName || (isPlanting && !crop) || mustPickPurpose}
         onClick={run}
       >
         {busy ? 'Saving…' : 'Save'}

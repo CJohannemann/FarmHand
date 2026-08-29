@@ -119,8 +119,16 @@ export function producibleMaterial(a: AssetLike): 'eggs' | 'milk' | 'honey' | nu
   const species = String(a.attributes?.species ?? '')
   const purpose = a.attributes?.purpose
 
+  // Eggs stay permissive and milk does not, and the asymmetry is the point
+  // rather than an oversight. A bird whose purpose nobody recorded almost
+  // certainly lays — that is what backyard poultry is for — so guessing
+  // right costs nothing and guessing wrong costs one unused tile. A bovine
+  // whose purpose nobody recorded almost certainly does not milk: beef is
+  // the common case by a wide margin, and the old rule put a Milk button on
+  // the home screen of every farm that had ever added a cow. Reported
+  // exactly that way, by someone with no dairy animals at all.
   if (LAYERS.includes(species) && (purpose === undefined || purpose === 'eggs')) return 'eggs'
-  if (MILKERS.includes(species) && (purpose === undefined || purpose === 'dairy')) return 'milk'
+  if (MILKERS.includes(species) && purpose === 'dairy') return 'milk'
   if (BEES.includes(species)) return 'honey'
 
   if (a.attributes?.category === 'poultry' && purpose === 'eggs') return 'eggs'
@@ -157,4 +165,18 @@ export function tilesFor(assets: AssetLike[]): TileSpec[] {
   // Buying, noting and planning suit every farm, including an empty one.
   tiles.push(BUY, NOTE, PLAN)
   return tiles
+}
+
+/**
+ * Species where an unrecorded purpose would guess wrong, so the form insists.
+ *
+ * Only the milkers. Leaving a chicken's purpose blank is harmless —
+ * producibleMaterial() reads it as a layer and is almost always right — but
+ * leaving a cow's blank used to put a Milk tile on a beef farm's home
+ * screen, and making it strict instead would silently take that tile away
+ * from a dairy farm that skipped the chip. Asking is the only answer that
+ * is right both ways.
+ */
+export function purposeRequired(species: string): boolean {
+  return MILKERS.includes(species)
 }
