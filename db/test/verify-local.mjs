@@ -546,5 +546,75 @@ check("a name in the wrong role does not mutate the old record",
 check("and gets its own record for the right role",
   sexOf(smokeySire) === "Male" ? 1 : 0, 1)
 
+
+// ------------------------------- one purchase, several animals, one price
+// Buying five cows together is one log with five subjects and one price.
+// Both money queries used to multiply by the number of subjects: each cow
+// claimed the whole cheque, and Analytics reported five times what was
+// spent. Neither is visible from the screen that records it.
+console.log('\nA purchase covering several animals is shared between them')
+const herd = [1, 2, 3, 4, 5].map(() => {
+  const id = uuid()
+  run(`insert into asset (id,farm_id,type,name,attributes,created_at,updated_at)
+       values (?,?,'animal','Steer','{"species":"Cattle","purpose":"meat"}',?,?)`,
+    [id, farm, now(), now()])
+  return id
+})
+const herdBuy = uuid()
+run(`insert into log (id,farm_id,type,timestamp,name,created_at,updated_at)
+     values (?,?,'purchase','2026-03-02T10:00:00.000Z','Bought Steer',?,?)`,
+  [herdBuy, farm, now(), now()])
+for (const c of herd) run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`, [herdBuy, c])
+run(`insert into quantity (id,farm_id,log_id,measure,value,unit,created_at,updated_at)
+     values (?,?,?,'price',6000,'USD',?,?)`, [uuid(), farm, herdBuy, now(), now()])
+
+// assetCosts(), as queries.ts now runs it.
+const costOf = (id) => q(`select coalesce(sum(
+       q.value / (select count(*) from log_asset s
+                   where s.log_id = p.id and s.role='subject')), 0) v
+   from log_asset la
+   join log p on p.id=la.log_id and p.type='purchase' and p.deleted_at is null
+   join quantity q on q.log_id=p.id and q.deleted_at is null and q.measure='price'
+  where la.asset_id=? and la.role='subject'`, [id])[0].v
+check('each steer carries its share, not the whole cheque', costOf(herd[0]), 1200)
+check('and they add back up to what was paid',
+  herd.reduce((s, c) => s + costOf(c), 0), 6000)
+
+// costEntries(), as Analytics now runs it: one row per price, whatever the
+// number of subjects.
+const spendRows = q(`select q.value v from log l
+   join quantity q on q.log_id=l.id and q.deleted_at is null and q.measure='price'
+  where l.id = ?`, [herdBuy])
+check('Analytics sees the purchase once', spendRows.length, 1)
+check('at what it actually cost', spendRows[0].v, 6000)
+
+// A single animal is unaffected — one subject, so the share is the whole.
+const lone = uuid()
+run(`insert into asset (id,farm_id,type,name,attributes,created_at,updated_at)
+     values (?,?,'animal','Solo','{"species":"Cattle"}',?,?)`, [lone, farm, now(), now()])
+const loneBuy = uuid()
+run(`insert into log (id,farm_id,type,timestamp,name,created_at,updated_at)
+     values (?,?,'purchase',?,'Bought Solo',?,?)`, [loneBuy, farm, now(), now(), now()])
+run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`, [loneBuy, lone])
+run(`insert into quantity (id,farm_id,log_id,measure,value,unit,created_at,updated_at)
+     values (?,?,?,'price',1500,'USD',?,?)`, [uuid(), farm, loneBuy, now(), now()])
+check('one animal still carries its full price', costOf(lone), 1500)
+
+// A flock is one asset, so its price sits on the group and divides by head
+// for a per-bird figure — the sum a farmer wants and will not do by hand.
+console.log('\nA flock records a total, and divides out per head')
+const chicks = uuid()
+run(`insert into asset (id,farm_id,type,name,attributes,created_at,updated_at)
+     values (?,?,'group','Spring chicks','{"species":"Chicken","headcount":75}',?,?)`,
+  [chicks, farm, now(), now()])
+const chickBuy = uuid()
+run(`insert into log (id,farm_id,type,timestamp,name,created_at,updated_at)
+     values (?,?,'purchase',?,'Bought Spring chicks',?,?)`, [chickBuy, farm, now(), now(), now()])
+run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`, [chickBuy, chicks])
+run(`insert into quantity (id,farm_id,log_id,measure,value,unit,created_at,updated_at)
+     values (?,?,?,'price',180,'USD',?,?)`, [uuid(), farm, chickBuy, now(), now()])
+check('the flock carries the whole total', costOf(chicks), 180)
+check('which is $2.40 a bird', costOf(chicks) / 75, 2.4)
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)

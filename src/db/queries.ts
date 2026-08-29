@@ -529,8 +529,16 @@ export interface CostSummary {
 export async function assetCosts(assetId: string): Promise<CostSummary> {
   const pg = await db()
 
+  // Divided by however many animals that purchase covered. Five cows bought
+  // together are one log with five subjects and one price, so without this
+  // each of them claims the whole cheque — $6,000 five times over. An even
+  // split is an assumption, but it is the only one the record supports, and
+  // it is right far more often than "each cost the full total".
   const purchase = await pg.query<{ purchase_cost: number }>(
-    `select coalesce(sum(q.value), 0) as purchase_cost
+    `select coalesce(sum(
+              q.value / (select count(*) from log_asset s
+                          where s.log_id = p.id and s.role = 'subject')
+            ), 0) as purchase_cost
        from log_asset la
        join log p on p.id = la.log_id
             and p.type = 'purchase' and p.deleted_at is null
@@ -661,14 +669,25 @@ export async function costEntries(): Promise<CostEntry[]> {
     // bought cow lands under "Cattle" rather than a catch-all. Equipment
     // has neither, but 'kind' (Tractor/Vehicle/...) plays the same role, so
     // a tractor purchase doesn't drown out everything else under "Other".
+    // The category comes from a subquery rather than a join, and that is
+    // load-bearing. Joining log_asset multiplies the row by the number of
+    // subjects, so one $6,000 purchase covering five cows was counted five
+    // times and Analytics reported $30,000 spent. One row per price, always.
+    //
+    // A purchase spanning two species takes the category of one of them,
+    // which is a rounding of the truth rather than a wrong total — the
+    // money is counted once either way.
     `select l.timestamp, q.value as value, l.type as kind,
-            coalesce(a.attributes->>'material', a.attributes->>'species',
-                     a.attributes->>'kind', 'Other') as material
+            coalesce(
+              (select coalesce(a.attributes->>'material', a.attributes->>'species',
+                               a.attributes->>'kind')
+                 from log_asset la join asset a on a.id = la.asset_id
+                where la.log_id = l.id and la.role = 'subject'
+                limit 1),
+              'Other') as material
        from log l
        join quantity q on q.log_id = l.id and q.deleted_at is null
             and q.measure = 'price'
-       left join log_asset la on la.log_id = l.id and la.role = 'subject'
-       left join asset a on a.id = la.asset_id
       where l.type in ('purchase', 'sale') and l.deleted_at is null
       order by l.timestamp asc`,
   )

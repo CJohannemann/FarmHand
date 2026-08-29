@@ -12,7 +12,8 @@ import {
 } from '../lib/tiles'
 import { purposeLabel, sexTermsFor, speciesGlyph } from '../lib/husbandry'
 import {
-  formatQty, hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput,
+  formatMoney, formatQty, hasNumericValue, ignoreArrowKeysOnNumberInput,
+  ignoreScrollOnNumberInput,
   onNumericChange,
 } from '../lib/numeric'
 import { OTHER } from './AssetSelect'
@@ -402,6 +403,13 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
 
   const wantsSpecies = type === 'animal' || type === 'group'
   const many = type === 'animal' && Number(count) > 1
+  // How many head one price covers — a flock's headcount, or a batch of
+  // individually tracked animals. Used to show what each one worked out at,
+  // since the number people have to hand is the invoice total.
+  const perHeadOf = type === 'group' ? Number(headcount) : Number(count)
+  const perHead = perHeadOf > 1 && hasNumericValue(price)
+    ? Number(price) / perHeadOf
+    : null
   const isAnimal = type === 'animal'
   const isPlanting = type === 'planting'
   const isEquipment = type === 'equipment'
@@ -472,7 +480,7 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
         assets: subjects,
       })
     }
-    if ((isAnimal || isEquipment) && hasNumericValue(price)) {
+    if ((isAnimal || isEquipment || type === 'group') && hasNumericValue(price)) {
       await createLog({
         type: 'purchase', name: `Bought ${finalName}`,
         assets: subjects,
@@ -666,12 +674,20 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
         </label>
       )}
 
-      {(isAnimal || isEquipment) && (
+      {(isAnimal || isEquipment || type === 'group') && (
         <label className="field">
-          <span>Bought for ($, optional)</span>
+          <span>{perHead ? 'Total paid for all of them ($, optional)' : 'Bought for ($, optional)'}</span>
           <input type="number" inputMode="decimal" min="0" value={price}
             onChange={onNumericChange(setPrice)} onWheel={ignoreScrollOnNumberInput}
             onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="350" />
+          {/* The number a farmer has is the invoice total, so that is what
+              the field asks for — and the division nobody wants to do in
+              their head is shown back straight away, before saving. */}
+          {perHead !== null && (
+            <small className="hint">
+              {formatMoney(perHead)} each, across {formatQty(perHeadOf)} head.
+            </small>
+          )}
         </label>
       )}
 
