@@ -10,9 +10,7 @@ import type { Asset, AssetType } from '../db/types'
 import {
   EQUIPMENT_KINDS, FUEL_TYPES, SPECIES_PURPOSES, purposeRequired, type Purpose,
 } from '../lib/tiles'
-import {
-  equipmentGlyph, materialGlyph, purposeLabel, sexTermsFor, speciesGlyph,
-} from '../lib/husbandry'
+import { equipmentGlyph, purposeLabel, sexTermsFor, speciesGlyph } from '../lib/husbandry'
 import {
   formatMoney, formatQty, hasNumericValue, ignoreArrowKeysOnNumberInput,
   ignoreScrollOnNumberInput,
@@ -393,10 +391,10 @@ export function Stock() {
         // animal cards came after them; tapping the card is what used to be
         // just scrolling down.
         //
-        // The card's icon follows whatever's actually in there most, rather
-        // than a fixed picture that's wrong for half of what a farm keeps —
-        // a Stores card is a hay bale for a farm buying round bales and an
-        // egg for one that mostly restocks feed and cartons.
+        // Group and Equipment follow whatever's actually in there most (see
+        // `mostCommon` below); Stores stays a fixed storefront glyph instead
+        // — a card that changed icon as materials came and went read as a
+        // glitch rather than as information.
         const cards = GROUPS.filter((g) => g.type !== 'animal').map((g) => {
           if (g.type === 'lot') {
             const all = lots.data ?? []
@@ -404,7 +402,7 @@ export function Stock() {
             return (
               <button key={g.type} type="button" className="speciescard"
                 onClick={() => setSection('lot')}>
-                <span className="glyph">{materialGlyph(mostCommon(all, (l) => l.material))}</span>
+                <span className="glyph">🏬</span>
                 <span className="speciescard-name">{g.heading}</span>
                 <span className="speciescard-count">{formatQty(all.length)} on hand</span>
               </button>
