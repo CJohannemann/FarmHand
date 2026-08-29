@@ -432,5 +432,64 @@ check('Records still holds the older ones',
   everything.filter((r) => r.name === 'last week').length, 1)
 check('and the two-days-ago one', everything.filter((r) => r.name === 'two days ago').length, 1)
 
+
+// ------------------------------------------ five cows are five records
+// Adding five beef cows used to mean either wrapping them in a herd they
+// did not need, or going through the form five times. Reported that way.
+console.log('\nSeveral animals at once, with no group over them')
+const mkAnimals = (name, n, attrs = {}) => {
+  const ids = []
+  for (let i = 1; i <= n; i++) {
+    const id = uuid(); ids.push(id)
+    run(`insert into asset (id, farm_id, type, name, attributes, created_at, updated_at)
+         values (?,?,'animal',?,?,?,?)`,
+      [id, farm, n > 1 ? `${name} ${i}` : name, JSON.stringify(attrs), now(), now()])
+  }
+  return ids
+}
+const cows = mkAnimals('Cow', 5, { species: 'Cattle', purpose: 'meat' })
+check('five separate records', cows.length, 5)
+const cowRows = q(`select name, parent_id from asset where id in (?,?,?,?,?)`, cows)
+check('none of them sits under a group',
+  cowRows.filter((r) => r.parent_id === null).length, 5)
+check('they are numbered', cowRows.filter((r) => /^Cow \d+$/.test(r.name)).length, 5)
+
+// One purchase and one birthday shared across all five: hanging either on
+// the first alone would leave four cows with no cost and no age.
+const buyAll = uuid()
+run(`insert into log (id, farm_id, type, timestamp, name, created_at, updated_at)
+     values (?,?,'purchase',?,'Bought Cow',?,?)`, [buyAll, farm, now(), now(), now()])
+for (const id of cows) run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`, [buyAll, id])
+run(`insert into quantity (id,farm_id,log_id,measure,value,unit,created_at,updated_at)
+     values (?,?,?,'price',6000,'USD',?,?)`, [uuid(), farm, buyAll, now(), now()])
+check('the purchase covers every one of them',
+  q(`select 1 from log_asset where log_id=?`, [buyAll]).length, 5)
+
+// A single animal keeps the name that was typed, not "Bluebell 1".
+const one = mkAnimals('Bluebell', 1, { species: 'Cattle', purpose: 'dairy' })
+check('one animal is not numbered',
+  q(`select name from asset where id=?`, [one[0]])[0].name === 'Bluebell' ? 1 : 0, 1)
+
+// A group is still a group: members hang off it, and the top-level list
+// shows the group rather than the birds.
+const pen = uuid()
+run(`insert into asset (id, farm_id, type, name, attributes, created_at, updated_at)
+     values (?,?,'group','Broilers','{"species":"Chicken"}',?,?)`, [pen, farm, now(), now()])
+for (let i = 1; i <= 3; i++)
+  run(`insert into asset (id, farm_id, type, name, attributes, parent_id, created_at, updated_at)
+       values (?,?,'animal',?,'{"species":"Chicken"}',?,?,?)`,
+    [uuid(), farm, `Broilers ${i}`, pen, now(), now()])
+check('a group still has its members underneath',
+  q(`select 1 from asset where parent_id=?`, [pen]).length, 3)
+// The Inventory list filters on parent_id is null, so this is what decides
+// whether five cows appear as five rows or one herd.
+// Scoped to this block: earlier blocks in this file already put cattle in
+// the fixture, and counting every one would assert about their setup.
+const ours = [...cows, ...one]
+const topLevel = q(`select name from asset
+   where type='animal' and parent_id is null and deleted_at is null
+     and id in (?,?,?,?,?,?)`, ours)
+check('all six show individually in Inventory, none nested', topLevel.length, 6)
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)

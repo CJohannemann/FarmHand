@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
-  createAsset, createGroupWithMembers, createLog, createPlanting, findOrCreateExternalParent,
+  createAnimals, createAsset, createGroupWithMembers, createLog, createPlanting,
+  findOrCreateExternalParent,
   listAssets, listTerms, lotBalances, type LotBalance,
 } from '../db/queries'
 import type { Asset, AssetType } from '../db/types'
@@ -369,6 +370,9 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
   const [purpose, setPurpose] = useState<Purpose | undefined>(undefined)
   const [sex, setSex] = useState('')
   const [tag, setTag] = useState('')
+  // How many individual animals to create. Groups have their own headcount
+  // field; this is the "five cows, five records" case.
+  const [count, setCount] = useState('1')
   const [sireId, setSireId] = useState('')
   const [sireName, setSireName] = useState('')
   const [damId, setDamId] = useState('')
@@ -392,6 +396,7 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
   const { data: cropList } = useAsync(() => listTerms('crop'), [])
 
   const wantsSpecies = type === 'animal' || type === 'group'
+  const many = type === 'animal' && Number(count) > 1
   const isAnimal = type === 'animal'
   const isPlanting = type === 'planting'
   const isEquipment = type === 'equipment'
@@ -401,7 +406,7 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
   const mustPickPurpose = wantsSpecies && purposeRequired(species) && !purpose
   // A commercial operation IDs by ear tag, never a name — a cow tracked
   // only that way shouldn't need a name invented for it just to save.
-  const finalName = name.trim() || (isAnimal ? tag.trim() : '')
+  const finalName = name.trim() || (isAnimal && !many ? tag.trim() : '')
 
   const save = async () => {
     if (!type) return
@@ -440,19 +445,32 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
     else if (isAnimal && damName.trim()) {
       attributes.damId = await findOrCreateExternalParent(damName, species, 'dam')
     }
-    const id = type === 'group' && Number(headcount) > 0
-      ? await createGroupWithMembers({ name: finalName, count: Number(headcount), attributes })
-      : await createAsset({ type, name: finalName, attributes })
+    // Three shapes, and the count is what picks between the last two: a
+    // group of seventy-five broilers, five cattle as five records, or one
+    // named animal. Five cows in a herd they do not need is the wrong
+    // shape — each will get its own tag, weights and sale price.
+    const ids = type === 'group' && Number(headcount) > 0
+      ? [await createGroupWithMembers({
+          name: finalName, count: Number(headcount), attributes,
+        })]
+      : isAnimal
+        ? await createAnimals({ name: finalName, count: Math.max(1, Number(count) || 1), attributes })
+        : [await createAsset({ type, name: finalName, attributes })]
+
+    // Both logs go on every animal created. Five cows bought together were
+    // one purchase and share a birthday; hanging either on only the first
+    // would leave the other four with no cost and no age.
+    const subjects = ids.map((id) => ({ id, role: 'subject' as const }))
     if (isAnimal && birthday) {
       await createLog({
         type: 'birth', name: 'Born', timestamp: new Date(`${birthday}T12:00:00`),
-        assets: [{ id, role: 'subject' }],
+        assets: subjects,
       })
     }
     if ((isAnimal || isEquipment) && hasNumericValue(price)) {
       await createLog({
         type: 'purchase', name: `Bought ${finalName}`,
-        assets: [{ id, role: 'subject' }],
+        assets: subjects,
         quantities: [{ measure: 'price', value: Number(price), unit: 'USD' }],
       })
     }
@@ -526,6 +544,24 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
       </label>
 
       {isAnimal && (
+        <label className="field">
+          <span>How many?</span>
+          <input type="number" inputMode="numeric" min="1" value={count}
+            onChange={onNumericChange(setCount, { integer: true })}
+            onWheel={ignoreScrollOnNumberInput} onKeyDown={ignoreArrowKeysOnNumberInput}
+            placeholder="1" />
+          <small className="hint">
+            {many
+              ? `Creates ${Number(count)} separate records, numbered — each with its own tag, weights and sale price. Use Groups instead for a flock you treat as one.`
+              : 'More than one? They are created as separate animals, not a group.'}
+          </small>
+        </label>
+      )}
+
+      {/* One ear tag cannot belong to five animals, so the field goes when
+          there is more than one. They are tagged individually afterwards,
+          on each animal's own screen. */}
+      {isAnimal && !many && (
         <label className="field">
           <span>Tag number{name.trim() ? ' (optional)' : ''}</span>
           <input value={tag} onChange={(e) => setTag(e.target.value)}

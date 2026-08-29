@@ -1263,3 +1263,52 @@ export async function closedOutStock(): Promise<ClosedOutAsset[]> {
     income: Number(r.income) || 0,
   }))
 }
+
+/**
+ * Several individual animals at once, with no group over them.
+ *
+ * Five beef cows are five records — each gets its own tag, weights, vet
+ * visits and eventually its own sale price. A group is the right shape for
+ * seventy-five broilers that are fed, treated and sold as one batch, and
+ * the wrong shape for a handful of cattle. Before this, adding five cows
+ * meant either wrapping them in a herd they did not need or going through
+ * the form five times.
+ *
+ * Batched the same way createGroupWithMembers batches its members, and for
+ * the same reason: one statement rather than one round-trip per head, each
+ * of which would re-read the farm id and fire its own outbox trigger.
+ */
+export async function createAnimals(input: {
+  name: string
+  count: number
+  attributes?: Record<string, unknown>
+}): Promise<string[]> {
+  const pg = await db()
+  const farm = await getFarmId()
+  const attrs = JSON.stringify(input.attributes ?? {})
+  const now = new Date().toISOString()
+  const ids: string[] = []
+  const CHUNK = 200
+
+  for (let start = 1; start <= input.count; start += CHUNK) {
+    const end = Math.min(start + CHUNK - 1, input.count)
+    const values: unknown[] = []
+    const tuples: string[] = []
+    for (let i = start; i <= end; i++) {
+      const id = crypto.randomUUID()
+      ids.push(id)
+      const b = values.length
+      tuples.push(`($${b + 1}, $${b + 2}, 'animal', $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6})`)
+      // Numbered only when there is more than one: a single animal keeps
+      // the name that was typed, not "Bluebell 1".
+      values.push(id, farm, input.count > 1 ? `${input.name} ${i}` : input.name,
+        attrs, now, now)
+    }
+    await pg.query(
+      `insert into asset (id, farm_id, type, name, attributes, created_at, updated_at)
+       values ${tuples.join(', ')}`,
+      values,
+    )
+  }
+  return ids
+}
