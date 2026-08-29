@@ -121,6 +121,12 @@ export function Stock() {
   // bucket of animals with no species recorded — so `undefined` means "no
   // card open" and the two cannot be confused.
   const [species, setSpecies] = useState<string | null | undefined>(undefined)
+  // Which non-animal section is open, if any — Equipment, Land, Group,
+  // Plantings, Stores. Animals already gets one card per species; every
+  // other section used to dump its rows straight onto Inventory, which
+  // meant a farm with real equipment (a tractor, a combine, a mower...)
+  // scrolled through all of it just to find an animal card underneath.
+  const [section, setSection] = useState<AssetType | undefined>(undefined)
   // Closed-out stock is hidden by default. A farm that sells a hundred hogs
   // a year would otherwise have this screen buried under years of sold
   // animals within months, with the ones it actually has lost among them —
@@ -234,6 +240,65 @@ export function Stock() {
     )
   }
 
+  if (section !== undefined) {
+    const g = GROUPS.find((x) => x.type === section)!
+    return (
+      <div className="screen">
+        <button type="button" className="back" onClick={() => setSection(undefined)}>
+          ‹ Back
+        </button>
+        <h1>{g.heading}</h1>
+        {section === 'lot' && (
+          // Stores is the one section not backed by the asset list — see
+          // `lots` above. Its rows carry a balance and draw the lot down
+          // rather than opening an asset page.
+          bucketBy(lots.data ?? [], (l) => l.material, 'Other supplies').map(({ heading, items }) => (
+            <div key={heading}>
+              <h2 className="section">{heading}</h2>
+              <ul className="assetlist">
+                {items.map((l) => (
+                  <li key={l.id} className={l.remaining > 0.001 ? '' : 'gone'}>
+                    <button className="assetrow" onClick={() => setTaking(l)}>
+                      <span className="asset-name">{l.name}</span>
+                      <span className="asset-meta">
+                        {l.remaining > 0.001 ? (
+                          <strong className="remaining">
+                            {formatQty(l.remaining)} {l.unit ?? ''}
+                          </strong>
+                        ) : `${formatQty(l.came_in)} ${l.unit ?? ''} in, none left`}
+                        <span className="chev">›</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        )}
+        {section === 'equipment' && (
+          // A tractor and the bush hog behind it are different things to own
+          // and different things to service — one heading over both hides that.
+          bucketBy(
+            assets.filter((a) => a.type === 'equipment' && !a.parent_id && !a.attributes?.external),
+            (a) => String(a.attributes?.kind ?? ''), g.heading,
+          ).map(({ heading, items }) => (
+            <div key={heading}>
+              <h2 className="section">{heading === g.heading ? heading : pluralKind(heading)}</h2>
+              {assetList(items, true)}
+            </div>
+          ))
+        )}
+        {section !== 'lot' && section !== 'equipment' && assetList(
+          assets.filter((a) => a.type === section && !a.parent_id && !a.attributes?.external),
+        )}
+        {taking && (
+          <TakeFromLot lot={taking} onClose={() => setTaking(null)}
+            onDone={() => { setTaking(null); lots.reload() }} />
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="screen">
       <h1>Inventory</h1>
@@ -254,42 +319,7 @@ export function Stock() {
         </p>
       )}
 
-      {GROUPS.map((g) => {
-        // Stores is the one section not backed by the asset list — see
-        // `lots` above. Its rows carry a balance and draw the lot down
-        // rather than opening an asset page, which is all the separate
-        // Stores tab ever did.
-        if (g.type === 'lot') {
-          const all = lots.data ?? []
-          if (all.length === 0) return null
-          return (
-            <section key={g.type}>
-              {bucketBy(all, (l) => l.material, 'Other supplies').map(({ heading, items }) => (
-                <div key={heading}>
-                  <h2 className="section">{heading}</h2>
-                  <ul className="assetlist">
-                    {items.map((l) => (
-                      <li key={l.id} className={l.remaining > 0.001 ? '' : 'gone'}>
-                        <button className="assetrow" onClick={() => setTaking(l)}>
-                          <span className="asset-name">{l.name}</span>
-                          <span className="asset-meta">
-                            {l.remaining > 0.001 ? (
-                              <strong className="remaining">
-                                {formatQty(l.remaining)} {l.unit ?? ''}
-                              </strong>
-                            ) : `${formatQty(l.came_in)} ${l.unit ?? ''} in, none left`}
-                            <span className="chev">›</span>
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </section>
-          )
-        }
-
+      {(() => {
         // An unnamed member of a group is reached through that group, not
         // listed flatly here too — a card for "Cattle (beef) 3" says
         // nothing a headcount doesn't. A member that got its own name (or
@@ -297,78 +327,81 @@ export function Stock() {
         // "external" stub (a sire/dam typed in once, kept around so it's
         // pickable for the next animal too) isn't stock either — it only
         // ever exists to be pointed at from a Bloodline field.
-        const mine = assets.filter((a) => a.type === g.type
-          && (g.type === 'animal' ? showsOwnCard(assets, a) : !a.parent_id)
-          && !a.attributes?.external)
-        if (mine.length === 0) return null
+        const mine = assets.filter((a) =>
+          a.type === 'animal' && showsOwnCard(assets, a) && !a.attributes?.external)
+        const bySpecies = groupBySpecies(mine)
+          .filter(({ items }) => items.some((a) => a.status === 'active'))
+        if (bySpecies.length === 0) return null
 
         // Animals are tracked and named individually, so a flat list of "1",
         // "2", "Patti" says nothing about which is a pig and which the cow.
         // One card per species, tapped to see that species' animals — a herd
         // of forty would otherwise bury everything else on this screen.
-        // Nothing else here needs it: a group carries its kind in its own
-        // name ("Cattle (beef)"), and the rest have no species at all.
-        if (g.type === 'animal') {
-          return (
-            <section key={g.type}>
-              <h2 className="section">{g.heading}</h2>
-              <div className="speciescards">
-                {/* A species disappears when its last animal does.
-                    Inventory answers "what do I have"; a pig icon over
-                    "0 animals" answers it wrongly, and a farm that sells
-                    out every autumn would be told it still has pigs for
-                    months. The records are not gone — Analytics > Past
-                    stock browses them by year. */}
-                {groupBySpecies(mine)
-                  .filter(({ items }) => items.some((a) => a.status === 'active'))
-                  .map(({ species, items }) => (
-                  <button key={species ?? '—'} type="button" className="speciescard"
-                    onClick={() => setSpecies(species)}>
-                    <span className="glyph">{speciesGlyph(species)}</span>
-                    <span className="speciescard-name">{species ?? 'No species set'}</span>
-                    {/* On hand, not on record. A sold or butchered animal
-                        keeps its record forever — that is the point of a soft
-                        delete — but counting it here would tell someone they
-                        have two pigs when one is in the freezer. */}
-                    <span className="speciescard-count">
-                      {(() => {
-                        const live = items.filter((a) => a.status === 'active').length
-                        return `${formatQty(live)} ${live === 1 ? 'animal' : 'animals'}`
-                      })()}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          )
-        }
-
-        // A tractor and the bush hog behind it are different things to own
-        // and different things to service — one "Equipment" heading over
-        // both hides that.
-        if (g.type === 'equipment') {
-          return (
-            <section key={g.type}>
-              {bucketBy(mine, (a) => String(a.attributes?.kind ?? ''), g.heading)
-                .map(({ heading, items }) => (
-                  <div key={heading}>
-                    <h2 className="section">
-                      {heading === g.heading ? heading : pluralKind(heading)}
-                    </h2>
-                    {assetList(items, true)}
-                  </div>
-                ))}
-            </section>
-          )
-        }
-
         return (
-          <section key={g.type}>
-            <h2 className="section">{g.heading}</h2>
-            {assetList(mine)}
+          <section>
+            <h2 className="section">Animals</h2>
+            <div className="speciescards">
+              {/* A species disappears when its last animal does.
+                  Inventory answers "what do I have"; a pig icon over
+                  "0 animals" answers it wrongly, and a farm that sells
+                  out every autumn would be told it still has pigs for
+                  months. The records are not gone — Analytics > Past
+                  stock browses them by year. */}
+              {bySpecies.map(({ species, items }) => (
+                <button key={species ?? '—'} type="button" className="speciescard"
+                  onClick={() => setSpecies(species)}>
+                  <span className="glyph">{speciesGlyph(species)}</span>
+                  <span className="speciescard-name">{species ?? 'No species set'}</span>
+                  {/* On hand, not on record. A sold or butchered animal
+                      keeps its record forever — that is the point of a soft
+                      delete — but counting it here would tell someone they
+                      have two pigs when one is in the freezer. */}
+                  <span className="speciescard-count">
+                    {(() => {
+                      const live = items.filter((a) => a.status === 'active').length
+                      return `${formatQty(live)} ${live === 1 ? 'animal' : 'animals'}`
+                    })()}
+                  </span>
+                </button>
+              ))}
+            </div>
           </section>
         )
-      })}
+      })()}
+
+      {(() => {
+        // Everything else — Group, Plantings, Stores, Land, Equipment — gets
+        // one card apiece instead of dumping its rows straight onto
+        // Inventory. A dozen tractors and attachments used to bury whatever
+        // animal cards came after them; tapping the card is what used to be
+        // just scrolling down.
+        const cards = GROUPS.filter((g) => g.type !== 'animal').map((g) => {
+          if (g.type === 'lot') {
+            const all = lots.data ?? []
+            if (all.length === 0) return null
+            return (
+              <button key={g.type} type="button" className="speciescard"
+                onClick={() => setSection('lot')}>
+                <span className="speciescard-name">{g.heading}</span>
+                <span className="speciescard-count">{formatQty(all.length)} on hand</span>
+              </button>
+            )
+          }
+          const mine = assets.filter((a) => a.type === g.type
+            && !a.parent_id && !a.attributes?.external)
+          if (mine.length === 0) return null
+          const live = mine.filter((a) => a.status === 'active').length
+          return (
+            <button key={g.type} type="button" className="speciescard"
+              onClick={() => setSection(g.type)}>
+              <span className="speciescard-name">{g.heading}</span>
+              <span className="speciescard-count">{formatQty(live)} on hand</span>
+            </button>
+          )
+        }).filter(Boolean)
+        if (cards.length === 0) return null
+        return <section><div className="speciescards">{cards}</div></section>
+      })()}
 
       {adding && (
         <AddForm onClose={() => setAdding(false)}
