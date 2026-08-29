@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
-  createAnimals, createAsset, createGroupWithMembers, createLog, createPlanting,
+  createAnimals, createAsset, createGroupWithMembers, createLog, createPlanting, createTerm,
   findOrCreateExternalParent,
   listAssets, listTerms, lotBalances, type LotBalance,
 } from '../db/queries'
@@ -390,6 +390,9 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
   const [type, setType] = useState<AssetType | ''>('')
   const [name, setName] = useState('')
   const [species, setSpecies] = useState('')
+  // "Other" reveals this, and typing here is what turns a one-off animal
+  // into a real choice on every farm's own list next time — see createTerm.
+  const [speciesOther, setSpeciesOther] = useState('')
   const [purpose, setPurpose] = useState<Purpose | undefined>(undefined)
   const [sex, setSex] = useState('')
   const [tag, setTag] = useState('')
@@ -430,10 +433,11 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
   const isAnimal = type === 'animal'
   const isPlanting = type === 'planting'
   const isEquipment = type === 'equipment'
-  const purposeOptions = SPECIES_PURPOSES[species]
+  const resolvedSpecies = species === OTHER ? speciesOther.trim() : species
+  const purposeOptions = SPECIES_PURPOSES[resolvedSpecies]
   // Cattle, goats and sheep only: what the app puts on the home screen
   // depends on the answer, and either guess is wrong for somebody.
-  const mustPickPurpose = wantsSpecies && purposeRequired(species) && !purpose
+  const mustPickPurpose = wantsSpecies && purposeRequired(resolvedSpecies) && !purpose
   // A commercial operation IDs by ear tag, never a name — a cow tracked
   // only that way shouldn't need a name invented for it just to save.
   const finalName = name.trim() || (isAnimal && !many ? tag.trim() : '')
@@ -450,8 +454,9 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
       onDone()
       return
     }
+    if (species === OTHER && resolvedSpecies) await createTerm('species', resolvedSpecies)
     const attributes: Record<string, unknown> = {}
-    if (wantsSpecies && species) attributes.species = species
+    if (wantsSpecies && resolvedSpecies) attributes.species = resolvedSpecies
     if (purposeOptions && purpose) attributes.purpose = purpose
     if (isEquipment && kind) attributes.kind = kind
     if (isEquipment && make.trim()) attributes.make = make.trim()
@@ -469,11 +474,11 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
     // off the same outside bull means typing his name once, not five.
     if (isAnimal && sireId && sireId !== OTHER) attributes.sireId = sireId
     else if (isAnimal && sireName.trim()) {
-      attributes.sireId = await findOrCreateExternalParent(sireName, species, 'sire')
+      attributes.sireId = await findOrCreateExternalParent(sireName, resolvedSpecies, 'sire')
     }
     if (isAnimal && damId && damId !== OTHER) attributes.damId = damId
     else if (isAnimal && damName.trim()) {
-      attributes.damId = await findOrCreateExternalParent(damName, species, 'dam')
+      attributes.damId = await findOrCreateExternalParent(damName, resolvedSpecies, 'dam')
     }
     // Three shapes, and the count is what picks between the last two: a
     // group of seventy-five broilers, five cattle as five records, or one
@@ -526,10 +531,25 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
         <label className="field">
           <span>Species</span>
           <select autoFocus value={species}
-            onChange={(e) => { setSpecies(e.target.value); setPurpose(undefined); setSex('') }}>
+            onChange={(e) => {
+              setSpecies(e.target.value); setPurpose(undefined); setSex('')
+              if (e.target.value !== OTHER) setSpeciesOther('')
+            }}>
             <option value="">— pick one —</option>
             {(speciesList ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
+            <option value={OTHER}>Other — raising something else</option>
           </select>
+        </label>
+      )}
+
+      {wantsSpecies && species === OTHER && (
+        <label className="field">
+          <span>What is it?</span>
+          <input autoFocus value={speciesOther} onChange={(e) => setSpeciesOther(e.target.value)}
+            placeholder="Alpaca" />
+          <small className="hint">
+            Saved to your farm's own list — pick it straight from Species next time.
+          </small>
         </label>
       )}
 
@@ -607,12 +627,12 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
       )}
 
       {isAnimal && (
-        <ParentField role="sire" species={species}
+        <ParentField role="sire" species={resolvedSpecies}
           id={sireId} onId={setSireId} name={sireName} onName={setSireName} />
       )}
 
       {isAnimal && (
-        <ParentField role="dam" species={species}
+        <ParentField role="dam" species={resolvedSpecies}
           id={damId} onId={setDamId} name={damName} onName={setDamName} />
       )}
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import {
-  createLog, deleteAsset, findOrCreateExternalParent, listTerms, updateAsset,
+  createLog, createTerm, deleteAsset, findOrCreateExternalParent, listTerms, updateAsset,
 } from '../db/queries'
 import type { Asset } from '../db/types'
 import { EQUIPMENT_KINDS, FUEL_TYPES, SPECIES_PURPOSES, type Purpose } from '../lib/tiles'
@@ -35,6 +35,7 @@ export function EditAsset({
 }) {
   const [name, setName] = useState(asset.name)
   const [species, setSpecies] = useState(String(asset.attributes?.species ?? ''))
+  const [speciesOther, setSpeciesOther] = useState('')
   const [purpose, setPurpose] = useState<Purpose | undefined>(
     asset.attributes?.purpose as Purpose | undefined,
   )
@@ -80,13 +81,15 @@ export function EditAsset({
   const wantsSpecies = asset.type === 'animal' || asset.type === 'group'
   const livestock = asset.type === 'animal' || asset.type === 'group'
   const equipment = asset.type === 'equipment'
-  const purposeOptions = SPECIES_PURPOSES[species]
+  const resolvedSpecies = species === OTHER ? speciesOther.trim() : species
+  const purposeOptions = SPECIES_PURPOSES[resolvedSpecies]
 
   const save = async () => {
     setBusy(true)
+    if (species === OTHER && resolvedSpecies) await createTerm('species', resolvedSpecies)
     const attributes = { ...asset.attributes }
     if (wantsSpecies) {
-      if (species) attributes.species = species
+      if (resolvedSpecies) attributes.species = resolvedSpecies
       else delete attributes.species
     }
     // Only touch `purpose` where this form actually offered chips for it.
@@ -114,11 +117,11 @@ export function EditAsset({
       delete attributes.damName
       if (sireId && sireId !== OTHER) attributes.sireId = sireId
       else if (sireName.trim()) {
-        attributes.sireId = await findOrCreateExternalParent(sireName, species, 'sire')
+        attributes.sireId = await findOrCreateExternalParent(sireName, resolvedSpecies, 'sire')
       } else delete attributes.sireId
       if (damId && damId !== OTHER) attributes.damId = damId
       else if (damName.trim()) {
-        attributes.damId = await findOrCreateExternalParent(damName, species, 'dam')
+        attributes.damId = await findOrCreateExternalParent(damName, resolvedSpecies, 'dam')
       } else delete attributes.damId
     }
     if (equipment) {
@@ -187,10 +190,25 @@ export function EditAsset({
         <label className="field">
           <span>Species</span>
           <select value={species}
-            onChange={(e) => { setSpecies(e.target.value); setPurpose(undefined) }}>
+            onChange={(e) => {
+              setSpecies(e.target.value); setPurpose(undefined)
+              if (e.target.value !== OTHER) setSpeciesOther('')
+            }}>
             <option value="">— none —</option>
             {(speciesList ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
+            <option value={OTHER}>Other — raising something else</option>
           </select>
+        </label>
+      )}
+
+      {wantsSpecies && species === OTHER && (
+        <label className="field">
+          <span>What is it?</span>
+          <input autoFocus value={speciesOther} onChange={(e) => setSpeciesOther(e.target.value)}
+            placeholder="Alpaca" />
+          <small className="hint">
+            Saved to your farm's own list — pick it straight from Species next time.
+          </small>
         </label>
       )}
 
@@ -241,18 +259,18 @@ export function EditAsset({
       )}
 
       {asset.type === 'animal' && (
-        <ParentField role="sire" species={species} excludeId={asset.id}
+        <ParentField role="sire" species={resolvedSpecies} excludeId={asset.id}
           id={sireId} onId={setSireId} name={sireName} onName={setSireName} />
       )}
 
       {asset.type === 'animal' && (
-        <ParentField role="dam" species={species} excludeId={asset.id}
+        <ParentField role="dam" species={resolvedSpecies} excludeId={asset.id}
           id={damId} onId={setDamId} name={damName} onName={setDamName} />
       )}
 
       {asset.type === 'animal' && (
         <AssetSelect value={groupId} onChange={setGroupId} types={['group']}
-          species={species} label="Group (optional)" />
+          species={resolvedSpecies} label="Group (optional)" />
       )}
       {asset.type === 'animal' && groupId && (
         <p className="hint">
