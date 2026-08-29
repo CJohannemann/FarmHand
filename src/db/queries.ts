@@ -849,8 +849,19 @@ export async function updateLog(id: string, input: {
   )
 }
 
-export async function setQuantity(logId: string, measure: Measure, value: number) {
+/**
+ * Updates a log's existing quantity for `measure`, or creates one if the log
+ * never got one — a sale closed out with the price left blank has no price
+ * row to update, so without the insert path there was no way to add it
+ * later and it stayed invisible to Analytics for good. `unit` is required to
+ * create one (there's nothing sensible to default it to) but ignored when
+ * updating, since the row already has one.
+ */
+export async function setQuantity(
+  logId: string, measure: Measure, value: number, unit?: string, label?: string,
+) {
   const pg = await db()
+  const now = new Date().toISOString()
   const { rows } = await pg.query<{ id: string }>(
     `select id from quantity
       where log_id = $1 and measure = $2 and deleted_at is null limit 1`,
@@ -859,7 +870,14 @@ export async function setQuantity(logId: string, measure: Measure, value: number
   if (rows[0]) {
     await pg.query(
       `update quantity set value = $2, updated_at = $3 where id = $1`,
-      [rows[0].id, value, new Date().toISOString()],
+      [rows[0].id, value, now],
+    )
+  } else if (unit) {
+    const farm = await getFarmId()
+    await pg.query(
+      `insert into quantity (id, farm_id, log_id, measure, value, unit, label, created_at, updated_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $8)`,
+      [crypto.randomUUID(), farm, logId, measure, value, unit, label ?? null, now],
     )
   }
 }

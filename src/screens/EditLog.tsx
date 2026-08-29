@@ -19,7 +19,7 @@ export function EditLog({
   // Only what this form actually reads — both Records' full LogWithDetail
   // and AssetDetail's leaner AssetEvent (one row per subject/input/output
   // role on a log, not per log) carry all of this.
-  log: Pick<LogWithDetail, 'id' | 'name' | 'notes' | 'timestamp'>
+  log: Pick<LogWithDetail, 'id' | 'name' | 'notes' | 'timestamp'> & { type?: string }
   onClose: () => void
   onChanged: () => void
 }) {
@@ -31,6 +31,12 @@ export function EditLog({
 
   const qtys = useAsync(() => quantitiesFor(log.id), [log.id])
   const [edited, setEdited] = useState<Record<string, string>>({})
+  // A sale or purchase closed out with the price left blank got no price
+  // row at all — without this, there was no way back to add it, and it
+  // stayed invisible to Analytics for good.
+  const canAddPrice = log.type === 'sale' || log.type === 'purchase'
+  const hasPrice = (qtys.data ?? []).some((q) => q.measure === 'price')
+  const [newPrice, setNewPrice] = useState('')
 
   const save = async () => {
     setBusy(true)
@@ -43,6 +49,9 @@ export function EditLog({
     for (const [id, raw] of Object.entries(edited)) {
       const q = (qtys.data ?? []).find((x) => x.id === id)
       if (q && hasNumericValue(raw)) await setQuantity(log.id, q.measure as Measure, Number(raw))
+    }
+    if (canAddPrice && !hasPrice && hasNumericValue(newPrice)) {
+      await setQuantity(log.id, 'price', Number(newPrice), 'USD')
     }
     setBusy(false)
     onChanged()
@@ -81,6 +90,19 @@ export function EditLog({
           />
         </label>
       ))}
+
+      {canAddPrice && !hasPrice && (
+        <label className="field">
+          <span>{log.type === 'sale' ? 'Sold for ($)' : 'Paid ($)'}</span>
+          <input
+            type="number" inputMode="decimal" min="0" value={newPrice}
+            onChange={(e) => setNewPrice(sanitizeNumeric(e.target.value))}
+            onWheel={ignoreScrollOnNumberInput}
+            onKeyDown={ignoreArrowKeysOnNumberInput}
+            placeholder="450"
+          />
+        </label>
+      )}
 
       <label className="field">
         <span>Notes</span>
