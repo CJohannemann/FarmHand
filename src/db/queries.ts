@@ -750,28 +750,39 @@ export async function localIsEmpty(): Promise<boolean> {
 }
 
 /**
- * Point the local database at an existing remote farm. Only safe while there
- * is no local data, since farm_id is stamped on every row; returns false and
- * changes nothing otherwise, leaving the conflict for the sync work to solve.
+ * Point the local database at an existing remote farm — the one this
+ * account actually belongs to, not whatever placeholder id this device
+ * made up on first boot.
+ *
+ * A device with no records of its own just switches straight over: its
+ * placeholder farm was never real, so it goes. A device that already has
+ * real records — someone poked around before signing in, or is helping on
+ * a second farm — keeps them exactly where they are (reachable afterward
+ * through the farm switcher in Settings) and the farm being joined is added
+ * alongside, rather than refusing the join outright and leaving an invite
+ * that can never be accepted on that device. This used to require an empty
+ * device and report a conflict otherwise — reported as an invitee whose own
+ * test records blocked them from ever seeing the farm they were invited to.
  */
-export async function adoptFarmId(id: string, name: string): Promise<boolean> {
-  if (!(await localIsEmpty())) return false
+export async function adoptFarmId(
+  id: string, name: string,
+): Promise<{ hadOwnRecords: boolean }> {
+  const hadOwnRecords = !(await localIsEmpty())
   const pg = await db()
   const now = new Date().toISOString()
-  // The placeholder farm this device made for itself goes; the farms it has
-  // legitimately synced do not. It used to delete every farm row, which was
-  // safe only while a device could hold exactly one.
-  await pg.query(
-    `delete from farm where id = (select id from active_farm) and id <> $1`,
-    [id],
-  )
+  if (!hadOwnRecords) {
+    await pg.query(
+      `delete from farm where id = (select id from active_farm) and id <> $1`,
+      [id],
+    )
+  }
   await pg.query(
     `insert into farm (id, name, created_at, updated_at) values ($1, $2, $3, $4)
      on conflict (id) do update set name = excluded.name`,
     [id, name, now, now],
   )
   await setActiveFarm(id)
-  return true
+  return { hadOwnRecords }
 }
 
 /**

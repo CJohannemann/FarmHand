@@ -318,10 +318,10 @@ export default function App() {
         </div>
       )}
       {linkError && <div className="banner warn">Sync setup failed: {linkError}</div>}
-      {link?.state === 'conflict' && (
-        <div className="banner warn">
-          This device has records under a different farm. Nothing was changed —
-          they will not sync.
+      {link?.state === 'linked' && link.hadOwnRecords && (
+        <div className="banner">
+          This device already had its own records — kept safe as a separate
+          farm. Switch between the two anytime in Settings.
         </div>
       )}
       <main className="content">

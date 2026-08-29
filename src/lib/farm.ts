@@ -3,9 +3,11 @@ import { adoptFarmId, getFarmId, getFarmName } from '../db/queries'
 import { getSyncState, resetLocalData, setSyncState } from '../db/client'
 
 export type FarmLink =
-  | { state: 'linked'; farmId: string; name: string }
+  // hadOwnRecords: this device already had real records under its own
+  // placeholder farm when it joined — kept intact as a second local farm
+  // rather than discarded, so App.tsx can say so once.
+  | { state: 'linked'; farmId: string; name: string; hadOwnRecords?: boolean }
   | { state: 'created'; farmId: string; name: string }
-  | { state: 'conflict'; localId: string; remoteId: string }
   | { state: 'offline' }
 
 /**
@@ -62,9 +64,9 @@ export async function linkFarm(): Promise<FarmLink> {
   // promises no ordering without an `order by`, so the answer can differ
   // between two calls by the same account. That is a farm identity that
   // flips: this device adopts one farm and pulls its records, a later boot
-  // picks the other, and linkFarm() then reports a conflict against data it
-  // put there itself. Oldest membership wins, farm_id breaking a tie, so
-  // every device of every member resolves to the same farm every time.
+  // picks the other, and now has two farms on its hands where it should
+  // have had one. Oldest membership wins, farm_id breaking a tie, so every
+  // device of every member resolves to the same farm every time.
   const { data: memberships, error } = await supabase
     .from('farm_member')
     .select('farm_id')
@@ -94,8 +96,6 @@ export async function linkFarm(): Promise<FarmLink> {
   const { data: farmRow } = await supabase
     .from('farm').select('name').eq('id', remoteId).single()
 
-  const adopted = await adoptFarmId(remoteId, farmRow?.name ?? localName)
-  return adopted
-    ? { state: 'linked', farmId: remoteId, name: farmRow?.name ?? localName }
-    : { state: 'conflict', localId, remoteId }
+  const { hadOwnRecords } = await adoptFarmId(remoteId, farmRow?.name ?? localName)
+  return { state: 'linked', farmId: remoteId, name: farmRow?.name ?? localName, hadOwnRecords }
 }
