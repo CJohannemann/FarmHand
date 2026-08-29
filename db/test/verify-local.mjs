@@ -383,5 +383,54 @@ check('a death falls back to updated_at',
 check('the harvested flock itself is past stock',
   past.filter((r) => r.id === flock).length, 1)
 
+
+// ------------------------------------------------- the Today recent window
+// Today shows today and yesterday only; Records keeps everything. The cutoff
+// is calendar-based — 2 days means "since midnight yesterday", not a rolling
+// 48 hours, because at 9am a rolling window still shows the evening before
+// last, which is neither today nor yesterday to the person reading it.
+console.log('\nThe Today list falls off after two calendar days')
+const when = (daysAgo, hour = 12) => {
+  const d = new Date(); d.setHours(hour, 0, 0, 0); d.setDate(d.getDate() - daysAgo)
+  return d.toISOString()
+}
+const mkLog = (label, ts) => {
+  const id = uuid()
+  run(`insert into log (id, farm_id, type, timestamp, name, created_at, updated_at)
+       values (?,?,'observation',?,?,?,?)`, [id, farm, ts, label, now(), now()])
+  return id
+}
+mkLog('this morning', when(0, 8))
+mkLog('yesterday evening', when(1, 20))
+mkLog('yesterday just after midnight', when(1, 0))
+mkLog('two days ago', when(2, 23))
+mkLog('last week', when(7))
+
+const cutoff = (() => {
+  const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - 1)
+  return d.toISOString()
+})()
+const windowed = q(`select name from log
+   where deleted_at is null and status <> 'planned' and type <> 'weight'
+     and (? is null or timestamp >= ?)
+   order by timestamp desc limit 20`, [cutoff, cutoff]).map((r) => r.name)
+
+check('today is in', windowed.includes('this morning') ? 1 : 0, 1)
+check('yesterday evening is in', windowed.includes('yesterday evening') ? 1 : 0, 1)
+check('yesterday just after midnight is in',
+  windowed.includes('yesterday just after midnight') ? 1 : 0, 1)
+check('two days ago has fallen off', windowed.includes('two days ago') ? 1 : 0, 0)
+check('last week has fallen off', windowed.includes('last week') ? 1 : 0, 0)
+
+// The reason LogList needed its own empty message: the records are still
+// there, so telling this farm "Nothing recorded yet" would be a lie.
+const everything = q(`select name from log
+   where deleted_at is null and status <> 'planned' and type <> 'weight'
+     and (? is null or timestamp >= ?)
+   order by timestamp desc limit 200`, [null, null])
+check('Records still holds the older ones',
+  everything.filter((r) => r.name === 'last week').length, 1)
+check('and the two-days-ago one', everything.filter((r) => r.name === 'two days ago').length, 1)
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)

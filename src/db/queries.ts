@@ -275,8 +275,28 @@ export async function createLog(input: {
  * has its own place to live, the Growth chart on that animal's own profile
  * (still fully editable there, or from that same page's own History).
  */
-export async function recentLogs(limit = 50): Promise<LogWithDetail[]> {
+/**
+ * The log, newest first.
+ *
+ * `withinDays` trims it to recent calendar days — 2 means today and
+ * yesterday, whatever the hour. Counted in calendar days rather than a
+ * rolling 48 hours because a farm thinks in days: at 9am a rolling window
+ * would still be showing the evening before last, which is neither today
+ * nor yesterday to the person reading it.
+ *
+ * Omit it for the whole history, which is what the Records view wants.
+ */
+export async function recentLogs(
+  limit = 50, withinDays?: number,
+): Promise<LogWithDetail[]> {
   const pg = await db()
+  let since: string | null = null
+  if (withinDays != null) {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    d.setDate(d.getDate() - (withinDays - 1))
+    since = d.toISOString()
+  }
   const { rows } = await pg.query<LogWithDetail>(
     `select l.id, l.type, l.timestamp, l.status, l.name, l.notes,
             (select group_concat(a.name, ', ' order by a.name)
@@ -287,9 +307,10 @@ export async function recentLogs(limit = 50): Promise<LogWithDetail[]> {
                  and q.deleted_at is null) as summary
        from log l
       where l.deleted_at is null and l.status <> 'planned' and l.type <> 'weight'
+        and ($2 is null or l.timestamp >= $2)
       order by l.timestamp desc, l.created_at desc
       limit $1`,
-    [limit],
+    [limit, since],
   )
   return rows
 }

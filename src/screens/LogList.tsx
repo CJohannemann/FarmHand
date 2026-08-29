@@ -28,14 +28,21 @@ export function logDate(timestamp: string): string {
 }
 
 export function LogList({
-  logs, loading, onSelect,
+  logs, loading, onSelect, empty = 'Nothing recorded yet.',
 }: {
   logs: LogWithDetail[]
   loading?: boolean
+  /**
+   * What to say when there is nothing to show. The default is only true on
+   * a farm that has never logged anything — a caller that filters by date
+   * has to say so itself, or it tells a farm with years of history that it
+   * has no records because it took a quiet weekend.
+   */
+  empty?: string
   onSelect?: (log: LogWithDetail) => void
 }) {
   if (loading) return <p className="muted">Loading…</p>
-  if (logs.length === 0) return <p className="empty">Nothing recorded yet.</p>
+  if (logs.length === 0) return <p className="empty">{empty}</p>
 
   return (
     <ul className="loglist">

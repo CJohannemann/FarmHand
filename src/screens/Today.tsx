@@ -23,7 +23,15 @@ import { WeatherStrip } from './Weather'
 export function Today({ onGoToStock }: { onGoToStock: () => void }) {
   const [open, setOpen] = useState<string | null>(null)
   const [editing, setEditing] = useState<LogWithDetail | null>(null)
-  const recent = useAsync(() => recentLogs(8), [])
+  // Today and yesterday only. This is the Today screen — a list still
+  // showing last month's feeding because nothing has happened since is
+  // answering a question nobody asked here. The whole history is one tap
+  // away under Analytics > Records, which is what the empty state says.
+  //
+  // The cap is a safety valve rather than the point: two days of a busy
+  // farm is rarely twenty entries, but it should not be able to push the
+  // tab bar off the bottom of the screen if it is.
+  const recent = useAsync(() => recentLogs(20, 2), [])
   const tasks = useAsync(() => plannedLogs(), [])
   const assets = useAsync(() => listAssets(), [])
 
@@ -76,7 +84,8 @@ export function Today({ onGoToStock }: { onGoToStock: () => void }) {
       )}
 
       <h2 className="section">Recent</h2>
-      <LogList logs={recent.data ?? []} loading={recent.loading} onSelect={setEditing} />
+      <LogList logs={recent.data ?? []} loading={recent.loading} onSelect={setEditing}
+        empty="Nothing in the last couple of days. Everything you have ever logged is under Analytics > Records." />
 
       {editing && (
         <EditLog log={editing} onClose={() => setEditing(null)}
