@@ -3,6 +3,7 @@ import { lastSyncedAt, pendingCount, syncNow } from './sync'
 import { checkStillMember } from './members'
 import { handleRevokedAccess } from './revocation'
 import { onLocalWrite } from '../db/writeSignal'
+import { noteDataChanged } from './dataSignal'
 
 /**
  * The idle backstop, and only while the app is on screen.
@@ -45,7 +46,10 @@ export function useSync(enabled: boolean) {
     busy.current = true
     setStatus('syncing')
     try {
-      await syncNow()
+      const result = await syncNow()
+      // Only when something actually arrived — most syncs pull nothing,
+      // and there is no point every open screen re-reading the same data.
+      if (result.pulled > 0) noteDataChanged()
       setError(null)
       setStatus('idle')
     } catch (e) {
