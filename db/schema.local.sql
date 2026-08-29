@@ -20,7 +20,7 @@
 -- and the remote schema plus the app's own TypeScript already enforce these
 -- values before anything reaches either database.
 
-create table farm (
+create table if not exists farm (
   id           text primary key,
   name         text not null,
   timezone     text not null default 'UTC',
@@ -33,7 +33,7 @@ create table farm (
   deleted_at   text
 );
 
-create table term (
+create table if not exists term (
   id         text primary key,
   farm_id    text references farm(id),  -- null = system default
   vocabulary text not null,
@@ -43,9 +43,9 @@ create table term (
   updated_at text not null,
   deleted_at text
 );
-create index term_farm_vocab on term (farm_id, vocabulary);
+create index if not exists term_farm_vocab on term (farm_id, vocabulary);
 
-create table location (
+create table if not exists location (
   id         text primary key,
   farm_id    text not null references farm(id),
   name       text not null,
@@ -56,9 +56,9 @@ create table location (
   updated_at text not null,
   deleted_at text
 );
-create index location_farm_parent on location (farm_id, parent_id);
+create index if not exists location_farm_parent on location (farm_id, parent_id);
 
-create table asset (
+create table if not exists asset (
   id             text primary key,
   farm_id        text not null references farm(id),
   type           text not null,
@@ -71,10 +71,10 @@ create table asset (
   updated_at     text not null,
   deleted_at     text
 );
-create index asset_farm_type_status on asset (farm_id, type, status);
-create index asset_farm_parent on asset (farm_id, parent_id);
+create index if not exists asset_farm_type_status on asset (farm_id, type, status);
+create index if not exists asset_farm_parent on asset (farm_id, parent_id);
 
-create table log (
+create table if not exists log (
   id          text primary key,
   farm_id     text not null references farm(id),
   type        text not null,
@@ -89,11 +89,11 @@ create table log (
   updated_at  text not null,
   deleted_at  text
 );
-create index log_farm_timestamp on log (farm_id, timestamp desc);
-create index log_planned on log (farm_id, status, timestamp) where status = 'planned';
-create index log_farm_type_timestamp on log (farm_id, type, timestamp desc);
+create index if not exists log_farm_timestamp on log (farm_id, timestamp desc);
+create index if not exists log_planned on log (farm_id, status, timestamp) where status = 'planned';
+create index if not exists log_farm_type_timestamp on log (farm_id, type, timestamp desc);
 
-create table log_asset (
+create table if not exists log_asset (
   log_id   text not null references log(id),
   asset_id text not null references asset(id),
   role     text not null default 'subject',
@@ -101,9 +101,9 @@ create table log_asset (
   unit     text,
   primary key (log_id, asset_id, role)
 );
-create index log_asset_asset_role on log_asset (asset_id, role);
+create index if not exists log_asset_asset_role on log_asset (asset_id, role);
 
-create table quantity (
+create table if not exists quantity (
   id         text primary key,
   farm_id    text not null references farm(id),
   log_id     text not null references log(id),
@@ -116,8 +116,8 @@ create table quantity (
   updated_at text not null,
   deleted_at text
 );
-create index quantity_log on quantity (log_id);
-create index quantity_farm_measure on quantity (farm_id, measure);
+create index if not exists quantity_log on quantity (log_id);
+create index if not exists quantity_farm_measure on quantity (farm_id, measure);
 
 -- ----------------------------------------------------------------- receipts
 
@@ -131,7 +131,7 @@ create index quantity_farm_measure on quantity (farm_id, measure);
 -- because it signed in, would be tens of megabytes for something almost
 -- nobody looks at twice. So receipt_blob is push-only (see PUSH_ONLY_TABLES
 -- in src/lib/syncCore.ts) and fetched one at a time, on demand.
-create table receipt (
+create table if not exists receipt (
   id          text primary key,
   farm_id     text not null references farm(id),
   log_id      text not null references log(id),
@@ -144,15 +144,15 @@ create table receipt (
   updated_at  text not null,
   deleted_at  text
 );
-create index receipt_log on receipt (log_id);
-create index receipt_farm_captured on receipt (farm_id, captured_at desc);
+create index if not exists receipt_log on receipt (log_id);
+create index if not exists receipt_farm_captured on receipt (farm_id, captured_at desc);
 
 -- Base64 rather than a BLOB: this column's whole job is to survive the trip
 -- through PostgREST's JSON, and text goes as-is where bytea would arrive
 -- hex-encoded and need decoding on both sides. The ~33% size premium over
 -- raw bytes is paid back by the client downscaling every image to roughly
 -- 200KB before it ever gets here (see src/lib/image.ts).
-create table receipt_blob (
+create table if not exists receipt_blob (
   receipt_id text primary key references receipt(id),
   data       text not null
 );
@@ -162,12 +162,12 @@ create table receipt_blob (
 -- Absent from schema.sql: the server has no use for these, and they must
 -- never be pushed.
 
-create table sync_state (
+create table if not exists sync_state (
   key   text primary key,
   value text
 );
 
-create table sync_outbox (
+create table if not exists sync_outbox (
   tbl       text not null,
   row_id    text not null,
   queued_at text not null,
@@ -177,10 +177,11 @@ create table sync_outbox (
 -- Replaces Postgres's `set_config('farmhand.applying', ...)` session GUC,
 -- which SQLite has no equivalent of — a trigger can only read this from a
 -- table, not from an out-of-band JS flag. Always exactly one row.
-create table sync_control (
+create table if not exists sync_control (
   applying integer not null default 0
 );
-insert into sync_control (applying) values (0);
+insert into sync_control (applying) select 0
+  where not exists (select 1 from sync_control);
 
 -- Every local write records its row id in sync_outbox via a trigger, which is
 -- how a push knows what changed. Rows arriving from a pull are applied with
@@ -193,65 +194,65 @@ insert into sync_control (applying) values (0);
 -- Postgres, a single SQLite trigger cannot fire on more than one event type,
 -- so "insert or update" has to be two triggers rather than one.
 
-create trigger sync_farm_insert after insert on farm
+create trigger if not exists sync_farm_insert after insert on farm
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at) values ('farm', new.id, datetime('now'))
   on conflict (tbl, row_id) do update set queued_at = datetime('now');
 end;
-create trigger sync_farm_update after update on farm
+create trigger if not exists sync_farm_update after update on farm
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at) values ('farm', new.id, datetime('now'))
   on conflict (tbl, row_id) do update set queued_at = datetime('now');
 end;
 
-create trigger sync_term_insert after insert on term
+create trigger if not exists sync_term_insert after insert on term
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at) values ('term', new.id, datetime('now'))
   on conflict (tbl, row_id) do update set queued_at = datetime('now');
 end;
-create trigger sync_term_update after update on term
+create trigger if not exists sync_term_update after update on term
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at) values ('term', new.id, datetime('now'))
   on conflict (tbl, row_id) do update set queued_at = datetime('now');
 end;
 
-create trigger sync_location_insert after insert on location
+create trigger if not exists sync_location_insert after insert on location
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at) values ('location', new.id, datetime('now'))
   on conflict (tbl, row_id) do update set queued_at = datetime('now');
 end;
-create trigger sync_location_update after update on location
+create trigger if not exists sync_location_update after update on location
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at) values ('location', new.id, datetime('now'))
   on conflict (tbl, row_id) do update set queued_at = datetime('now');
 end;
 
-create trigger sync_asset_insert after insert on asset
+create trigger if not exists sync_asset_insert after insert on asset
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at) values ('asset', new.id, datetime('now'))
   on conflict (tbl, row_id) do update set queued_at = datetime('now');
 end;
-create trigger sync_asset_update after update on asset
+create trigger if not exists sync_asset_update after update on asset
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at) values ('asset', new.id, datetime('now'))
   on conflict (tbl, row_id) do update set queued_at = datetime('now');
 end;
 
-create trigger sync_log_insert after insert on log
+create trigger if not exists sync_log_insert after insert on log
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at) values ('log', new.id, datetime('now'))
   on conflict (tbl, row_id) do update set queued_at = datetime('now');
 end;
-create trigger sync_log_update after update on log
+create trigger if not exists sync_log_update after update on log
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at) values ('log', new.id, datetime('now'))
@@ -260,14 +261,14 @@ end;
 
 -- log_asset is keyed by a composite; flatten it into one string, same as
 -- sync_enqueue() does on the Postgres side.
-create trigger sync_log_asset_insert after insert on log_asset
+create trigger if not exists sync_log_asset_insert after insert on log_asset
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at)
   values ('log_asset', new.log_id || '|' || new.asset_id || '|' || new.role, datetime('now'))
   on conflict (tbl, row_id) do update set queued_at = datetime('now');
 end;
-create trigger sync_log_asset_update after update on log_asset
+create trigger if not exists sync_log_asset_update after update on log_asset
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at)
@@ -275,26 +276,26 @@ begin
   on conflict (tbl, row_id) do update set queued_at = datetime('now');
 end;
 
-create trigger sync_quantity_insert after insert on quantity
+create trigger if not exists sync_quantity_insert after insert on quantity
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at) values ('quantity', new.id, datetime('now'))
   on conflict (tbl, row_id) do update set queued_at = datetime('now');
 end;
-create trigger sync_quantity_update after update on quantity
+create trigger if not exists sync_quantity_update after update on quantity
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at) values ('quantity', new.id, datetime('now'))
   on conflict (tbl, row_id) do update set queued_at = datetime('now');
 end;
 
-create trigger sync_receipt_insert after insert on receipt
+create trigger if not exists sync_receipt_insert after insert on receipt
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at) values ('receipt', new.id, datetime('now'))
   on conflict (tbl, row_id) do update set queued_at = datetime('now');
 end;
-create trigger sync_receipt_update after update on receipt
+create trigger if not exists sync_receipt_update after update on receipt
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at) values ('receipt', new.id, datetime('now'))
@@ -307,7 +308,7 @@ end;
 -- would queue a pointless push straight back to the server it just came
 -- from — that path writes with sync_control.applying = 1, the same guard
 -- every pull already uses, so the WHEN clause skips it.
-create trigger sync_receipt_blob_insert after insert on receipt_blob
+create trigger if not exists sync_receipt_blob_insert after insert on receipt_blob
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at)

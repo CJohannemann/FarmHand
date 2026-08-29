@@ -21,6 +21,17 @@ import { seedLocalVocabulary } from '../../db/seedLocal.ts'
 let sqlite3: SQLiteAPI
 let db: number
 
+/**
+ * Bump this whenever schema.local.sql gains anything — a table, an index, a
+ * trigger. A device that already has a database only ever ran the schema
+ * once, at the moment it was created, so without this a new table simply
+ * never exists there and the first query touching it fails with "no such
+ * table". That is exactly how `receipt` shipped broken: sync died on every
+ * device that had been used before receipts were added.
+ */
+const SCHEMA_VERSION = '2'
+const SCHEMA_VERSION_KEY = 'localSchema'
+
 async function open(): Promise<void> {
   const module = await SQLiteAsyncESMFactory()
   sqlite3 = SQLite.Factory(module)
@@ -31,17 +42,50 @@ async function open(): Promise<void> {
   const { rows } = await queryRaw(
     `select name from sqlite_master where type = 'table' and name = 'farm'`,
   )
-  if (rows.length === 0) await migrate()
+  const fresh = rows.length === 0
+  if (fresh || (await schemaVersion()) !== SCHEMA_VERSION) await migrate(fresh)
 }
 
-async function migrate(): Promise<void> {
+/**
+ * Runs the schema, then seeds only if this database is brand new.
+ *
+ * Every statement in schema.local.sql is `if not exists`, so running it
+ * against a database that already has most of it creates whatever is
+ * missing and leaves the rest — and the farm's records — untouched. That is
+ * the whole upgrade story locally: no alter-table migrations to write, no
+ * wipe-and-repull that would risk anything still sitting in the outbox.
+ *
+ * Guarded by a version rather than run every boot: these are cheap
+ * statements but there are forty of them, and cold-boot time on a phone is
+ * the one budget this database is actually tight on.
+ */
+async function migrate(fresh: boolean): Promise<void> {
   await sqlite3.exec(db, schemaSql)
-  const now = new Date().toISOString()
+  if (fresh) {
+    const now = new Date().toISOString()
+    await runRaw(
+      `insert into farm (id, name, created_at, updated_at) values (?, ?, ?, ?)`,
+      [crypto.randomUUID(), 'My farm', now, now],
+    )
+    await seedLocalVocabulary((sql, params) => runRaw(sql, params as SQLiteCompatibleType[]))
+  }
   await runRaw(
-    `insert into farm (id, name, created_at, updated_at) values (?, ?, ?, ?)`,
-    [crypto.randomUUID(), 'My farm', now, now],
+    `insert into sync_state (key, value) values (?, ?)
+     on conflict (key) do update set value = excluded.value`,
+    [SCHEMA_VERSION_KEY, SCHEMA_VERSION],
   )
-  await seedLocalVocabulary((sql, params) => runRaw(sql, params as SQLiteCompatibleType[]))
+}
+
+/** Null on a database predating this marker, which is a database needing the upgrade. */
+async function schemaVersion(): Promise<string | null> {
+  try {
+    const { rows } = await queryRaw(
+      `select value from sync_state where key = '${SCHEMA_VERSION_KEY}'`,
+    )
+    return (rows[0]?.[0] as string) ?? null
+  } catch {
+    return null
+  }
 }
 
 /**
