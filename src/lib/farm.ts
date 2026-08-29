@@ -1,5 +1,5 @@
 import { describeError, supabase } from './supabase'
-import { adoptFarmId, getFarmId, getFarmName } from '../db/queries'
+import { adoptFarmId, getFarmId, getFarmName, purgeOrphanOutbox } from '../db/queries'
 import { getSyncState, resetLocalData, setSyncState } from '../db/client'
 
 export type FarmLink =
@@ -67,12 +67,15 @@ export async function linkFarm(): Promise<FarmLink> {
   // picks the other, and now has two farms on its hands where it should
   // have had one. Oldest membership wins, farm_id breaking a tie, so every
   // device of every member resolves to the same farm every time.
+  // No `.limit(1)` — the full list is what purgeOrphanOutbox() below needs
+  // to tell a real, already-registered second farm (its queued pushes are
+  // fine) from one nobody on the server has ever heard of (safe to stop
+  // retrying, since they can only ever fail).
   const { data: memberships, error } = await supabase
     .from('farm_member')
     .select('farm_id')
     .order('created_at', { ascending: true })
     .order('farm_id', { ascending: true })
-    .limit(1)
 
   // No network, or the tables are not there yet — carry on locally. Logged
   // (not surfaced to the user — this path is meant to stay quiet) since a
@@ -89,6 +92,11 @@ export async function linkFarm(): Promise<FarmLink> {
     if (rpcError) throw new Error(describeError(rpcError))
     return { state: 'created', farmId: data as string, name: localName }
   }
+
+  // Runs every link, not just the first — a device already stuck retrying
+  // an orphan farm's unpushable rows self-heals here too, not just one
+  // linking for the first time. See purgeOrphanOutbox()'s own comment.
+  await purgeOrphanOutbox(memberships.map((m) => m.farm_id as string))
 
   const remoteId = memberships[0].farm_id as string
   if (remoteId === localId) return { state: 'linked', farmId: remoteId, name: localName }

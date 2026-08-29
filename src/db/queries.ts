@@ -786,6 +786,53 @@ export async function adoptFarmId(
 }
 
 /**
+ * Drops queued pushes for any local farm the server has no membership for
+ * — a placeholder from before this device ever signed in, kept around by
+ * adoptFarmId() above as a second local farm rather than discarded. Left
+ * queued, they fail has_farm_access() forever, and since push() (syncCore.ts)
+ * pushes one table at a time and only clears a table's queue once the
+ * server has accepted it, one failing table wedges every table after it —
+ * `asset` blocking `log`/`quantity`/receipts too, and push-then-pull
+ * ordering meaning the farm actually being joined never even gets pulled
+ * down. Reported as an RLS violation on every "Sync now".
+ *
+ * Runs on every link, not just the moment a farm is first joined, so a
+ * device already stuck this way self-heals the next time it opens rather
+ * than repeating the same failure forever.
+ */
+export async function purgeOrphanOutbox(realFarmIds: string[]): Promise<void> {
+  const pg = await db()
+  const farms = await localFarms()
+  const byOwnColumn = ['asset', 'log', 'term', 'location', 'quantity', 'receipt']
+  for (const farm of farms) {
+    if (realFarmIds.includes(farm.id)) continue
+    for (const tbl of byOwnColumn) {
+      await pg.query(
+        `delete from sync_outbox where tbl = $1
+           and row_id in (select id from ${tbl} where farm_id = $2)`,
+        [tbl, farm.id],
+      )
+    }
+    // log_asset carries no farm_id of its own and its outbox key is
+    // composite (see schema.local.sql's sync_log_asset_insert trigger).
+    await pg.query(
+      `delete from sync_outbox where tbl = 'log_asset'
+         and row_id in (
+           select l.id || '|' || la.asset_id || '|' || la.role
+             from log_asset la join log l on l.id = la.log_id
+            where l.farm_id = $1)`,
+      [farm.id],
+    )
+    await pg.query(
+      `delete from sync_outbox where tbl = 'receipt_blob'
+         and row_id in (select id from receipt where farm_id = $1)`,
+      [farm.id],
+    )
+    await pg.query(`delete from sync_outbox where tbl = 'farm' and row_id = $1`, [farm.id])
+  }
+}
+
+/**
  * Point this device at one of the farms it holds.
  *
  * Every read is scoped through active_farm, so this one row is the whole
