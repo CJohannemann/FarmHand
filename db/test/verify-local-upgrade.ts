@@ -42,6 +42,7 @@ const older = schema
 db.exec(older)
 check('no receipt table, as on an existing device', !tables().includes('receipt'))
 check('no receipt_blob either', !tables().includes('receipt_blob'))
+check('and no active_farm either', !tables().includes('active_farm'))
 
 await seedLocalVocabulary(async (sql, params = []) => run(sql, params as unknown[]))
 const farm = uuid()
@@ -63,8 +64,19 @@ check('writes are queued for push', queuedBefore > 0, `${queuedBefore} rows`)
 
 console.log('\nRe-run the current schema over it, as the worker now does')
 db.exec(schema)
+// The second half of what migrate() does, and the half with teeth. The
+// schema creates active_farm empty; this puts the device's existing farm
+// in it. Without this line the checks below fail with every record present
+// and every screen blank, which is precisely the failure being guarded
+// against — and is what this test reported the first time it ran, because
+// this line had not been added yet.
+run(`insert into active_farm (id)
+     select id from farm
+      where not exists (select 1 from active_farm)
+      limit 1`)
 
 check('receipt table now exists', tables().includes('receipt'))
+check('active_farm now exists', tables().includes('active_farm'))
 check('receipt_blob too', tables().includes('receipt_blob'))
 check('its triggers came with it',
   (q(`select name from sqlite_master where type='trigger' and name like 'sync_receipt%'`)).length === 3)
@@ -80,6 +92,32 @@ const termsAfter = (q(`select count(*) as n from term`) as { n: number }[])[0].n
 check('vocabulary not duplicated', termsAfter === termsBefore, `${termsBefore} -> ${termsAfter}`)
 check('sync_control still has exactly one row',
   (q(`select count(*) as n from sync_control`) as { n: number }[])[0].n === 1)
+
+console.log('\nThe upgraded device points at the farm it already had')
+// The failure this guards against is silent and total. The records survive
+// the upgrade untouched, but every read is scoped through active_farm — so
+// an empty active_farm means every screen renders as a farm with nothing on
+// it. Nothing errors, nothing is lost, it simply all looks gone.
+check('exactly one farm is active', q(`select 1 from active_farm`).length === 1)
+check('and it is the farm this device already had',
+  (q(`select id from active_farm`) as { id: string }[])[0].id === farm)
+
+const scoped = () => q(`select name from asset
+   where deleted_at is null and farm_id = (select id from active_farm)`)
+check('so a scoped read still finds the animal', scoped().length === 1,
+  `${scoped().length} found`)
+check('and the log', q(`select id from log
+   where deleted_at is null and farm_id = (select id from active_farm)`).length === 1)
+check('the farm name still reads back',
+  (q(`select f.name from farm f join active_farm a on a.id = f.id`) as { name: string }[])[0]
+    ?.name === 'Rosebud Acres')
+
+console.log('\nThe backfill does not fire twice')
+run(`insert into active_farm (id)
+     select id from farm
+      where not exists (select 1 from active_farm)
+      limit 1`)
+check('still exactly one active farm', q(`select 1 from active_farm`).length === 1)
 
 console.log('\nThe new tables actually work')
 run(`insert into receipt (id, farm_id, log_id, captured_at, created_at, updated_at)
