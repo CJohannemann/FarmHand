@@ -105,3 +105,25 @@ const SPECIES_GLYPH: Record<string, string> = {
 export function speciesGlyph(species: string | null): string {
   return SPECIES_GLYPH[String(species ?? '')] ?? '🐾'
 }
+
+/** For the Stores card on the Stock screen — no dedicated hay-bale emoji exists, so Hay and Feed share the sheaf. */
+const MATERIAL_GLYPH: Record<string, string> = {
+  Feed: '🌾', Hay: '🌾', Straw: '🌾', Bedding: '🛏️',
+  Seed: '🌱', Fertilizer: '🌿', Compost: '🍂',
+  Medicine: '💊', Mineral: '🧂', Fuel: '⛽', Parts: '🔩',
+  Meat: '🥩', Eggs: '🥚', Milk: '🥛', Honey: '🍯',
+  Produce: '🥬', Firewood: '🪵', 'Canning supplies': '🫙',
+}
+
+export function materialGlyph(material: string | null): string {
+  return MATERIAL_GLYPH[String(material ?? '')] ?? '📦'
+}
+
+/** For the Equipment card — a tractor is the closest thing a farm has to a default implement. */
+const EQUIPMENT_GLYPH: Record<string, string> = {
+  Tractor: '🚜', Attachment: '🔧', Vehicle: '🚗', Other: '🛠️',
+}
+
+export function equipmentGlyph(kind: string | null): string {
+  return EQUIPMENT_GLYPH[String(kind ?? '')] ?? '🚜'
+}
