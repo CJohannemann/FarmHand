@@ -101,7 +101,23 @@ export async function findOrCreateExternalParent(
   const all = await listAssets(['animal'])
   const existing = all.find((a) => a.status === 'active' && a.attributes?.external
     && a.attributes?.species === species && a.name === trimmed)
-  if (existing) return existing.id
+
+  // A stub's sex is only ever inferred from the role it was first typed
+  // into, so typing the same name into the other role is someone correcting
+  // that inference — a boar entered as a dam by mistake, say. Reusing the
+  // stub as-is made the mistake permanent: the match is by name and species
+  // alone, so retyping "Smokey" as a sire found the female Smokey and
+  // handed it straight back, and the correction looked like it had been
+  // ignored. Reported exactly that way. Update it instead.
+  if (existing) {
+    const wanted = role === 'sire' ? 'Male' : 'Female'
+    if (existing.attributes?.sex !== wanted) {
+      await updateAsset(existing.id, {
+        attributes: { ...existing.attributes, sex: wanted },
+      })
+    }
+    return existing.id
+  }
   // A generic Male/Female sex (GENERIC_SEX_TERMS, recognized by sexRole()
   // regardless of species) so this stub is excluded from the *other*
   // role's picker — otherwise a bull typed in as a sire once would also

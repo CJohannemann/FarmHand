@@ -491,5 +491,58 @@ const topLevel = q(`select name from asset
      and id in (?,?,?,?,?,?)`, ours)
 check('all six show individually in Inventory, none nested', topLevel.length, 6)
 
+
+// ------------------------------------------- correcting an outside parent
+// A sire/dam typed by name becomes a hidden "external" stub whose sex is
+// inferred from the role it was typed into. Reported: Smokey entered as a
+// dam and Syrup as a sire, when Smokey is a boy and Syrup is a girl.
+// Retyping them the right way round used to change nothing, because the
+// stub is matched on name and species alone and was handed straight back.
+console.log('\nRetyping an outside parent the other way round corrects it')
+const outsider = (name, sex) => {
+  const id = uuid()
+  run(`insert into asset (id, farm_id, type, name, attributes, created_at, updated_at)
+       values (?,?,'animal',?,?,?,?)`,
+    [id, farm, name, JSON.stringify({ species: 'Pig', external: true, sex }), now(), now()])
+  return id
+}
+// The mistake as made: Smokey typed as a dam, Syrup as a sire.
+const smokey = outsider('Smokey', 'Female')
+const syrup = outsider('Syrup', 'Male')
+
+// findOrCreateExternalParent(), as it now behaves: same stub, corrected sex.
+const findOrFix = (name, wantedSex) => {
+  const found = q(`select id, attributes from asset
+     where type='animal' and status='active' and deleted_at is null
+       and name = ? and json_extract(attributes,'$.external') = 1`, [name])
+  if (found.length === 0) return null
+  const attrs = JSON.parse(found[0].attributes)
+  if (attrs.sex !== wantedSex) {
+    attrs.sex = wantedSex
+    run(`update asset set attributes = ?, updated_at = ? where id = ?`,
+      [JSON.stringify(attrs), now(), found[0].id])
+  }
+  return found[0].id
+}
+const sexOf = (id) =>
+  JSON.parse(q(`select attributes from asset where id = ?`, [id])[0].attributes).sex
+
+check('Smokey went in as female', sexOf(smokey) === 'Female' ? 1 : 0, 1)
+check('Syrup went in as male', sexOf(syrup) === 'Male' ? 1 : 0, 1)
+
+// Now typed the right way round.
+check('the same Smokey record is reused, not duplicated',
+  findOrFix('Smokey', 'Male') === smokey ? 1 : 0, 1)
+check('and Syrup too', findOrFix('Syrup', 'Female') === syrup ? 1 : 0, 1)
+check('Smokey is a boy now', sexOf(smokey) === 'Male' ? 1 : 0, 1)
+check('Syrup is a girl now', sexOf(syrup) === 'Female' ? 1 : 0, 1)
+check('still only one of each',
+  q(`select id from asset where name in ('Smokey','Syrup')
+       and json_extract(attributes,'$.external') = 1`).length, 2)
+
+// Anything already pointing at them keeps pointing at them: the id never
+// changed, so a calf's bloodline does not need touching.
+check('the ids did not change', findOrFix('Smokey', 'Male') === smokey ? 1 : 0, 1)
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)
