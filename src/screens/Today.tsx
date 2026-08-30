@@ -18,7 +18,7 @@ import { AssetSelect } from './AssetSelect'
 import { LogList } from './LogList'
 import { EditLog } from './EditLog'
 import { TaskList } from './TaskList'
-import { WeatherStrip } from './Weather'
+import { WeatherPlace, WeatherStrip } from './Weather'
 
 export function Today({ onGoToStock }: { onGoToStock: () => void }) {
   const [open, setOpen] = useState<string | null>(null)
@@ -50,6 +50,7 @@ export function Today({ onGoToStock }: { onGoToStock: () => void }) {
         {new Date().toLocaleDateString(undefined,
           { weekday: 'long', month: 'long', day: 'numeric' })}
       </p>
+      <WeatherPlace />
 
       <WeatherStrip />
 

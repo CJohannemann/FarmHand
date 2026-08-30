@@ -17,6 +17,20 @@ const worst = (ws: Warning[]) =>
   ws.some((w) => w.severity === 'severe') ? 'severe'
     : ws.some((w) => w.severity === 'warn') ? 'warn' : 'watch'
 
+/**
+ * Its own line above the weather strip, not a caption inside it — a tiny
+ * muted label next to the temperature read as too small to bother with on
+ * a phone, feedback from someone reading it at arm's length. Same
+ * getFarmLocation() read as WeatherStrip below; cheap and local, so a
+ * second independent copy costs nothing and keeps the two components from
+ * needing to coordinate state.
+ */
+export function WeatherPlace() {
+  const loc = useAsync(() => getFarmLocation(), [])
+  if (!loc.data?.placeName) return null
+  return <p className="wx-place-line">{loc.data.placeName}</p>
+}
+
 export function WeatherStrip() {
   const [open, setOpen] = useState(false)
   const loc = useAsync(() => getFarmLocation(), [])
@@ -47,15 +61,10 @@ export function WeatherStrip() {
         <span className="wx-now">
           {f?.currentF != null ? `${Math.round(f.currentF)}°` : '—'}
         </span>
-        <span className="wx-body">
-          {loc.data.placeName && (
-            <span className="wx-place">{loc.data.placeName}</span>
-          )}
-          <span className="wx-msg">
-            {soon.length
-              ? soon[0].headline
-              : f ? 'Nothing rough in the next week' : 'Tap for weather'}
-          </span>
+        <span className="wx-msg">
+          {soon.length
+            ? soon[0].headline
+            : f ? 'Nothing rough in the next week' : 'Tap for weather'}
         </span>
         <span className="chev">›</span>
       </button>
