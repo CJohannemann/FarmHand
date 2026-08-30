@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import {
-  getClimate, getForecast, getFarmLocation, searchPlace, setFarmLocation,
+  formatPlaceName, getClimate, getForecast, getFarmLocation,
+  reverseGeocodePlaceName, searchPlace, setFarmLocation,
   type Place,
 } from '../lib/weather'
 import type { Warning } from '../lib/weatherRules'
@@ -46,10 +47,15 @@ export function WeatherStrip() {
         <span className="wx-now">
           {f?.currentF != null ? `${Math.round(f.currentF)}°` : '—'}
         </span>
-        <span className="wx-msg">
-          {soon.length
-            ? soon[0].headline
-            : f ? 'Nothing rough in the next week' : 'Tap for weather'}
+        <span className="wx-body">
+          {loc.data.placeName && (
+            <span className="wx-place">{loc.data.placeName}</span>
+          )}
+          <span className="wx-msg">
+            {soon.length
+              ? soon[0].headline
+              : f ? 'Nothing rough in the next week' : 'Tap for weather'}
+          </span>
         </span>
         <span className="chev">›</span>
       </button>
@@ -211,11 +217,14 @@ function LocationPicker({ onDone }: { onDone: () => void }) {
     setBusy(true); setError(null)
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        await setFarmLocation({
-          latitude: Number(pos.coords.latitude.toFixed(4)),
-          longitude: Number(pos.coords.longitude.toFixed(4)),
-          placeName: 'My farm',
-        })
+        const latitude = Number(pos.coords.latitude.toFixed(4))
+        const longitude = Number(pos.coords.longitude.toFixed(4))
+        // A bare lat/long means nothing on the weather strip — worth a real
+        // name, but only US coverage can give one this way (see the
+        // function's own comment), so a farm elsewhere still gets set up
+        // rather than blocked on a lookup that was never going to answer.
+        const placeName = await reverseGeocodePlaceName(latitude, longitude) ?? 'My farm'
+        await setFarmLocation({ latitude, longitude, placeName })
         setBusy(false); onDone()
       },
       (e) => { setError(e.message); setBusy(false) },
@@ -227,7 +236,7 @@ function LocationPicker({ onDone }: { onDone: () => void }) {
     await setFarmLocation({
       latitude: p.latitude,
       longitude: p.longitude,
-      placeName: [p.name, p.admin].filter(Boolean).join(', '),
+      placeName: formatPlaceName(p.name, p.admin),
     })
     onDone()
   }

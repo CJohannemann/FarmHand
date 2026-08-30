@@ -109,6 +109,55 @@ export async function searchPlace(query: string): Promise<Place[]> {
   }))
 }
 
+const US_STATE_ABBR: Record<string, string> = {
+  Alabama: 'AL', Alaska: 'AK', Arizona: 'AZ', Arkansas: 'AR', California: 'CA',
+  Colorado: 'CO', Connecticut: 'CT', Delaware: 'DE', Florida: 'FL', Georgia: 'GA',
+  Hawaii: 'HI', Idaho: 'ID', Illinois: 'IL', Indiana: 'IN', Iowa: 'IA',
+  Kansas: 'KS', Kentucky: 'KY', Louisiana: 'LA', Maine: 'ME', Maryland: 'MD',
+  Massachusetts: 'MA', Michigan: 'MI', Minnesota: 'MN', Mississippi: 'MS',
+  Missouri: 'MO', Montana: 'MT', Nebraska: 'NE', Nevada: 'NV',
+  'New Hampshire': 'NH', 'New Jersey': 'NJ', 'New Mexico': 'NM', 'New York': 'NY',
+  'North Carolina': 'NC', 'North Dakota': 'ND', Ohio: 'OH', Oklahoma: 'OK',
+  Oregon: 'OR', Pennsylvania: 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC',
+  'South Dakota': 'SD', Tennessee: 'TN', Texas: 'TX', Utah: 'UT', Vermont: 'VT',
+  Virginia: 'VA', Washington: 'WA', 'West Virginia': 'WV', Wisconsin: 'WI',
+  Wyoming: 'WY', 'District of Columbia': 'DC',
+}
+
+/**
+ * "Independence, MO" rather than "Independence, Missouri" — short enough to
+ * sit next to a temperature without crowding it. Open-Meteo's geocoder only
+ * gives the full state name; anything not in the table (a non-US admin
+ * region) passes through as-is rather than being dropped.
+ */
+export function formatPlaceName(name: string, admin: string): string {
+  const short = US_STATE_ABBR[admin] ?? admin
+  return [name, short].filter(Boolean).join(', ')
+}
+
+/**
+ * Reverse geocoding for "use this device's location" — a bare lat/long is
+ * meaningless on the weather strip, and Open-Meteo (forward search only)
+ * can't turn coordinates back into a place name. Reuses the same NWS lookup
+ * getForecast() makes anyway, which already returns city/state (already
+ * abbreviated) for free — US only, and null wherever NWS is, so the caller
+ * falls back to a generic label rather than showing nothing.
+ */
+export async function reverseGeocodePlaceName(
+  latitude: number, longitude: number,
+): Promise<string | null> {
+  try {
+    const res = await fetch(`${NWS_POINTS}/${latitude},${longitude}`)
+    if (!res.ok) return null
+    const json = await res.json()
+    const rel = json.properties?.relativeLocation?.properties
+    if (!rel?.city) return null
+    return [rel.city, rel.state].filter(Boolean).join(', ')
+  } catch {
+    return null
+  }
+}
+
 // ------------------------------------------------------------------ forecast
 
 /**
