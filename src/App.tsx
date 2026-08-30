@@ -44,7 +44,14 @@ export default function App() {
   const [link, setLink] = useState<FarmLink | null>(null)
   const [linkError, setLinkError] = useState<string | null>(null)
 
-  const ready = useAsync(async () => { await consumeWipeIfPending(); await db(); return true }, [])
+  // skipOnDataChanged: this gates the entire app below (see the ready.loading
+  // check further down) — it must run once at boot and never again, not
+  // re-run every time sync happens to pull something in. See useAsync's own
+  // comment on the option for exactly what that looked like when it didn't.
+  const ready = useAsync(
+    async () => { await consumeWipeIfPending(); await db(); return true },
+    [], { skipOnDataChanged: true },
+  )
 
   /**
    * The three redirects the routes can't express on their own. Kept in an
@@ -148,7 +155,11 @@ export default function App() {
 
   // Setup runs once, and only for a farm this sign-in actually created.
   // A second device adopts an existing farm — state 'linked' — and skips it.
-  const setupDone = useAsync(async () => (await getSyncState('setup')) === 'done', [])
+  // skipOnDataChanged: whether setup is done is itself a one-time flag, not
+  // farm data that changes as the farm is used.
+  const setupDone = useAsync(
+    async () => (await getSyncState('setup')) === 'done', [], { skipOnDataChanged: true },
+  )
   const [justSetUp, setJustSetUp] = useState(false)
   // Dev-only escape hatch — lets onboarding be re-previewed on a farm that
   // already has one, since a real farm only ever sees it once.
