@@ -170,8 +170,9 @@ function WeatherSheet({
 
       {f && (
         <p className="hint">
-          Updated {new Date(f.fetchedAt).toLocaleString()}. Kept on the device,
-          so it is still here with no signal.
+          Updated {new Date(f.fetchedAt).toLocaleString()} ·{' '}
+          {f.source === 'nws' ? 'National Weather Service' : 'Open-Meteo'}. Kept on
+          the device, so it is still here with no signal.
         </p>
       )}
 

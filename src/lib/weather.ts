@@ -3,16 +3,34 @@ import {
   farmWarnings, frostDates, hardinessZone,
   type DayForecast, type FrostDates, type Warning,
 } from './weatherRules'
+import {
+  aggregateByDate, daysFromPeriods, nwsCodeFromText, withGridExtras, type NwsPeriod,
+} from './nwsForecast'
 
 /**
  * Open-Meteo: free, no API key, no signup, worldwide. Chosen so the app has no
- * credential to leak, no quota to police, and nothing to bill.
+ * credential to leak, no quota to police, and nothing to bill. Still the
+ * fallback for the climate archive and for any farm outside NWS's US-only
+ * coverage — see fetchNwsForecast below for the forecast itself.
  */
 const FORECAST = 'https://api.open-meteo.com/v1/forecast'
 const ARCHIVE = 'https://archive-api.open-meteo.com/v1/archive'
 const GEOCODE = 'https://geocoding-api.open-meteo.com/v1/search'
 
 const UNITS = 'temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch'
+
+/**
+ * The US government's own forecast — free, no key, and closer to what a
+ * farmer already checks (and what other US weather apps quote) than a
+ * global model blend, which is what someone actually pointed out: a
+ * multi-day-out forecast reading ten degrees hotter than everyone else's
+ * is exactly the gap that matters when it decides whether stock gets
+ * moved into shade. US coverage only — fetchNwsForecast returns null
+ * outside it (a 404 from /points), and getForecast() falls back to
+ * Open-Meteo in that case, or if NWS is having a bad day itself.
+ */
+const NWS_POINTS = 'https://api.weather.gov/points'
+const NWS_STATIONS = 'https://api.weather.gov/stations'
 
 const FORECAST_TTL_MS = 60 * 60 * 1000        // an hour
 const CLIMATE_TTL_MS = 180 * 24 * 60 * 60 * 1000  // half a year; it barely moves
@@ -37,6 +55,8 @@ export interface Forecast {
   currentCode: number | null
   days: DayForecast[]
   warnings: Warning[]
+  /** Which provider actually answered — shown on the sheet so "why does this differ from X" has an answer. */
+  source: 'nws' | 'open-meteo'
 }
 
 export interface Climate {
@@ -94,6 +114,8 @@ export async function searchPlace(query: string): Promise<Place[]> {
 /**
  * Cached in the local database rather than fetched on every render, so the
  * forecast is still on screen in a barn with no signal — stale, but there.
+ * Tries NWS first (US only) and falls back to Open-Meteo — either a farm
+ * outside US coverage, or NWS itself failing.
  */
 export async function getForecast(force = false): Promise<Forecast | null> {
   const cached = await readCache<Forecast>('weather:forecast')
@@ -103,6 +125,13 @@ export async function getForecast(force = false): Promise<Forecast | null> {
   const loc = await getFarmLocation()
   if (!loc) return cached
 
+  const forecast = await fetchNwsForecast(loc) ?? await fetchOpenMeteoForecast(loc)
+  if (!forecast) return cached
+  await writeCache('weather:forecast', forecast)
+  return forecast
+}
+
+async function fetchOpenMeteoForecast(loc: FarmLocation): Promise<Forecast | null> {
   try {
     const url = `${FORECAST}?latitude=${loc.latitude}&longitude=${loc.longitude}` +
       `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,` +
@@ -122,18 +151,101 @@ export async function getForecast(force = false): Promise<Forecast | null> {
       code: j.daily.weather_code?.[i],
     }))
 
-    const forecast: Forecast = {
+    return {
       fetchedAt: new Date().toISOString(),
       currentF: j.current?.temperature_2m ?? null,
       currentCode: j.current?.weather_code ?? null,
       days,
       warnings: farmWarnings(days),
+      source: 'open-meteo',
     }
-    await writeCache('weather:forecast', forecast)
-    return forecast
   } catch {
-    // Offline, or Open-Meteo is having a day. Stale beats blank.
-    return cached
+    // Offline, or Open-Meteo is having a day. The caller falls back to
+    // whatever's cached.
+    return null
+  }
+}
+
+/**
+ * NWS's /forecast gives clean per-period highs/lows already in Fahrenheit —
+ * used as-is rather than converted, to keep zero conversion risk on the
+ * one number people actually compare against other apps. Precipitation,
+ * snow and wind gust aren't in that endpoint at all (only a percent
+ * chance of rain), so those come from the raw gridpoint data instead —
+ * metric, and bucketed by calendar day in nwsForecast.ts.
+ */
+async function fetchNwsForecast(loc: FarmLocation): Promise<Forecast | null> {
+  try {
+    const pointsRes = await fetch(`${NWS_POINTS}/${loc.latitude},${loc.longitude}`)
+    if (!pointsRes.ok) return null // outside US coverage, or NWS having a day
+    const points = await pointsRes.json()
+    const { forecast: forecastUrl, forecastGridData: gridUrl, timeZone } =
+      points.properties ?? {}
+    if (!forecastUrl || !gridUrl || !timeZone) return null
+
+    const [periodsRes, gridRes] = await Promise.all([fetch(forecastUrl), fetch(gridUrl)])
+    if (!periodsRes.ok || !gridRes.ok) return null
+    const periodsJson = await periodsRes.json()
+    const gridJson = await gridRes.json()
+
+    const periods: NwsPeriod[] = periodsJson.properties?.periods ?? []
+    if (periods.length === 0) return null
+
+    const grid = gridJson.properties ?? {}
+    const precipIn = aggregateByDate(
+      grid.quantitativePrecipitation?.values, timeZone, (mm) => mm / 25.4, (a, b) => a + b,
+    )
+    const snowIn = aggregateByDate(
+      grid.snowfallAmount?.values, timeZone, (mm) => mm / 25.4, (a, b) => a + b,
+    )
+    const gustMph = aggregateByDate(
+      grid.windGust?.values, timeZone, (kmh) => kmh * 0.621371, (a, b) => Math.max(a, b),
+    )
+    const days = withGridExtras(daysFromPeriods(periods, timeZone), precipIn, snowIn, gustMph)
+      .slice(0, 7)
+    if (days.length === 0) return null
+
+    const current = await fetchNwsCurrentConditions(gridUrl)
+
+    return {
+      fetchedAt: new Date().toISOString(),
+      currentF: current?.tempF ?? null,
+      currentCode: current?.code ?? null,
+      days,
+      warnings: farmWarnings(days),
+      source: 'nws',
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * NWS has no single "current conditions" forecast field — this is a real
+ * station's most recent observation, the same kind of reading a human
+ * checking the airport's weather page would see. Best-effort: if a device
+ * has no stations nearby, or the nearest one hasn't reported recently, the
+ * caller just shows no current reading rather than a period's fixed high
+ * mislabeled as "now".
+ */
+async function fetchNwsCurrentConditions(
+  gridUrl: string,
+): Promise<{ tempF: number; code?: number } | null> {
+  try {
+    const stationsRes = await fetch(`${gridUrl}/stations`)
+    if (!stationsRes.ok) return null
+    const stationsJson = await stationsRes.json()
+    const id = stationsJson.features?.[0]?.properties?.stationIdentifier
+    if (!id) return null
+
+    const obsRes = await fetch(`${NWS_STATIONS}/${id}/observations/latest`)
+    if (!obsRes.ok) return null
+    const obs = (await obsRes.json()).properties ?? {}
+    const c = obs.temperature?.value
+    if (c == null || !Number.isFinite(c)) return null
+    return { tempF: c * 9 / 5 + 32, code: nwsCodeFromText(obs.textDescription) }
+  } catch {
+    return null
   }
 }
 
