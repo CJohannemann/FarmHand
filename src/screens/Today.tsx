@@ -13,6 +13,7 @@ import {
   formatQty, hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput,
   onNumericChange,
 } from '../lib/numeric'
+import { getFarmLocation } from '../lib/weather'
 import { Sheet } from './Sheet'
 import { AssetSelect } from './AssetSelect'
 import { LogList } from './LogList'
@@ -34,6 +35,10 @@ export function Today({ onGoToStock }: { onGoToStock: () => void }) {
   const recent = useAsync(() => recentLogs(20, 2), [])
   const tasks = useAsync(() => plannedLogs(), [])
   const assets = useAsync(() => listAssets(), [])
+  // Held here rather than inside WeatherPlace so that saving a location in
+  // the strip's picker can refresh the place name above it — see
+  // WeatherPlace's own comment for why its private copy never could.
+  const farmLoc = useAsync(() => getFarmLocation(), [])
 
   // Tiles follow the farm: no Eggs button without birds, no Honey without bees.
   const tiles = tilesFor(assets.data ?? [])
@@ -50,9 +55,9 @@ export function Today({ onGoToStock }: { onGoToStock: () => void }) {
         {new Date().toLocaleDateString(undefined,
           { weekday: 'long', month: 'long', day: 'numeric' })}
       </p>
-      <WeatherPlace />
+      <WeatherPlace placeName={farmLoc.data?.placeName ?? null} />
 
-      <WeatherStrip />
+      <WeatherStrip onLocationChanged={farmLoc.reload} />
 
       <div className="tiles">
         {tiles.map((t) => (

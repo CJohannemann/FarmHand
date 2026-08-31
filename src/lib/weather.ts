@@ -32,6 +32,28 @@ const UNITS = 'temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_uni
 const NWS_POINTS = 'https://api.weather.gov/points'
 const NWS_STATIONS = 'https://api.weather.gov/stations'
 
+/**
+ * A connection that is up but not moving — the barn-with-one-bar case this
+ * whole feature exists for — otherwise leaves a fetch pending forever, and
+ * with it getForecast(), so neither the fallback provider nor the cached
+ * forecast ever gets a turn. Ten seconds is well past a slow answer and well
+ * short of a farmer staring at a strip that never fills in.
+ */
+const NET_TIMEOUT_MS = 10_000
+/**
+ * How old a station observation may be and still count as "now". A station
+ * that has gone offline keeps returning its last reading forever, and this
+ * is the number shown biggest on the Today screen — a six-hour-old 70° on an
+ * afternoon that has since dropped to 38° is worse than no number at all,
+ * because the caller has a live fallback to reach for instead.
+ */
+const OBS_MAX_AGE_MS = 2 * 60 * 60 * 1000
+/** Ten years of daily readings is a far bigger response, and cached for half a year. */
+const ARCHIVE_TIMEOUT_MS = 30_000
+
+const timed = (url: string, signal: AbortSignal = AbortSignal.timeout(NET_TIMEOUT_MS)) =>
+  fetch(url, { signal })
+
 const FORECAST_TTL_MS = 60 * 60 * 1000        // an hour
 const CLIMATE_TTL_MS = 180 * 24 * 60 * 60 * 1000  // half a year; it barely moves
 
@@ -57,6 +79,12 @@ export interface Forecast {
   warnings: Warning[]
   /** Which provider actually answered — shown on the sheet so "why does this differ from X" has an answer. */
   source: 'nws' | 'open-meteo'
+}
+
+/** The "right now" reading, which the two providers source very differently. */
+interface CurrentConditions {
+  tempF: number
+  code?: number
 }
 
 export interface Climate {
@@ -97,7 +125,15 @@ export async function setFarmLocation(loc: FarmLocation) {
 /** Accepts a town, a postcode, or "town, state" — Open-Meteo handles all three. */
 export async function searchPlace(query: string): Promise<Place[]> {
   const url = `${GEOCODE}?name=${encodeURIComponent(query)}&count=8&language=en&format=json`
-  const res = await fetch(url)
+  let res: Response
+  try {
+    res = await timed(url)
+  } catch {
+    // Said the way someone standing in a field would say it, rather than the
+    // browser's own "operation was aborted due to timeout" — this one lands
+    // straight in the picker's error line.
+    throw new Error('Could not reach the place lookup. Check your signal and try again.')
+  }
   if (!res.ok) throw new Error(`Place lookup failed (${res.status})`)
   const json = await res.json()
   return (json.results ?? []).map((r: Record<string, unknown>) => ({
@@ -147,7 +183,7 @@ export async function reverseGeocodePlaceName(
   latitude: number, longitude: number,
 ): Promise<string | null> {
   try {
-    const res = await fetch(`${NWS_POINTS}/${latitude},${longitude}`)
+    const res = await timed(`${NWS_POINTS}/${latitude},${longitude}`)
     if (!res.ok) return null
     const json = await res.json()
     const rel = json.properties?.relativeLocation?.properties
@@ -186,7 +222,7 @@ async function fetchOpenMeteoForecast(loc: FarmLocation): Promise<Forecast | nul
       `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,` +
       `snowfall_sum,wind_gusts_10m_max,weather_code` +
       `&current=temperature_2m,weather_code&forecast_days=7&timezone=auto&${UNITS}`
-    const res = await fetch(url)
+    const res = await timed(url)
     if (!res.ok) throw new Error(`Weather fetch failed (${res.status})`)
     const j = await res.json()
 
@@ -199,6 +235,12 @@ async function fetchOpenMeteoForecast(loc: FarmLocation): Promise<Forecast | nul
       gustMph: j.daily.wind_gusts_10m_max[i] ?? 0,
       code: j.daily.weather_code?.[i],
     }))
+    // A 200 with no usable daily block would otherwise return a perfectly
+    // truthy forecast of nothing, which getForecast() then writes over a
+    // good cached one — leaving "Nothing rough in the next week" and an
+    // empty row list for the full hour, offline included. Same guard the
+    // NWS path already has.
+    if (days.length === 0) return null
 
     return {
       fetchedAt: new Date().toISOString(),
@@ -224,15 +266,21 @@ async function fetchOpenMeteoForecast(loc: FarmLocation): Promise<Forecast | nul
  * metric, and bucketed by calendar day in nwsForecast.ts.
  */
 async function fetchNwsForecast(loc: FarmLocation): Promise<Forecast | null> {
+  // One deadline across the whole NWS chain rather than one per request, so
+  // a slow-but-alive NWS can't stack four separate timeouts before
+  // Open-Meteo gets its turn.
+  const deadline = AbortSignal.timeout(NET_TIMEOUT_MS)
   try {
-    const pointsRes = await fetch(`${NWS_POINTS}/${loc.latitude},${loc.longitude}`)
+    const pointsRes = await timed(`${NWS_POINTS}/${loc.latitude},${loc.longitude}`, deadline)
     if (!pointsRes.ok) return null // outside US coverage, or NWS having a day
     const points = await pointsRes.json()
     const { forecast: forecastUrl, forecastGridData: gridUrl, timeZone } =
       points.properties ?? {}
     if (!forecastUrl || !gridUrl || !timeZone) return null
 
-    const [periodsRes, gridRes] = await Promise.all([fetch(forecastUrl), fetch(gridUrl)])
+    const [periodsRes, gridRes] = await Promise.all([
+      timed(forecastUrl, deadline), timed(gridUrl, deadline),
+    ])
     if (!periodsRes.ok || !gridRes.ok) return null
     const periodsJson = await periodsRes.json()
     const gridJson = await gridRes.json()
@@ -254,7 +302,13 @@ async function fetchNwsForecast(loc: FarmLocation): Promise<Forecast | null> {
       .slice(0, 7)
     if (days.length === 0) return null
 
-    const current = await fetchNwsCurrentConditions(gridUrl)
+    // NWS answered the forecast but its nearest station may still have
+    // nothing usable — no station nearby, or the obs request fell outside the
+    // deadline. Falling back to Open-Meteo for this one number beats leaving
+    // the biggest figure on the Today screen as a dash for the whole hour the
+    // forecast is cached.
+    const current = await fetchNwsCurrentConditions(gridUrl, deadline)
+      ?? await fetchOpenMeteoCurrent(loc)
 
     return {
       fetchedAt: new Date().toISOString(),
@@ -272,27 +326,49 @@ async function fetchNwsForecast(loc: FarmLocation): Promise<Forecast | null> {
 /**
  * NWS has no single "current conditions" forecast field — this is a real
  * station's most recent observation, the same kind of reading a human
- * checking the airport's weather page would see. Best-effort: if a device
- * has no stations nearby, or the nearest one hasn't reported recently, the
- * caller just shows no current reading rather than a period's fixed high
- * mislabeled as "now".
+ * checking the airport's weather page would see. Best-effort: it returns
+ * null where a farm has no station listed nearby, the observation request
+ * fails, or the station's last reading is too old to call "now", and the
+ * caller falls back to Open-Meteo rather than showing a stale reading (or a
+ * period's fixed high) mislabeled as current.
  */
 async function fetchNwsCurrentConditions(
-  gridUrl: string,
-): Promise<{ tempF: number; code?: number } | null> {
+  gridUrl: string, signal?: AbortSignal,
+): Promise<CurrentConditions | null> {
   try {
-    const stationsRes = await fetch(`${gridUrl}/stations`)
+    const stationsRes = await timed(`${gridUrl}/stations`, signal)
     if (!stationsRes.ok) return null
     const stationsJson = await stationsRes.json()
     const id = stationsJson.features?.[0]?.properties?.stationIdentifier
     if (!id) return null
 
-    const obsRes = await fetch(`${NWS_STATIONS}/${id}/observations/latest`)
+    const obsRes = await timed(`${NWS_STATIONS}/${id}/observations/latest`, signal)
     if (!obsRes.ok) return null
     const obs = (await obsRes.json()).properties ?? {}
     const c = obs.temperature?.value
     if (c == null || !Number.isFinite(c)) return null
+    const age = Date.now() - new Date(obs.timestamp).getTime()
+    if (!Number.isFinite(age) || age > OBS_MAX_AGE_MS) return null
     return { tempF: c * 9 / 5 + 32, code: nwsCodeFromText(obs.textDescription) }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Open-Meteo's current reading on its own, for when NWS has the forecast but
+ * no usable station observation. One small request, and only on that path —
+ * the normal case never makes it.
+ */
+async function fetchOpenMeteoCurrent(loc: FarmLocation): Promise<CurrentConditions | null> {
+  try {
+    const res = await timed(`${FORECAST}?latitude=${loc.latitude}&longitude=${loc.longitude}` +
+      `&current=temperature_2m,weather_code&${UNITS}`)
+    if (!res.ok) return null
+    const cur = (await res.json()).current
+    const f = cur?.temperature_2m
+    if (f == null || !Number.isFinite(f)) return null
+    return { tempF: f, code: cur.weather_code ?? undefined }
   } catch {
     return null
   }
@@ -323,7 +399,7 @@ export async function getClimate(force = false): Promise<Climate | null> {
     const url = `${ARCHIVE}?latitude=${loc.latitude}&longitude=${loc.longitude}` +
       `&start_date=${iso(start)}&end_date=${iso(end)}` +
       `&daily=temperature_2m_min&timezone=auto&${UNITS}`
-    const res = await fetch(url)
+    const res = await timed(url, AbortSignal.timeout(ARCHIVE_TIMEOUT_MS))
     if (!res.ok) throw new Error(`Climate fetch failed (${res.status})`)
     const j = await res.json()
 

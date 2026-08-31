@@ -52,7 +52,16 @@ export function useAsync<T>(
   // something new in, not just on mount or an explicit reload().
   useEffect(() => {
     if (skipOnDataChanged) return
-    return onDataChanged(reload)
+    // Each reload() hands back its own canceller, and two signals arriving
+    // close together would otherwise leave both runs racing: if the earlier,
+    // slower one settles last, it overwrites the newer result. Cancel the
+    // run in flight before starting the next, and on unmount.
+    let cancelRun: (() => void) | undefined
+    const unsubscribe = onDataChanged(() => {
+      cancelRun?.()
+      cancelRun = reload()
+    })
+    return () => { cancelRun?.(); unsubscribe() }
   }, [reload, skipOnDataChanged])
 
   return { data, error, loading, reload }

@@ -334,10 +334,10 @@ button.task-drop { flex: none; border: 0; background: none; color: var(--muted);
   font-size: 0.88rem; text-align: left; cursor: pointer; }
 .weatherstrip.warn { border-color: #a4571c60; }
 .wx-now { font-size: 1.3rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-.wx-msg { flex: 1; }
+.wx-headline { flex: 1; }
 
-.wxdays { list-style: none; margin: 0; padding: 0; }
-.wxdays li { display: flex; align-items: center; gap: 0.75rem; padding: 0.45rem 0;
+.wx-forecast-list { list-style: none; margin: 0; padding: 0; }
+.wx-forecast-list li { display: flex; align-items: center; gap: 0.75rem; padding: 0.45rem 0;
   border-bottom: 1px solid var(--line); font-size: 0.9rem; }
 .wx-day { flex: 1; }
 .wx-temps { font-variant-numeric: tabular-nums; }
@@ -386,7 +386,7 @@ button.task-drop { flex: none; border: 0; background: none; color: var(--muted);
 
             <button class="weatherstrip warn">
               <span class="wx-now">81°</span>
-              <span class="wx-msg">Heat — 94°F Wednesday</span>
+              <span class="wx-headline">Heat — 94°F Wednesday</span>
               <span class="chev">›</span>
             </button>
 
@@ -474,7 +474,7 @@ button.task-drop { flex: none; border: 0; background: none; color: var(--muted);
             <p class="tagline">Sunday, August 23</p>
             <button class="weatherstrip warn">
               <span class="wx-now">81°</span>
-              <span class="wx-msg">Heat — 94°F Wednesday</span>
+              <span class="wx-headline">Heat — 94°F Wednesday</span>
               <span class="chev">›</span>
             </button>
             <div class="tiles">
@@ -546,7 +546,7 @@ button.task-drop { flex: none; border: 0; background: none; color: var(--muted);
           </ul>
 
           <h3 class="section">Next seven days</h3>
-          <ul class="wxdays">
+          <ul class="wx-forecast-list">
             <li><span class="wx-day">Today</span><span class="wx-temps"><strong>81°</strong><span class="wx-low">65°</span></span><span class="wx-precip"></span></li>
             <li><span class="wx-day">Mon</span><span class="wx-temps"><strong>86°</strong><span class="wx-low">67°</span></span><span class="wx-precip"></span></li>
             <li><span class="wx-day">Tue</span><span class="wx-temps"><strong>90°</strong><span class="wx-low">71°</span></span><span class="wx-precip"></span></li>

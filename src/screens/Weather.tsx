@@ -20,18 +20,20 @@ const worst = (ws: Warning[]) =>
 /**
  * Its own line above the weather strip, not a caption inside it — a tiny
  * muted label next to the temperature read as too small to bother with on
- * a phone, feedback from someone reading it at arm's length. Same
- * getFarmLocation() read as WeatherStrip below; cheap and local, so a
- * second independent copy costs nothing and keeps the two components from
- * needing to coordinate state.
+ * a phone, feedback from someone reading it at arm's length.
+ *
+ * Takes the name from Today rather than reading it again here: an
+ * independent read of its own had no way to hear about a location the
+ * picker had just saved, so on a local-only install — where no sync runs
+ * and nothing fires onDataChanged — this line stayed blank until the next
+ * full page load.
  */
-export function WeatherPlace() {
-  const loc = useAsync(() => getFarmLocation(), [])
-  if (!loc.data?.placeName) return null
-  return <p className="wx-place-line">{loc.data.placeName}</p>
+export function WeatherPlace({ placeName }: { placeName: string | null }) {
+  if (!placeName) return null
+  return <p className="wx-place-line">{placeName}</p>
 }
 
-export function WeatherStrip() {
+export function WeatherStrip({ onLocationChanged }: { onLocationChanged?: () => void }) {
   const [open, setOpen] = useState(false)
   const loc = useAsync(() => getFarmLocation(), [])
   const fc = useAsync(() => getForecast(), [loc.data?.latitude])
@@ -45,7 +47,7 @@ export function WeatherStrip() {
           Set your farm’s location for weather and frost dates
         </button>
         {open && <WeatherSheet onClose={() => setOpen(false)}
-          onLocated={() => { setOpen(false); loc.reload(); fc.reload() }} />}
+          onLocated={() => { setOpen(false); loc.reload(); fc.reload(); onLocationChanged?.() }} />}
       </>
     )
   }
@@ -61,7 +63,7 @@ export function WeatherStrip() {
         <span className="wx-now">
           {f?.currentF != null ? `${Math.round(f.currentF)}°` : '—'}
         </span>
-        <span className="wx-msg">
+        <span className="wx-headline">
           {soon.length
             ? soon[0].headline
             : f ? 'Nothing rough in the next week' : 'Tap for weather'}
@@ -69,7 +71,7 @@ export function WeatherStrip() {
         <span className="chev">›</span>
       </button>
       {open && <WeatherSheet onClose={() => setOpen(false)}
-        onLocated={() => { loc.reload(); fc.reload() }} />}
+        onLocated={() => { loc.reload(); fc.reload(); onLocationChanged?.() }} />}
     </>
   )
 }
@@ -128,7 +130,7 @@ function WeatherSheet({
         return (
           <>
             <h3 className="section">Next seven days</h3>
-            <ul className="wxdays">
+            <ul className="wx-forecast-list">
               {f.days.map((d, i) => (
                 <li key={d.date}>
                   <span className="wx-day">{dayName(d.date, i)}</span>

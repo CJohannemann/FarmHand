@@ -482,16 +482,16 @@ button.task-drop {
 
 .wx-now-icon { font-size: 1.4rem; line-height: 1; }
 .wx-now { font-size: 1.3rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-.wx-msg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wx-headline { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Its own line above the strip, not a caption inside it — sized to actually
    read at a glance rather than needing to lean in. Pulled up against the
    date line above it, which already carries the gap down to here. */
 .wx-place-line { margin: -1rem 0 1rem; font-size: 1.15rem; font-weight: 600; }
 
-.wxdays { list-style: none; margin: 0; padding: 0; }
+.wx-forecast-list { list-style: none; margin: 0; padding: 0; }
 
-.wxdays li {
+.wx-forecast-list li {
   display: flex; align-items: center; gap: 0.6rem;
   padding: 0.5rem 0; border-bottom: 1px solid var(--line);
   font-size: 0.9rem;

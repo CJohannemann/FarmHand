@@ -9,8 +9,13 @@ export function weatherIcon(code?: number): string {
   if (code === 1 || code === 2) return '🌤️'
   if (code === 3) return '☁️'
   if (code === 45 || code === 48) return '🌫️'
-  if ([51, 53, 55, 56, 57].includes(code)) return '🌦️'
-  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return '🌧️'
+  // Freezing rain and freezing drizzle get their own glyph rather than the
+  // rain one they used to share: on a farm that is the difference between a
+  // wet day and an ice day — sheeted troughs, downed limbs, a lane nobody
+  // should be driving. Worth its own mark on the row.
+  if ([56, 57, 66, 67].includes(code)) return '🧊'
+  if ([51, 53, 55].includes(code)) return '🌦️'
+  if ([61, 63, 65, 80, 81, 82].includes(code)) return '🌧️'
   if ([71, 73, 75, 77, 85, 86].includes(code)) return '🌨️'
   if (code === 95 || code === 96 || code === 99) return '⛈️'
   return '☁️'

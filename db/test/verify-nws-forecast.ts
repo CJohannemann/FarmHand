@@ -27,6 +27,8 @@ check('plain rain', nwsCodeFromText('Rain Likely') === 61)
 check('sunny', nwsCodeFromText('Sunny') === 0)
 check('partly cloudy leans clear-ish', nwsCodeFromText('Partly Sunny') === 1)
 check('overcast', nwsCodeFromText('Cloudy') === 3)
+check('freezing rain reads as ice, not as ordinary rain', nwsCodeFromText('Freezing Rain Likely') === 66)
+check('freezing drizzle too', nwsCodeFromText('Patchy Freezing Drizzle') === 56)
 check('missing text is undefined, not a guess', nwsCodeFromText(undefined) === undefined)
 
 console.log('\nLocal date from a UTC instant')
@@ -86,6 +88,17 @@ const lonelyNight = daysFromPeriods(
 check('one entry, not a crash or a dropped day', lonelyNight.length === 1)
 check('both ends use the only reading available, rather than a hole in the row',
   lonelyNight[0].maxF === 74 && lonelyNight[0].minF === 74)
+
+console.log('\nOpened before dawn, when Overnight and Tonight share one date')
+const beforeDawn = daysFromPeriods([
+  period({ startTime: '2026-08-30T01:00:00-05:00', isDaytime: false, temperature: 28 }),
+  period({ startTime: '2026-08-30T07:00:00-05:00', isDaytime: true, temperature: 52 }),
+  period({ startTime: '2026-08-30T18:00:00-05:00', isDaytime: false, temperature: 45 }),
+], TZ)
+check('the two night periods still collapse into a single day', beforeDawn.length === 1)
+check('the low is the freeze two hours out, not the milder evening twelve hours later',
+  beforeDawn[0].minF === 28, String(beforeDawn[0].minF))
+check('the high is still the daytime period', beforeDawn[0].maxF === 52)
 
 console.log('\nFolding precip/snow/gust onto the paired days')
 const merged = withGridExtras(

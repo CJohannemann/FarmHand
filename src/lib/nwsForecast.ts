@@ -31,6 +31,11 @@ export function nwsCodeFromText(text: string | undefined): number | undefined {
   if (!text) return undefined
   const t = text.toLowerCase()
   if (t.includes('thunder')) return 95
+  // Ahead of both the snow and the rain branches: "Freezing Rain" and
+  // "Freezing Drizzle" contain none of snow/sleet/flurr/ice, so they would
+  // otherwise fall through and read as ordinary rain on exactly the day ice
+  // is the hazard.
+  if (t.includes('freezing')) return t.includes('drizzle') ? 56 : 66
   if (t.includes('snow') || t.includes('sleet') || t.includes('flurr') || t.includes('ice')) return 71
   if (t.includes('rain') || t.includes('shower')) return 61
   if (t.includes('drizzle')) return 51
@@ -89,7 +94,13 @@ export function daysFromPeriods(periods: NwsPeriod[], timeZone: string): DayFore
   for (const p of periods) {
     const date = localDateKey(p.startTime, timeZone)
     const entry = byDate.get(date) ?? {}
-    if (p.isDaytime) entry.day = p; else entry.night = p
+    if (p.isDaytime) entry.day = p
+    // Two night periods can share one calendar date: opened between midnight
+    // and dawn, NWS leads with "Overnight" — this morning's low, a couple of
+    // hours out — and "Tonight", eighteen hours later, lands on that same
+    // date. Keeping the colder is what makes a 28° sunrise still trip the
+    // frost warning instead of being papered over by a mild 45° evening.
+    else if (!entry.night || p.temperature < entry.night.temperature) entry.night = p
     byDate.set(date, entry)
   }
   return [...byDate.entries()]
