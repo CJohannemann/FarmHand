@@ -58,7 +58,7 @@ services:
       GOTRUE_API_PORT: 9999
       API_EXTERNAL_URL: https://${API_DOMAIN}
       GOTRUE_SITE_URL: https://${FRONTEND_DOMAIN}
-      GOTRUE_URI_ALLOW_LIST: https://${FRONTEND_DOMAIN}/**
+      GOTRUE_URI_ALLOW_LIST: https://${FRONTEND_DOMAIN}/**,https://www.${FRONTEND_DOMAIN}/**
       GOTRUE_DB_DRIVER: postgres
       DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
       GOTRUE_JWT_SECRET: ${JWT_SECRET}
@@ -78,13 +78,12 @@ services:
       # SMTP is confirmed delivering (a real reset email arrived via Brevo),
       # so this is now off and new accounts must confirm.
       #
-      # BEFORE APPLYING THIS ON THE LIVE SERVER: the confirmation link points
-      # at the bare /verify path, which needs the `location = /verify` block
-      # in nginx-farmhand-api.conf. That block is in this repo but was never
-      # copied to the live nginx (certbot rewrote that file in place — see
-      # commit 55af2f5). Turn this off before /verify works and every
-      # confirmation email 404s, which breaks signup completely. Apply the
-      # nginx block first, send yourself a test signup, then restart auth.
+      # The confirmation link points at the bare /verify path, which needs
+      # the `location = /verify` block in nginx-farmhand-api.conf — without
+      # it every confirmation email 404s and signup breaks completely. That
+      # block went missing from the live nginx once already, after certbot
+      # rewrote that file in place (commit 55af2f5). It is there now; it is
+      # worth re-checking after any certbot run that touches that file.
       GOTRUE_MAILER_AUTOCONFIRM: "false"
       GOTRUE_SMTP_HOST: ${SMTP_HOST}
       GOTRUE_SMTP_PORT: ${SMTP_PORT}

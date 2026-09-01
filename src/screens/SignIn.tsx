@@ -75,7 +75,7 @@ export function SignIn({ linkError, onDismissLinkError, onInviteCode, initialMod
             // Where the confirmation link lands. Without this it goes to
             // SITE_URL, which is '/' — the marketing page — so someone who
             // had just proved their email arrived signed in but looking at
-            // the pitch, with no sign that anything had happened. /app drops
+            // the pitch, with no sign that anything had happened. /account drops
             // them straight into setting the farm up, which is the next
             // thing they were going to do anyway.
             //
@@ -83,7 +83,7 @@ export function SignIn({ linkError, onDismissLinkError, onInviteCode, initialMod
             // redirect outside that list is silently ignored and falls back
             // to SITE_URL, which is exactly the old behaviour and would look
             // like this change had simply not worked.
-            emailRedirectTo: `${window.location.origin}/app`,
+            emailRedirectTo: `${window.location.origin}/account`,
           },
         })
 

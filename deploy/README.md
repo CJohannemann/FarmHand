@@ -16,7 +16,7 @@ At wherever `independencebaseballclub.com`'s DNS is managed, add an A
 record:
 
 ```
-farmhand.independencebaseballclub.com  ->  <this server's IP>
+farmhandmanager.com  ->  <this server's IP>
 ```
 
 (The same IP the apex/baseball site already resolves to.) Give it a few
@@ -52,7 +52,7 @@ sudo nginx -t && sudo systemctl reload nginx
 ### 5. Get a certificate
 
 ```bash
-sudo certbot --nginx -d farmhand.independencebaseballclub.com
+sudo certbot --nginx -d farmhandmanager.com
 ```
 
 (Skip installing certbot if the baseball site already uses it — same tool,
@@ -105,7 +105,7 @@ just reinstalls it, at the cost of a slower build.
 
 ```bash
 sudo nginx -t                 # is the config even valid?
-curl -I https://farmhand.independencebaseballclub.com
+curl -I https://farmhandmanager.com
 ```
 
 There's no service to check `journalctl` for — if the site is broken, it's

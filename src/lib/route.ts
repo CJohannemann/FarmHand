@@ -12,7 +12,7 @@ import { Capacitor } from '@capacitor/core'
  * /login is a real, refreshable, shareable URL and not just a
  * pushState illusion that 404s when someone reloads.
  */
-export type Route = '/' | '/app' | '/login' | '/signup'
+export type Route = '/' | '/account' | '/login' | '/signup'
 
 /**
  * What useRoute() reports: a known route, or that nothing matched. Kept
@@ -22,7 +22,7 @@ export type Route = '/' | '/app' | '/login' | '/signup'
  */
 export type Location = Route | 'not-found'
 
-const ROUTES: Route[] = ['/', '/app', '/login', '/signup']
+const ROUTES: Route[] = ['/', '/account', '/login', '/signup']
 
 /**
  * A native build has no address bar and always boots index.html at '/',
@@ -36,7 +36,7 @@ export function isNative(): boolean {
 }
 
 function read(): Location {
-  if (isNative()) return '/app'
+  if (isNative()) return '/account'
   // Trailing slashes only, so /login/ and /login are the same screen.
   const path = window.location.pathname.replace(/\/+$/, '') || '/'
   return (ROUTES as string[]).includes(path) ? (path as Route) : 'not-found'

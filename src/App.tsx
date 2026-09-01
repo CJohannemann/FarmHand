@@ -68,8 +68,8 @@ export default function App() {
   useEffect(() => {
     if (checking || recovery || !supabaseConfigured) return
     if (session && (route === '/login' || route === '/signup')) {
-      navigate('/app', { replace: true })
-    } else if (!session && route === '/app') {
+      navigate('/account', { replace: true })
+    } else if (!session && route === '/account') {
       navigate('/login', { replace: true })
     } else if (!session && route === '/' && (inviteLinkCode || badLink)) {
       navigate(inviteLinkCode ? '/signup' : '/login', { replace: true })
@@ -187,7 +187,7 @@ export default function App() {
   // reset hands them to their farm rather than dropping them back on the
   // pitch for a product they have just proved they own an account for.
   if (recovery) {
-    return <ResetPassword onDone={() => { clearRecovery(); navigate('/app', { replace: true }) }} />
+    return <ResetPassword onDone={() => { clearRecovery(); navigate('/account', { replace: true }) }} />
   }
 
   // Ahead of the landing page and the ready checks alike: an unrecognized
@@ -212,7 +212,7 @@ export default function App() {
       <Landing
         signedIn={Boolean(session)}
         onSignIn={(mode) => navigate(mode === 'up' ? '/signup' : '/login')}
-        onOpenApp={() => navigate('/app')}
+        onOpenApp={() => navigate('/account')}
       />
     )
 

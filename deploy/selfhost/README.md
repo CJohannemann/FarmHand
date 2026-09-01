@@ -43,7 +43,7 @@ rather than a copy here, since the exact commands change over time.
 Same as the frontend subdomain — add another A record at IONOS:
 
 ```
-api.independencebaseballclub.com  ->  <this server's IP>
+api.farmhandmanager.com  ->  <this server's IP>
 ```
 
 ## 3. Secrets
@@ -156,13 +156,13 @@ paste the output before moving on to nginx.
 sudo cp nginx-farmhand-api.conf /etc/nginx/sites-available/farmhand-api
 sudo ln -s /etc/nginx/sites-available/farmhand-api /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d api.independencebaseballclub.com
+sudo certbot --nginx -d api.farmhandmanager.com
 ```
 
 **Sanity check**, this time through the real domain:
 
 ```bash
-curl -i "https://api.independencebaseballclub.com/rest/v1/asset?select=id&limit=1" -H "apikey: $ANON_KEY"
+curl -i "https://api.farmhandmanager.com/rest/v1/asset?select=id&limit=1" -H "apikey: $ANON_KEY"
 ```
 
 Same expectation as step 6 — `200` and `[]`/rows.
@@ -177,7 +177,7 @@ nano .env
 Change:
 
 ```
-VITE_SUPABASE_URL=https://api.independencebaseballclub.com
+VITE_SUPABASE_URL=https://api.farmhandmanager.com
 VITE_SUPABASE_ANON_KEY=<the ANON_KEY from deploy/selfhost/.env>
 ```
 

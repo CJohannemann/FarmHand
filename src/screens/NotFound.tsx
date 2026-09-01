@@ -25,7 +25,7 @@ export function NotFound({ signedIn, onGo }: {
 
       {signedIn ? (
         <>
-          <button className="primary" onClick={() => onGo('/app')}>
+          <button className="primary" onClick={() => onGo('/account')}>
             Open your farm
           </button>
           <button className="linkish" onClick={() => onGo('/')}>
