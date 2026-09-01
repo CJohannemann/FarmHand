@@ -20,33 +20,24 @@
     --accent-deep: #8a5f1e;
     --line:        #d7dee0;
     --focus:       #8a5f1e;
+
+    color-scheme: light;
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --mist:        #10161a;
-      --mist-2:      #161d21;
-      --card:        #1a2226;
-      --ink:         #eaf0f1;
-      --ink-soft:    #a9b6b8;
-      --ink-faint:   #74847f;
-      --accent:      #e0a94f;
-      --accent-deep: #f0c680;
-      --line:        #29343a;
-    }
-  }
+  /*
+    Deliberately light-only. This is the public front door, and the
+    mist-and-wheat palette above is the design — a visitor whose
+    phone happens to be in dark mode was getting a different first
+    impression of the product than one on a laptop in daylight, for
+    no reason either of them chose. The app behind the sign-in still
+    follows the OS (and the explicit choice in Settings); see
+    src/index.css. A dark palette for this page is in git history if
+    it is ever wanted back.
 
-  :root[data-theme="dark"] {
-    --mist:        #10161a;
-    --mist-2:      #161d21;
-    --card:        #1a2226;
-    --ink:         #eaf0f1;
-    --ink-soft:    #a9b6b8;
-    --ink-faint:   #74847f;
-    --accent:      #e0a94f;
-    --accent-deep: #f0c680;
-    --line:        #29343a;
-  }
+    color-scheme above is what stops the browser from darkening the
+    things CSS variables cannot reach: scrollbars, form controls and
+    the like would otherwise still render dark around a light page.
+  */
 
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
