@@ -959,17 +959,31 @@ export async function quantitiesFor(logId: string) {
   return rows
 }
 
+/** Log types that bring a lot into being, and the role that holds it. */
+const CREATES_LOT: Record<string, 'subject' | 'output' | undefined> = {
+  purchase: 'subject',
+  harvest: 'output',
+  processing: 'output',
+}
+
 /**
  * Soft delete. Rows are never removed: a device that has been offline must be
  * told a record died rather than simply find it missing, and the deleted_at
  * update is what syncs that fact.
  *
- * A purchase log is the only thing that brings its lot into existence, so
- * deleting one that nothing else has touched (no other purchase, feeding, or
- * disposition logged against that lot) takes the lot down with it too —
- * otherwise "delete this duplicate purchase" leaves a phantom, zero-balance
- * lot still selectable everywhere lots are picked from (Feed, Vet/Med,
- * Stores), which is exactly the record it looked like this had just deleted.
+ * A lot exists only because some log brought it into existence: a purchase
+ * bought it, or a harvest or processing run produced it. Deleting that log,
+ * when nothing else has touched the lot since (no other purchase, feeding,
+ * or disposition logged against it), takes the lot down with it too —
+ * otherwise "delete this duplicate purchase", or "delete this butchering",
+ * leaves a phantom, zero-balance lot still listed in Stores and still
+ * selectable everywhere lots are picked from (Feed, Vet/Med), which is
+ * exactly the record it looked like this had just deleted.
+ *
+ * Which role holds the lot depends on the log: a purchase's subject IS the
+ * lot, while a harvest's subject is the animal or bed it came off — only its
+ * output is the new lot. Reading the wrong role here would archive the
+ * source instead of the product.
  */
 export async function deleteLog(id: string) {
   const pg = await db()
@@ -986,11 +1000,12 @@ export async function deleteLog(id: string) {
       where log_id = $1 and deleted_at is null`, [id, now],
   )
 
-  if (logRows[0]?.type === 'purchase') {
-    const { rows: subjects } = await pg.query<{ asset_id: string }>(
-      `select asset_id from log_asset where log_id = $1 and role = 'subject'`, [id],
+  const createdRole = CREATES_LOT[logRows[0]?.type ?? '']
+  if (createdRole) {
+    const { rows: created } = await pg.query<{ asset_id: string }>(
+      `select asset_id from log_asset where log_id = $1 and role = $2`, [id, createdRole],
     )
-    for (const { asset_id } of subjects) {
+    for (const { asset_id } of created) {
       const { rows: untouched } = await pg.query<{ n: number }>(
         `select count(*) as n
            from log_asset la
