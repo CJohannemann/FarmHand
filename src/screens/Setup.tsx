@@ -50,7 +50,7 @@ function NameStep({ onNext }: { onNext: () => void }) {
 
   return (
     <>
-      <h1>Welcome to Farmhand Management</h1>
+      <h1>Welcome to Farm Hand Manager</h1>
       <p className="tagline">
         Records for a farm or a homestead — what you keep, what you feed it,
         what it produces, and what any of it actually cost.

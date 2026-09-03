@@ -102,7 +102,7 @@ export function SignIn({ linkError, onDismissLinkError, onInviteCode, initialMod
 
   return (
     <main className="screen auth">
-      <h1>Farmhand Management</h1>
+      <h1>Farm Hand Manager</h1>
       <p className="tagline">
         {mode === 'in' && 'Sign in to your farm.'}
         {mode === 'up' && 'Create your account.'}

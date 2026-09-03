@@ -17,7 +17,7 @@ export function NotFound({ signedIn, onGo }: {
 }) {
   return (
     <main className="screen boot">
-      <h1>Farmhand Management</h1>
+      <h1>Farm Hand Manager</h1>
       <p className="muted">There's nothing at this address.</p>
       <p className="muted">
         <code>{window.location.pathname}</code>

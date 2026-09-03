@@ -1,8 +1,8 @@
-# Farmhand Management
+# Farm Hand Manager
 
 Farm management and record keeping — web, phone, and tablet, from one codebase.
 
-Farmhand Management tracks what happens on a farm: the animals, crops, land, equipment and
+Farm Hand Manager tracks what happens on a farm: the animals, crops, land, equipment and
 supplies, and the daily record of what was done to them. It is designed to cover
 any kind of farming — livestock, row crops, market gardens, orchards, apiaries,
 mixed operations — without schema changes for each new type.
@@ -25,5 +25,5 @@ See [docs/domain-model.md](docs/domain-model.md).
 ## Prior art
 
 The domain model is closely modeled on [farmOS](https://farmos.org), an
-established open-source farm management system. Farmhand Management differs in being a
+established open-source farm management system. Farm Hand Manager differs in being a
 hosted, cross-platform product rather than self-hosted Drupal software.

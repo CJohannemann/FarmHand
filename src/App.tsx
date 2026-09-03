@@ -173,7 +173,7 @@ export default function App() {
   if (checking) {
     return (
       <main className="screen boot">
-        <h1>Farmhand Management</h1>
+        <h1>Farm Hand Manager</h1>
       </main>
     )
   }
@@ -219,7 +219,7 @@ export default function App() {
   if (ready.error) {
     return (
       <main className="screen">
-        <h1>Farmhand Management</h1>
+        <h1>Farm Hand Manager</h1>
         <p className="error">
           The local database failed to open. {ready.error.message}
         </p>
@@ -230,7 +230,7 @@ export default function App() {
   if (ready.loading) {
     return (
       <main className="screen boot">
-        <h1>Farmhand Management</h1>
+        <h1>Farm Hand Manager</h1>
         <p className="muted">Setting up your local database…</p>
       </main>
     )
@@ -254,7 +254,7 @@ export default function App() {
   if (cutover === null) {
     return (
       <main className="screen boot">
-        <h1>Farmhand Management</h1>
+        <h1>Farm Hand Manager</h1>
         <p className="muted">Finishing an update…</p>
       </main>
     )
@@ -263,7 +263,7 @@ export default function App() {
   if (cutover.ok === false) {
     return (
       <main className="screen">
-        <h1>Farmhand Management</h1>
+        <h1>Farm Hand Manager</h1>
         <p className="error">
           {cutover.reason === 'offline'
             ? "Connect to the internet to finish updating — some records haven't synced yet."
@@ -279,7 +279,7 @@ export default function App() {
   if (pendingInvite && !skipInvite) {
     return (
       <main className="screen boot">
-        <h1>Farmhand Management</h1>
+        <h1>Farm Hand Manager</h1>
         {!inviteError ? (
           <p className="muted">Joining your invited farm…</p>
         ) : (

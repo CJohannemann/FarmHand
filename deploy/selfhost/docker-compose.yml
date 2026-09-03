@@ -89,7 +89,7 @@ services:
       GOTRUE_SMTP_PORT: ${SMTP_PORT}
       GOTRUE_SMTP_USER: ${SMTP_USER}
       GOTRUE_SMTP_PASS: ${SMTP_PASS}
-      GOTRUE_SMTP_SENDER_NAME: Farmhand Management
+      GOTRUE_SMTP_SENDER_NAME: Farm Hand Manager
       GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL}
     ports:
       - "127.0.0.1:9999:9999"

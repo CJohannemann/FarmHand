@@ -41,7 +41,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return (
       <main className="screen">
-        <h1>Farmhand Management</h1>
+        <h1>Farm Hand Manager</h1>
         <p className="error">Something went wrong and this screen stopped working.</p>
         <p className="muted">
           Your records are safe — they're stored on this device and on the

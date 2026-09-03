@@ -90,7 +90,7 @@ export async function exportEverything(
  */
 function readme(total: number, got: number, missing: number): string {
   return [
-    'Your farm, exported from Farmhand Management.',
+    'Your farm, exported from Farm Hand Manager.',
     '',
     'farm.json    Every row and column exactly as stored. The lossless copy —',
     '             use this one if you ever need to rebuild the farm elsewhere.',
