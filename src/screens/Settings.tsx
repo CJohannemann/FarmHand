@@ -62,7 +62,23 @@ export function Settings() {
       )}
 
       <YourDataPanel email={session?.user.email ?? null} />
+
+      <ContactPanel />
     </div>
+  )
+}
+
+function ContactPanel() {
+  return (
+    <>
+      <h2 style={{ marginTop: '1.5rem' }}>Contact us</h2>
+      <p className="hint">
+        Questions, feedback, or something not working right —{' '}
+        <a href="mailto:contact.farmhandmanager@gmail.com">
+          contact.farmhandmanager@gmail.com
+        </a>
+      </p>
+    </>
   )
 }
 
