@@ -273,7 +273,7 @@ function BuyForm({ onDone, onClose }: FormProps) {
   const { run, busy, error } = useSave(save)
 
   return (
-    <Sheet title="Bought something" onClose={onClose}>
+    <Sheet title="Purchase" onClose={onClose}>
       <p className="hint">
         Recording what you paid is what lets the app work out cost per unit
         later.
