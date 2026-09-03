@@ -343,7 +343,7 @@ export function Stock() {
     <div className="screen">
       <h1>Inventory</h1>
       <p className="tagline">
-        Animals, land, feed and machines — everything the records hang off.
+        Animals, land, feed and machines.
       </p>
 
       <button className="primary" onClick={() => setAdding(true)}>
@@ -675,7 +675,7 @@ function AddForm({ onDone, onClose }: { onDone: () => void; onClose: () => void 
       <label className="field">
         <span>Name{isAnimal ? ' (optional with a tag)' : ''}</span>
         <input autoFocus={!wantsSpecies} value={name} onChange={(e) => setName(e.target.value)}
-          placeholder={type === 'group' ? 'Spring broilers' : 'Bluebell'} />
+          placeholder={type === 'group' ? 'Spring broilers' : undefined} />
       </label>
 
       {isAnimal && (
