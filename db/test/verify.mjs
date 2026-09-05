@@ -60,7 +60,9 @@ const [cost] = await q(`
   with used as (
     select la_in.asset_id as lot_id,
            la_in.amount / (select count(*) from log_asset s
-                            where s.log_id = l.id and s.role = 'subject') as used_amount
+                            where s.log_id = l.id and s.role = 'subject') as used_amount,
+           1.0 / (select count(*) from log_asset s
+                   where s.log_id = l.id and s.role = 'subject') as share
       from log_asset subj
       join log l on l.id = subj.log_id
            and l.type = 'input_application' and l.deleted_at is null
@@ -69,7 +71,8 @@ const [cost] = await q(`
   ),
   per_lot as (
     select lot_id, sum(used_amount) as used_total,
-           bool_or(used_amount is null) as unknown_amount
+           bool_or(used_amount is null) as unknown_amount,
+           max(case when used_amount is null then share end) as unknown_share
       from used group by lot_id
   ),
   lot_purchase as (
@@ -83,7 +86,7 @@ const [cost] = await q(`
   )
   select coalesce(sum(
     case when lp.price is null then 0
-         when pl.unknown_amount then lp.price
+         when pl.unknown_amount then lp.price * pl.unknown_share
          when lp.bought > 0 then lp.price * least(pl.used_total / lp.bought, 1)
          else lp.price end), 0)::float as input_cost
     from per_lot pl join lot_purchase lp on lp.lot_id = pl.lot_id`, [flock])

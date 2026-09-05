@@ -640,7 +640,11 @@ export async function assetCosts(assetId: string): Promise<CostSummary> {
        -- the record supports.
        select la_in.asset_id as lot_id,
               la_in.amount / (select count(*) from log_asset s
-                               where s.log_id = l.id and s.role = 'subject') as used_amount
+                               where s.log_id = l.id and s.role = 'subject') as used_amount,
+              -- This animal's share of the feeding, kept even when no amount
+              -- was typed: the branch below still has to divide by it.
+              1.0 / (select count(*) from log_asset s
+                      where s.log_id = l.id and s.role = 'subject') as share
          from log_asset subj
          join log l on l.id = subj.log_id
               and l.type = 'input_application' and l.deleted_at is null
@@ -651,7 +655,13 @@ export async function assetCosts(assetId: string): Promise<CostSummary> {
        select lot_id, sum(used_amount) as used_total,
               -- bool_or() doesn't exist in SQLite; max() over the 0/1 that
               -- an "is null" check already evaluates to is the same thing.
-              max(used_amount is null) as unknown_amount
+              max(used_amount is null) as unknown_amount,
+              -- The largest share this animal ever had of an un-quantified
+              -- feeding from this lot. Charging the whole lot price on that
+              -- branch is what "we don't know how much" is meant to mean for
+              -- one animal — but four pigs sharing one $20 bag are $5 each,
+              -- not $20 each, whether or not anyone typed the pounds in.
+              max(case when used_amount is null then share end) as unknown_share
          from used group by lot_id
      ),
      lot_purchase as (
@@ -668,7 +678,7 @@ export async function assetCosts(assetId: string): Promise<CostSummary> {
      select coalesce(sum(
        case
          when lp.price is null then 0
-         when pl.unknown_amount then lp.price
+         when pl.unknown_amount then lp.price * pl.unknown_share
          when lp.bought > 0
            -- least() doesn't exist in SQLite; min() with 2+ plain arguments
            -- (not the aggregate form) is the same thing. used_total is never

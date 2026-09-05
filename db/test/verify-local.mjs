@@ -76,7 +76,9 @@ const [cost] = q(`
   with used as (
     select la_in.asset_id as lot_id,
            la_in.amount / (select count(*) from log_asset s
-                            where s.log_id = l.id and s.role = 'subject') as used_amount
+                            where s.log_id = l.id and s.role = 'subject') as used_amount,
+           1.0 / (select count(*) from log_asset s
+                   where s.log_id = l.id and s.role = 'subject') as share
       from log_asset subj
       join log l on l.id = subj.log_id
            and l.type = 'input_application' and l.deleted_at is null
@@ -85,7 +87,8 @@ const [cost] = q(`
   ),
   per_lot as (
     select lot_id, sum(used_amount) as used_total,
-           max(used_amount is null) as unknown_amount
+           max(used_amount is null) as unknown_amount,
+           max(case when used_amount is null then share end) as unknown_share
       from used group by lot_id
   ),
   lot_purchase as (
@@ -99,7 +102,7 @@ const [cost] = q(`
   )
   select coalesce(sum(
     case when lp.price is null then 0
-         when pl.unknown_amount then lp.price
+         when pl.unknown_amount then lp.price * pl.unknown_share
          when lp.bought > 0 then lp.price * min(pl.used_total / lp.bought, 1)
          else lp.price end), 0) as input_cost
     from per_lot pl join lot_purchase lp on lp.lot_id = pl.lot_id`, [flock])
@@ -649,7 +652,9 @@ const inputCostOf = (id) => q(`
   with used as (
     select la_in.asset_id as lot_id,
            la_in.amount / (select count(*) from log_asset s
-                            where s.log_id = l.id and s.role = 'subject') as used_amount
+                            where s.log_id = l.id and s.role = 'subject') as used_amount,
+           1.0 / (select count(*) from log_asset s
+                   where s.log_id = l.id and s.role = 'subject') as share
       from log_asset subj
       join log l on l.id = subj.log_id
            and l.type = 'input_application' and l.deleted_at is null
@@ -658,7 +663,8 @@ const inputCostOf = (id) => q(`
   ),
   per_lot as (
     select lot_id, sum(used_amount) as used_total,
-           max(used_amount is null) as unknown_amount
+           max(used_amount is null) as unknown_amount,
+           max(case when used_amount is null then share end) as unknown_share
       from used group by lot_id
   ),
   lot_purchase as (
@@ -672,7 +678,7 @@ const inputCostOf = (id) => q(`
   )
   select coalesce(sum(
     case when lp.price is null then 0
-         when pl.unknown_amount then lp.price
+         when pl.unknown_amount then lp.price * pl.unknown_share
          when lp.bought > 0 then lp.price * min(pl.used_total / lp.bought, 1)
          else lp.price end), 0) as v
     from per_lot pl join lot_purchase lp on lp.lot_id = pl.lot_id`, [id])[0].v
@@ -680,6 +686,41 @@ const inputCostOf = (id) => q(`
 check('one cow carries a fifth of the bale', inputCostOf(herd[0]), 12)
 check('and the herd adds back up to the whole bale, not five bales',
   herd.reduce((s, c) => s + inputCostOf(c), 0), 60)
+
+// The quantity field on the Feeding sheet is optional, and leaving it blank
+// is the common case — you know the bag went to the bagPigs, not how many
+// pounds each one ate. That took the "amount unknown" branch, which charged
+// the whole lot price to every subject: four bagPigs sharing one $20 bag came
+// out $20 apiece rather than $5.
+console.log('\nA feeding with no quantity typed in still splits between them')
+const bagPigs = [1, 2, 3, 4].map(() => {
+  const id = uuid()
+  run(`insert into asset (id,farm_id,type,name,attributes,created_at,updated_at)
+       values (?,?,'animal','Pig','{"species":"Pig"}',?,?)`, [id, farm, now(), now()])
+  return id
+})
+const bagLot = uuid()
+run(`insert into asset (id,farm_id,type,name,attributes,created_at,updated_at)
+     values (?,?,'lot','Pig feed','{"origin":"purchased","material":"Feed"}',?,?)`,
+  [bagLot, farm, now(), now()])
+const bagBuy = uuid()
+run(`insert into log (id,farm_id,type,timestamp,name,created_at,updated_at)
+     values (?,?,'purchase',?,'Bought Pig feed',?,?)`, [bagBuy, farm, now(), now(), now()])
+run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`, [bagBuy, bagLot])
+run(`insert into quantity (id,farm_id,log_id,measure,value,unit,created_at,updated_at)
+     values (?,?,?,'price',20,'USD',?,?)`, [uuid(), farm, bagBuy, now(), now()])
+
+const bagFed = uuid()
+run(`insert into log (id,farm_id,type,timestamp,name,created_at,updated_at)
+     values (?,?,'input_application',?,'Fed',?,?)`, [bagFed, farm, now(), now(), now()])
+// No amount and no unit — the field was left blank.
+run(`insert into log_asset (log_id,asset_id,role,amount,unit) values (?,?,'input',null,null)`,
+  [bagFed, bagLot])
+for (const p of bagPigs) run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`, [bagFed, p])
+
+check('one pig carries a quarter of the bag', inputCostOf(bagPigs[0]), 5)
+check('and the four add back up to the bag, not four bags',
+  bagPigs.reduce((s, p) => s + inputCostOf(p), 0), 20)
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)
