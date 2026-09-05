@@ -565,7 +565,15 @@ export async function assetCosts(assetId: string): Promise<CostSummary> {
 
   const cost = await pg.query<{ input_cost: number }>(
     `with used as (
-       select la_in.asset_id as lot_id, la_in.amount as used_amount
+       -- Divided by however many animals shared this feeding. A round bale
+       -- fed to a herd of five is one log with five subjects and one draw
+       -- amount, so without this each of them claims the whole bale — five
+       -- times the hay actually went out. Same reasoning as the purchase
+       -- split above, and for the same reason: it is the only assumption
+       -- the record supports.
+       select la_in.asset_id as lot_id,
+              la_in.amount / (select count(*) from log_asset s
+                               where s.log_id = l.id and s.role = 'subject') as used_amount
          from log_asset subj
          join log l on l.id = subj.log_id
               and l.type = 'input_application' and l.deleted_at is null

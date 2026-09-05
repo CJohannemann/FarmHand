@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
   createLog, createPurchase, listAssets, listTerms, lotBalances, planTask,
   plannedLogs, recentLogs,
 } from '../db/queries'
-import type { LogWithDetail } from '../db/types'
+import type { Asset, LogWithDetail } from '../db/types'
 import type { PreparedImage } from '../lib/image'
 import { ReceiptCapture } from './ReceiptCapture'
 import { HARVESTS, tilesFor, type HarvestSpec } from '../lib/tiles'
@@ -162,6 +162,63 @@ function ProduceForm({ spec, onDone, onClose }: FormProps & { spec: HarvestSpec 
   )
 }
 
+const SPECIES_PREFIX = 'species:'
+
+const pluralSpecies = (species: string) =>
+  species === 'Other' || species.endsWith('s') ? species : species + 's'
+
+/** Animals and groups eligible to be fed — same filter AssetSelect applies. */
+function feedEligible(assets: Asset[]): Asset[] {
+  return assets.filter((a) => a.status === 'active' && !a.parent_id && !a.attributes?.external)
+}
+
+/**
+ * "Fed what?" needs an option a dropdown of individuals doesn't have: the
+ * whole herd. A round bale isn't eaten by one cow, and picking just one to
+ * stand in for all five would charge that one animal the cost of feeding
+ * the other four. Species with more than one active animal get an "All
+ * X (n)" entry above their individuals; a lone animal of its species needs
+ * no such entry — it already is the whole herd.
+ */
+function feedSubjectOptions(assets: Asset[]): { value: string; label: string }[] {
+  const eligible = feedEligible(assets)
+  const bySpecies = new Map<string, Asset[]>()
+  const noSpecies: Asset[] = []
+  for (const a of eligible) {
+    if (a.type !== 'animal') continue
+    const species = String(a.attributes?.species ?? '').trim()
+    if (!species) { noSpecies.push(a); continue }
+    const list = bySpecies.get(species)
+    if (list) list.push(a); else bySpecies.set(species, [a])
+  }
+
+  const options: { value: string; label: string }[] = []
+  for (const [species, members] of [...bySpecies].sort(([a], [b]) => a.localeCompare(b))) {
+    if (members.length > 1) {
+      options.push({
+        value: SPECIES_PREFIX + species,
+        label: `All ${pluralSpecies(species)} (${members.length})`,
+      })
+    }
+    for (const m of members) options.push({ value: m.id, label: m.name })
+  }
+  for (const a of noSpecies) options.push({ value: a.id, label: a.name })
+  for (const g of eligible) {
+    if (g.type === 'group') options.push({ value: g.id, label: g.name })
+  }
+  return options
+}
+
+/** Expands a picked "Fed what?" value into the real asset ids it covers. */
+function feedSubjectIds(assets: Asset[], picked: string): string[] {
+  if (!picked) return []
+  if (!picked.startsWith(SPECIES_PREFIX)) return [picked]
+  const species = picked.slice(SPECIES_PREFIX.length)
+  return feedEligible(assets)
+    .filter((a) => a.type === 'animal' && String(a.attributes?.species ?? '') === species)
+    .map((a) => a.id)
+}
+
 /**
  * Feeding from a lot draws it down for real — the amount here is what
  * lotBalances() reads back as "went out", so Stores shows what is actually
@@ -173,12 +230,23 @@ function FeedForm({ onDone, onClose }: FormProps) {
   const [lot, setLot] = useState('')
   const [amount, setAmount] = useState('')
   const { data: lots } = useAsync(() => lotBalances(), [])
+  const { data: candidates } = useAsync(() => listAssets(['animal', 'group']), [])
   const selected = lots?.find((l) => l.id === lot)
   const unit = selected?.unit ?? 'lb'
 
+  const options = feedSubjectOptions(candidates ?? [])
+  // Same reasoning as AssetSelect's own allowNone={false}: a required
+  // <select> with no blank option still shows its first entry without ever
+  // firing onChange, so the state is kept in sync with what's on screen
+  // rather than left stuck at '' behind a dropdown that looks filled in.
+  useEffect(() => {
+    if (!subject && options.length > 0) setSubject(options[0].value)
+  }, [subject, options.length])
+  const subjectIds = feedSubjectIds(candidates ?? [], subject)
+
   const save = async () => {
     const assets = [
-      ...(subject ? [{ id: subject, role: 'subject' as const }] : []),
+      ...subjectIds.map((id) => ({ id, role: 'subject' as const })),
       ...(lot ? [{ id: lot, role: 'input' as const,
             amount: Number(amount) > 0 ? Number(amount) : undefined, unit }] : []),
     ]
@@ -196,8 +264,15 @@ function FeedForm({ onDone, onClose }: FormProps) {
 
   return (
     <Sheet title="Feeding" onClose={onClose}>
-      <AssetSelect value={subject} onChange={setSubject}
-        types={['animal', 'group']} allowNone={false} label="Fed what?" />
+      <label className="field">
+        <span>Fed what?</span>
+        <select value={subject} onChange={(e) => setSubject(e.target.value)}>
+          {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        {options.length === 0 && (
+          <small className="hint">Nothing added yet — see Inventory.</small>
+        )}
+      </label>
       <AssetSelect value={lot} onChange={setLot} types={['lot']}
         materials={['Feed', 'Hay']} label="Which feed? (optional)" />
       <label className="field">
@@ -211,7 +286,9 @@ function FeedForm({ onDone, onClose }: FormProps) {
           </small>
         )}
       </label>
-      <button className="primary" disabled={busy || !subject} onClick={run}>{busy ? "Saving…" : "Save"}</button>
+      <button className="primary" disabled={busy || subjectIds.length === 0} onClick={run}>
+        {busy ? "Saving…" : "Save"}
+      </button>
       {error && <p className="error">{error}</p>}
     </Sheet>
   )

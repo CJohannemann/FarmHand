@@ -74,7 +74,9 @@ run(`update asset set status='archived', terminal_event='harvested', updated_at=
 // --- the cost rollup, matching src/db/queries.ts:assetCosts -----------------
 const [cost] = q(`
   with used as (
-    select la_in.asset_id as lot_id, la_in.amount as used_amount
+    select la_in.asset_id as lot_id,
+           la_in.amount / (select count(*) from log_asset s
+                            where s.log_id = l.id and s.role = 'subject') as used_amount
       from log_asset subj
       join log l on l.id = subj.log_id
            and l.type = 'input_application' and l.deleted_at is null
@@ -615,6 +617,69 @@ run(`insert into quantity (id,farm_id,log_id,measure,value,unit,created_at,updat
      values (?,?,?,'price',180,'USD',?,?)`, [uuid(), farm, chickBuy, now(), now()])
 check('the flock carries the whole total', costOf(chicks), 180)
 check('which is $2.40 a bird', costOf(chicks) / 75, 2.4)
+
+// ------------------------------- one feeding, several animals, one draw
+// A round bale is one feeding log with several subjects and one amount
+// drawn from the lot. The input-cost query used to charge that whole draw
+// to each animal instead of splitting it — five cows fed from one bale
+// looked, cost-wise, like five bales were bought.
+console.log('\nA feeding that covers several animals splits the cost between them')
+const herdHayLot = uuid()
+run(`insert into asset (id,farm_id,type,name,attributes,created_at,updated_at)
+     values (?,?,'lot','Round bale','{"origin":"purchased","material":"Hay"}',?,?)`,
+  [herdHayLot, farm, now(), now()])
+const herdHayBuy = uuid()
+run(`insert into log (id,farm_id,type,timestamp,name,created_at,updated_at)
+     values (?,?,'purchase',?,'Bought Round bale',?,?)`, [herdHayBuy, farm, now(), now(), now()])
+run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`, [herdHayBuy, herdHayLot])
+run(`insert into quantity (id,farm_id,log_id,measure,value,unit,created_at,updated_at)
+     values (?,?,?,'price',60,'USD',?,?)`, [uuid(), farm, herdHayBuy, now(), now()])
+run(`insert into quantity (id,farm_id,log_id,measure,value,unit,created_at,updated_at)
+     values (?,?,?,'weight',1,'bale',?,?)`, [uuid(), farm, herdHayBuy, now(), now()])
+
+const herdFed = uuid()
+run(`insert into log (id,farm_id,type,timestamp,name,created_at,updated_at)
+     values (?,?,'input_application',?,'Fed',?,?)`, [herdFed, farm, now(), now(), now()])
+run(`insert into log_asset (log_id,asset_id,role,amount,unit) values (?,?,'input',1,'bale')`,
+  [herdFed, herdHayLot])
+for (const c of herd) run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`, [herdFed, c])
+
+// assetCosts()'s input-cost half, as queries.ts now runs it.
+const inputCostOf = (id) => q(`
+  with used as (
+    select la_in.asset_id as lot_id,
+           la_in.amount / (select count(*) from log_asset s
+                            where s.log_id = l.id and s.role = 'subject') as used_amount
+      from log_asset subj
+      join log l on l.id = subj.log_id
+           and l.type = 'input_application' and l.deleted_at is null
+      join log_asset la_in on la_in.log_id = l.id and la_in.role = 'input'
+     where subj.asset_id = ? and subj.role = 'subject'
+  ),
+  per_lot as (
+    select lot_id, sum(used_amount) as used_total,
+           max(used_amount is null) as unknown_amount
+      from used group by lot_id
+  ),
+  lot_purchase as (
+    select la.asset_id as lot_id,
+           max(q.value) filter (where q.measure='price')  as price,
+           max(q.value) filter (where q.measure='weight') as bought
+      from log_asset la
+      join log p on p.id = la.log_id and p.type='purchase' and p.deleted_at is null
+      join quantity q on q.log_id = p.id and q.deleted_at is null
+     where la.role='subject' group by la.asset_id
+  )
+  select coalesce(sum(
+    case when lp.price is null then 0
+         when pl.unknown_amount then lp.price
+         when lp.bought > 0 then lp.price * min(pl.used_total / lp.bought, 1)
+         else lp.price end), 0) as v
+    from per_lot pl join lot_purchase lp on lp.lot_id = pl.lot_id`, [id])[0].v
+
+check('one cow carries a fifth of the bale', inputCostOf(herd[0]), 12)
+check('and the herd adds back up to the whole bale, not five bales',
+  herd.reduce((s, c) => s + inputCostOf(c), 0), 60)
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)

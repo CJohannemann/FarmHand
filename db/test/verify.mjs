@@ -58,7 +58,9 @@ await q(`update asset set status='archived', terminal_event='harvested' where id
 // --- the cost rollup, matching src/db/queries.ts:assetCosts -----------------
 const [cost] = await q(`
   with used as (
-    select la_in.asset_id as lot_id, la_in.amount as used_amount
+    select la_in.asset_id as lot_id,
+           la_in.amount / (select count(*) from log_asset s
+                            where s.log_id = l.id and s.role = 'subject') as used_amount
       from log_asset subj
       join log l on l.id = subj.log_id
            and l.type = 'input_application' and l.deleted_at is null
