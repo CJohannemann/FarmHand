@@ -1138,6 +1138,8 @@ export interface LotBalance {
    */
   acquired: string | null
   supplier: string | null
+  /** Which stock it was bought for, where that was set — see createPurchase. */
+  category: string | null
 }
 
 /**
@@ -1196,6 +1198,7 @@ export async function lotBalances(): Promise<LotBalance[]> {
             a.attributes->>'material' as material,
             a.attributes->>'origin'   as origin,
             a.attributes->>'supplier' as supplier,
+            a.attributes->>'category' as category,
             acq.at as acquired,
             coalesce(c.amount, 0)                                as came_in,
             coalesce(t.amount, 0) + coalesce(u.amount, 0)        as went_out,

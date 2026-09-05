@@ -246,6 +246,40 @@ function lotLabel(l: LotBalance): string {
 }
 
 /**
+ * Splits the lot list into labelled sections, one per kind of stock the feed
+ * was bought for — the divider a long undifferentiated list was crying out
+ * for, and <optgroup> is the only thing a <select> will take one from.
+ *
+ * Grouping on the purchase category rather than the lot's name is what puts
+ * "Chicken feed" and "Chicken Scratch" under one heading instead of filing
+ * them apart alphabetically.
+ *
+ * Row order inside each section is left exactly as lotBalances() returned
+ * it — on hand first, then by name, then oldest first within a name.
+ * Untagged lots fall to a General section at the end, the same place
+ * Inventory puts animals with no species set.
+ */
+function groupFeedLots(lots: LotBalance[]): { label: string; lots: LotBalance[] }[] {
+  const buckets = new Map<string, LotBalance[]>()
+  for (const l of lots) {
+    const key = l.category?.trim() || ''
+    const bucket = buckets.get(key)
+    if (bucket) bucket.push(l)
+    else buckets.set(key, [l])
+  }
+  return [...buckets.entries()]
+    .sort(([a], [b]) => {
+      if (a === '') return 1
+      if (b === '') return -1
+      return a.localeCompare(b)
+    })
+    .map(([key, lots]) => ({
+      label: key ? `For ${pluralSpecies(key)}` : 'General',
+      lots,
+    }))
+}
+
+/**
  * Feeding from a lot draws it down for real — the amount here is what
  * lotBalances() reads back as "went out", so Stores shows what is actually
  * left instead of just what was ever bought. The unit rides whatever the
@@ -274,6 +308,7 @@ function FeedForm({ onDone, onClose }: FormProps) {
   const feedLots = (lots ?? []).filter((l) =>
     FEED_MATERIALS.includes(l.material ?? '')
     && (l.came_in <= 0 || l.remaining > 0.0001 || l.id === lot))
+  const feedGroups = groupFeedLots(feedLots)
 
   const options = feedSubjectOptions(candidates ?? [])
   // Same reasoning as AssetSelect's own allowNone={false}: a required
@@ -318,9 +353,21 @@ function FeedForm({ onDone, onClose }: FormProps) {
         <span>Which feed? (optional)</span>
         <select value={lot} onChange={(e) => setLot(e.target.value)}>
           <option value="">— none —</option>
-          {feedLots.map((l) => (
-            <option key={l.id} value={l.id}>{lotLabel(l)}</option>
-          ))}
+          {/* One <optgroup> per kind of stock, so a long list reads as
+              sections rather than one run of near-identical rows. A single
+              section would just be a heading over the whole list, so the
+              grouping only earns its place once there's more than one. */}
+          {feedGroups.length > 1
+            ? feedGroups.map((g) => (
+              <optgroup key={g.label} label={g.label}>
+                {g.lots.map((l) => (
+                  <option key={l.id} value={l.id}>{lotLabel(l)}</option>
+                ))}
+              </optgroup>
+            ))
+            : feedLots.map((l) => (
+              <option key={l.id} value={l.id}>{lotLabel(l)}</option>
+            ))}
         </select>
       </label>
       <label className="field">
