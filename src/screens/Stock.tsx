@@ -453,7 +453,7 @@ export function Stock() {
         }).filter(Boolean)
         if (cards.length === 0) return null
         return (
-          <section style={{ marginTop: '1.25rem' }}>
+          <section style={{ marginTop: '0.6rem' }}>
             <div className="speciescards">{cards}</div>
           </section>
         )
