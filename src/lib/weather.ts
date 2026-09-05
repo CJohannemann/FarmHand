@@ -100,7 +100,8 @@ export async function getFarmLocation(): Promise<FarmLocation | null> {
   const pg = await db()
   const { rows } = await pg.query<{
     latitude: number | null; longitude: number | null; place_name: string | null
-  }>(`select latitude, longitude, place_name from farm limit 1`)
+  }>(`select latitude, longitude, place_name from farm
+       where id = (select id from active_farm)`)
   const r = rows[0]
   if (!r || r.latitude === null || r.longitude === null) return null
   return {
@@ -114,7 +115,8 @@ export async function setFarmLocation(loc: FarmLocation) {
   const pg = await db()
   await pg.query(
     `update farm set latitude = $1, longitude = $2, place_name = $3,
-            updated_at = $4`,
+            updated_at = $4
+      where id = (select id from active_farm)`,
     [loc.latitude, loc.longitude, loc.placeName, new Date().toISOString()],
   )
   // Location changed, so anything derived from it is stale.
