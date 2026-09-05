@@ -3,7 +3,7 @@ import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
   CATEGORIZABLE_MATERIALS, createLog, createPurchase, listAssets, listTerms, lotBalances,
-  planTask, plannedLogs, recentLogs,
+  planTask, plannedLogs, recentLogs, type LotBalance,
 } from '../db/queries'
 import type { Asset, LogWithDetail } from '../db/types'
 import type { PreparedImage } from '../lib/image'
@@ -219,6 +219,32 @@ function feedSubjectIds(assets: Asset[], picked: string): string[] {
     .map((a) => a.id)
 }
 
+const FEED_MATERIALS = ['Feed', 'Hay']
+
+/** "Sep 5" — enough to tell one bag from the next without crowding the row. */
+const shortDate = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+
+/**
+ * Seven bags all called "Pig feed" are indistinguishable by name alone —
+ * which is exactly what the picker used to show. What separates them is
+ * how much is left, when it was bought, and who from, so the row carries
+ * all three where they're known.
+ */
+function lotLabel(l: LotBalance): string {
+  const parts: string[] = []
+  // came_in is 0 both for "bought nothing" and for "bought, amount not
+  // recorded" — only claim a balance when something was actually counted.
+  if (l.came_in > 0) {
+    parts.push(l.remaining > 0
+      ? `${formatQty(l.remaining)} ${l.unit ?? ''} left`.replace('  ', ' ')
+      : 'used up')
+  }
+  if (l.acquired) parts.push(shortDate(l.acquired))
+  if (l.supplier) parts.push(l.supplier)
+  return parts.length > 0 ? `${l.name} — ${parts.join(' · ')}` : l.name
+}
+
 /**
  * Feeding from a lot draws it down for real — the amount here is what
  * lotBalances() reads back as "went out", so Stores shows what is actually
@@ -233,6 +259,10 @@ function FeedForm({ onDone, onClose }: FormProps) {
   const { data: candidates } = useAsync(() => listAssets(['animal', 'group']), [])
   const selected = lots?.find((l) => l.id === lot)
   const unit = selected?.unit ?? 'lb'
+  // lotBalances() already excludes service-origin lots and orders what's on
+  // hand ahead of what's used up, so this only narrows it to what's edible.
+  const feedLots = (lots ?? []).filter(
+    (l) => FEED_MATERIALS.includes(l.material ?? ''))
 
   const options = feedSubjectOptions(candidates ?? [])
   // Same reasoning as AssetSelect's own allowNone={false}: a required
@@ -273,14 +303,21 @@ function FeedForm({ onDone, onClose }: FormProps) {
           <small className="hint">Nothing added yet — see Inventory.</small>
         )}
       </label>
-      <AssetSelect value={lot} onChange={setLot} types={['lot']}
-        materials={['Feed', 'Hay']} label="Which feed? (optional)" />
+      <label className="field">
+        <span>Which feed? (optional)</span>
+        <select value={lot} onChange={(e) => setLot(e.target.value)}>
+          <option value="">— none —</option>
+          {feedLots.map((l) => (
+            <option key={l.id} value={l.id}>{lotLabel(l)}</option>
+          ))}
+        </select>
+      </label>
       <label className="field">
         <span>Quantity ({unit}, optional)</span>
         <input type="number" inputMode="decimal" min="0" value={amount}
           onChange={onNumericChange(setAmount)} onWheel={ignoreScrollOnNumberInput}
           onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="25" />
-        {selected && (
+        {selected && selected.came_in > 0 && (
           <small className="hint">
             {formatQty(selected.remaining)} {selected.unit} on hand
           </small>

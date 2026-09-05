@@ -1130,6 +1130,14 @@ export interface LotBalance {
   went_out: number
   remaining: number
   unit: string | null
+  /**
+   * When this lot came into being, and who it came from. Nothing about a
+   * lot's own row distinguishes one "Pig feed" from the seven other bags
+   * bought under the same name — these are what a picker can actually show
+   * to tell them apart.
+   */
+  acquired: string | null
+  supplier: string | null
 }
 
 /**
@@ -1156,6 +1164,18 @@ export async function lotBalances(): Promise<LotBalance[]> {
            or (l.type in ('harvest','processing') and la.role = 'output')
         group by la.asset_id
      ),
+     -- Deliberately not folded into "came" above: that one joins quantity,
+     -- so a purchase logged with no amount produces no row there at all.
+     -- The date is exactly what tells those bags apart, and it is needed
+     -- most for the ones carrying the least other information.
+     acquired as (
+       select la.asset_id as lot_id, min(l.timestamp) as at
+         from log_asset la
+         join log l on l.id = la.log_id and l.deleted_at is null
+        where (l.type = 'purchase' and la.role = 'subject')
+           or (l.type in ('harvest','processing') and la.role = 'output')
+        group by la.asset_id
+     ),
      taken as (
        select la.asset_id as lot_id, sum(q.value) as amount
          from log_asset la
@@ -1175,6 +1195,8 @@ export async function lotBalances(): Promise<LotBalance[]> {
      select a.id, a.name,
             a.attributes->>'material' as material,
             a.attributes->>'origin'   as origin,
+            a.attributes->>'supplier' as supplier,
+            acq.at as acquired,
             coalesce(c.amount, 0)                                as came_in,
             coalesce(t.amount, 0) + coalesce(u.amount, 0)        as went_out,
             coalesce(c.amount, 0) - coalesce(t.amount, 0)
@@ -1182,13 +1204,17 @@ export async function lotBalances(): Promise<LotBalance[]> {
             c.unit
        from asset a
        left join came     c on c.lot_id = a.id
+       left join acquired acq on acq.lot_id = a.id
        left join taken    t on t.lot_id = a.id
        left join consumed u on u.lot_id = a.id
       where a.type = 'lot' and a.deleted_at is null
         and a.farm_id = (select id from active_farm)
         and coalesce(a.attributes->>'origin', '') <> 'service'
+      -- Oldest first within a name: seven bags called "Pig feed" are only
+      -- tellable apart by when they arrived, and feeding the oldest first
+      -- is what someone actually does with them.
       order by (coalesce(c.amount,0) - coalesce(t.amount,0)
-                - coalesce(u.amount,0)) > 0 desc, a.name`,
+                - coalesce(u.amount,0)) > 0 desc, a.name, acq.at`,
   )
   return rows
 }
