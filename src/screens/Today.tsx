@@ -324,8 +324,14 @@ function NoteForm({ onDone, onClose }: FormProps) {
   )
 }
 
+/** Feed and hay are the materials an animal actually eats — the only ones
+ *  worth asking "for which stock?" about. Everything else (fencing, fuel,
+ *  a truck repair) has no single species to charge. */
+const CATEGORIZABLE_MATERIALS = ['Feed', 'Hay']
+
 function BuyForm({ onDone, onClose }: FormProps) {
   const [material, setMaterial] = useState('Feed')
+  const [category, setCategory] = useState('')
   const [receipt, setReceipt] = useState<PreparedImage | null>(null)
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
@@ -334,6 +340,8 @@ function BuyForm({ onDone, onClose }: FormProps) {
   const [supplier, setSupplier] = useState('')
   const { data: materials } = useAsync(() => listTerms('material'), [])
   const { data: units } = useAsync(() => listTerms('unit'), [])
+  const { data: species } = useAsync(() => listTerms('species'), [])
+  const categorizable = CATEGORIZABLE_MATERIALS.includes(material)
 
   const save = async () => {
     await createPurchase({
@@ -343,6 +351,7 @@ function BuyForm({ onDone, onClose }: FormProps) {
       unit,
       cost: hasNumericValue(cost) ? Number(cost) : undefined,
       supplier: supplier.trim() || undefined,
+      category: categorizable && category ? category : undefined,
       receipt: receipt ?? undefined,
     })
     onDone()
@@ -361,6 +370,19 @@ function BuyForm({ onDone, onClose }: FormProps) {
           {(materials ?? []).map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </label>
+      {categorizable && (
+        <label className="field">
+          <span>For (optional)</span>
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="">General — not just one kind of stock</option>
+            {(species ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <small className="hint">
+            Lets Analytics tell you what feed cost each kind of stock, not
+            just feed as a whole.
+          </small>
+        </label>
+      )}
       <label className="field">
         <span>Name it</span>
         <input autoFocus value={name} onChange={(e) => setName(e.target.value)}

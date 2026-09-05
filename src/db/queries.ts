@@ -365,6 +365,16 @@ export async function createPurchase(input: {
   supplier?: string
   origin?: 'purchased' | 'service'
   /**
+   * Which stock this was bought for — a bag of feed bought for the pigs,
+   * say. Optional, and only meaningful for a material an animal actually
+   * eats: most purchases (fencing, fuel, a truck repair) have no single
+   * species to charge, and forcing a category on those would just be a
+   * required field nobody has an honest answer for. Lets costEntries()
+   * report "Pigs" instead of a catch-all "Feed" without needing every bag
+   * traced back through a feeding log first.
+   */
+  category?: string
+  /**
    * A photographed receipt, attached to the purchase log this creates.
    * Taken here rather than by the caller afterwards because the caller is
    * handed the lot id, not the log id, and the receipt belongs to the log.
@@ -378,6 +388,7 @@ export async function createPurchase(input: {
       origin: input.origin ?? 'purchased',
       material: input.material,
       ...(input.supplier ? { supplier: input.supplier } : {}),
+      ...(input.category ? { category: input.category } : {}),
     },
   })
 
@@ -700,10 +711,14 @@ export async function costEntries(): Promise<CostEntry[]> {
     // A purchase spanning two species takes the category of one of them,
     // which is a rounding of the truth rather than a wrong total — the
     // money is counted once either way.
+    //
+    // `category` wins over `material` where it's set — a bag tagged "For:
+    // Pigs" at purchase time should report as Pigs, not fall back to the
+    // generic "Feed" every other bag without a tag still reports as.
     `select l.timestamp, q.value as value, l.type as kind,
             coalesce(
-              (select coalesce(a.attributes->>'material', a.attributes->>'species',
-                               a.attributes->>'kind')
+              (select coalesce(a.attributes->>'category', a.attributes->>'material',
+                               a.attributes->>'species', a.attributes->>'kind')
                  from log_asset la join asset a on a.id = la.asset_id
                 where la.log_id = l.id and la.role = 'subject'
                 limit 1),
