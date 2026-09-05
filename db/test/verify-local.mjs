@@ -688,9 +688,9 @@ check('and the herd adds back up to the whole bale, not five bales',
   herd.reduce((s, c) => s + inputCostOf(c), 0), 60)
 
 // The quantity field on the Feeding sheet is optional, and leaving it blank
-// is the common case — you know the bag went to the bagPigs, not how many
+// is the common case — you know the bag went to the pigs, not how many
 // pounds each one ate. That took the "amount unknown" branch, which charged
-// the whole lot price to every subject: four bagPigs sharing one $20 bag came
+// the whole lot price to every subject: four pigs sharing one $20 bag came
 // out $20 apiece rather than $5.
 console.log('\nA feeding with no quantity typed in still splits between them')
 const bagPigs = [1, 2, 3, 4].map(() => {
@@ -721,6 +721,75 @@ for (const p of bagPigs) run(`insert into log_asset (log_id,asset_id,role) value
 check('one pig carries a quarter of the bag', inputCostOf(bagPigs[0]), 5)
 check('and the four add back up to the bag, not four bags',
   bagPigs.reduce((s, p) => s + inputCostOf(p), 0), 20)
+
+// ---------------------- a used-up lot comes back if the feeding is deleted
+// The Feeding picker hides a lot once nothing is left of it, so a bag fed
+// out stops cluttering the list. That hiding is only safe because the
+// balance is derived from logs rather than stored: deleting the feeding
+// that emptied it has to put the feed back on hand, or a mis-tap would
+// write stock off permanently with no way to correct it.
+console.log('\nDeleting a feeding puts the feed back on hand')
+const emptyLot = uuid()
+run(`insert into asset (id,farm_id,type,name,attributes,created_at,updated_at)
+     values (?,?,'lot','Sack of feed','{"origin":"purchased","material":"Feed"}',?,?)`,
+  [emptyLot, farm, now(), now()])
+const emptyBuy = uuid()
+run(`insert into log (id,farm_id,type,timestamp,name,created_at,updated_at)
+     values (?,?,'purchase',?,'Bought Sack of feed',?,?)`, [emptyBuy, farm, now(), now(), now()])
+run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`, [emptyBuy, emptyLot])
+run(`insert into quantity (id,farm_id,log_id,measure,value,unit,created_at,updated_at)
+     values (?,?,?,'weight',50,'lb',?,?)`, [uuid(), farm, emptyBuy, now(), now()])
+
+// lotBalances()' remaining, as queries.ts computes it.
+const remainingOf = (id) => q(`
+  with came as (
+    select la.asset_id lot_id, sum(q.value) amount
+      from log_asset la
+      join log l on l.id=la.log_id and l.deleted_at is null
+      join quantity q on q.log_id=l.id and q.deleted_at is null
+           and q.measure in ('weight','count','volume')
+     where (l.type='purchase' and la.role='subject')
+        or (l.type in ('harvest','processing') and la.role='output')
+     group by la.asset_id
+  ), taken as (
+    select la.asset_id lot_id, sum(q.value) amount
+      from log_asset la
+      join log l on l.id=la.log_id and l.deleted_at is null
+           and l.type='disposition' and la.role='subject'
+      join quantity q on q.log_id=l.id and q.deleted_at is null
+           and q.measure in ('weight','count','volume')
+     group by la.asset_id
+  ), consumed as (
+    select la.asset_id lot_id, sum(la.amount) amount
+      from log_asset la
+      join log l on l.id=la.log_id and l.deleted_at is null
+     where la.role='input' and la.amount is not null
+     group by la.asset_id
+  )
+  select coalesce(c.amount,0) - coalesce(t.amount,0) - coalesce(u.amount,0) remaining
+    from asset a
+    left join came c on c.lot_id=a.id
+    left join taken t on t.lot_id=a.id
+    left join consumed u on u.lot_id=a.id
+   where a.id = ?`, [id])[0].remaining
+
+check('the full sack is on hand to begin with', remainingOf(emptyLot), 50)
+
+// Fed the whole sack — the picker would now hide it.
+const emptyFed = uuid()
+run(`insert into log (id,farm_id,type,timestamp,name,created_at,updated_at)
+     values (?,?,'input_application',?,'Fed',?,?)`, [emptyFed, farm, now(), now(), now()])
+run(`insert into log_asset (log_id,asset_id,role,amount,unit) values (?,?,'input',50,'lb')`,
+  [emptyFed, emptyLot])
+run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`, [emptyFed, bagPigs[0]])
+check('nothing left after feeding it out', remainingOf(emptyLot), 0)
+
+// deleteLog() soft-deletes; 'input_application' creates no lot, so the lot
+// itself is untouched and only the draw against it goes away.
+run(`update log set deleted_at=?, updated_at=? where id=?`, [now(), now(), emptyFed])
+check('deleting the feeding puts it back on hand', remainingOf(emptyLot), 50)
+const [lotRow] = q(`select deleted_at from asset where id=?`, [emptyLot])
+check('and the lot itself was never removed', lotRow.deleted_at === null ? 1 : 0, 1)
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)
