@@ -1,6 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAsync } from '../lib/useAsync'
-import { deleteLog, quantitiesFor, setQuantity, updateLog } from '../db/queries'
+import {
+  CATEGORIZABLE_MATERIALS, deleteLog, listTerms, purchaseLotFor, quantitiesFor,
+  setLotCategory, setQuantity, updateLog,
+} from '../db/queries'
 import type { LogWithDetail, Measure } from '../db/types'
 import {
   hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, sanitizeNumeric,
@@ -38,6 +41,19 @@ export function EditLog({
   const hasPrice = (qtys.data ?? []).some((q) => q.measure === 'price')
   const [newPrice, setNewPrice] = useState('')
 
+  // A purchase that bought Feed or Hay gets the same "For" field BuyForm
+  // offers when the purchase is first recorded — the category didn't exist
+  // yet for anything bought before this shipped, and this is the only way
+  // back to it without retyping the whole purchase.
+  const lot = useAsync(
+    () => (log.type === 'purchase' ? purchaseLotFor(log.id) : Promise.resolve(null)),
+    [log.id, log.type],
+  )
+  const { data: species } = useAsync(() => listTerms('species'), [])
+  const categorizable = Boolean(lot.data?.material && CATEGORIZABLE_MATERIALS.includes(lot.data.material))
+  const [category, setCategory] = useState('')
+  useEffect(() => { setCategory(lot.data?.category ?? '') }, [lot.data])
+
   const save = async () => {
     setBusy(true)
     await updateLog(log.id, {
@@ -53,6 +69,7 @@ export function EditLog({
     if (canAddPrice && !hasPrice && hasNumericValue(newPrice)) {
       await setQuantity(log.id, 'price', Number(newPrice), 'USD')
     }
+    if (categorizable && lot.data) await setLotCategory(lot.data.assetId, category || null)
     setBusy(false)
     onChanged()
   }
@@ -76,6 +93,20 @@ export function EditLog({
         <span>When</span>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       </label>
+
+      {categorizable && (
+        <label className="field">
+          <span>For (optional)</span>
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="">General — not just one kind of stock</option>
+            {(species ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <small className="hint">
+            Lets Analytics tell you what feed cost each kind of stock, not
+            just feed as a whole.
+          </small>
+        </label>
+      )}
 
       {(qtys.data ?? []).map((q) => (
         <label className="field" key={q.id}>

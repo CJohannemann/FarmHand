@@ -349,6 +349,14 @@ export async function assetCounts(): Promise<Record<string, number>> {
 // --------------------------------------------------------------- purchases
 
 /**
+ * Materials an animal actually eats — the only ones worth asking "for which
+ * stock?" about. Most purchases (fencing, fuel, a truck repair) have no
+ * single species to charge, and forcing a category on those would just be a
+ * required field nobody has an honest answer for.
+ */
+export const CATEGORIZABLE_MATERIALS = ['Feed', 'Hay']
+
+/**
  * A bought lot and the purchase log that records what it cost.
  *
  * `origin: 'service'` marks a lot that exists only to carry a price — a
@@ -410,6 +418,54 @@ export async function createPurchase(input: {
   })
   if (input.receipt) await addReceipt(logId, input.receipt)
   return lotId
+}
+
+export interface PurchaseLot {
+  assetId: string
+  material: string | null
+  category: string | null
+}
+
+/**
+ * The lot a purchase log bought, if it bought one — a service charge (a vet
+ * visit, an oil change) has a subject too, but nothing here needs to read
+ * one, so the caller just gets null back rather than a lot that isn't
+ * really stock. Used by EditLog to offer the same "For" category field on
+ * an old purchase that BuyForm offers on a new one.
+ */
+export async function purchaseLotFor(logId: string): Promise<PurchaseLot | null> {
+  const pg = await db()
+  const { rows } = await pg.query<{ id: string; attributes: Record<string, unknown> }>(
+    `select a.id, a.attributes
+       from log_asset la
+       join asset a on a.id = la.asset_id
+      where la.log_id = $1 and la.role = 'subject' and a.type = 'lot'
+        and a.attributes->>'origin' = 'purchased'`,
+    [logId],
+  )
+  const r = rows[0]
+  if (!r) return null
+  return {
+    assetId: r.id,
+    material: (r.attributes?.material as string | undefined) ?? null,
+    category: (r.attributes?.category as string | undefined) ?? null,
+  }
+}
+
+/**
+ * Sets or clears a lot's category after the fact — attributes replace
+ * wholesale (see updateAsset), so this reads the row first rather than
+ * overwriting material and supplier along with it.
+ */
+export async function setLotCategory(assetId: string, category: string | null) {
+  const pg = await db()
+  const { rows } = await pg.query<{ attributes: Record<string, unknown> }>(
+    `select attributes from asset where id = $1`, [assetId],
+  )
+  const attributes: Record<string, unknown> = { ...(rows[0]?.attributes ?? {}) }
+  if (category) attributes.category = category
+  else delete attributes.category
+  await updateAsset(assetId, { attributes })
 }
 
 // ---------------------------------------------------------------- harvest

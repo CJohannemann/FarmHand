@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
-  createLog, createPurchase, listAssets, listTerms, lotBalances, planTask,
-  plannedLogs, recentLogs,
+  CATEGORIZABLE_MATERIALS, createLog, createPurchase, listAssets, listTerms, lotBalances,
+  planTask, plannedLogs, recentLogs,
 } from '../db/queries'
 import type { Asset, LogWithDetail } from '../db/types'
 import type { PreparedImage } from '../lib/image'
@@ -323,11 +323,6 @@ function NoteForm({ onDone, onClose }: FormProps) {
     </Sheet>
   )
 }
-
-/** Feed and hay are the materials an animal actually eats — the only ones
- *  worth asking "for which stock?" about. Everything else (fencing, fuel,
- *  a truck repair) has no single species to charge. */
-const CATEGORIZABLE_MATERIALS = ['Feed', 'Hay']
 
 function BuyForm({ onDone, onClose }: FormProps) {
   const [material, setMaterial] = useState('Feed')
