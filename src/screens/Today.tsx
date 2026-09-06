@@ -3,7 +3,7 @@ import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
   CATEGORIZABLE_MATERIALS, createLog, createPurchase, listAssets, listTerms, lotBalances,
-  planTask, plannedLogs, recentLogs, type LotBalance,
+  planTask, plannedLogs, recentLogs, setLotCategory, type LotBalance,
 } from '../db/queries'
 import type { Asset, LogWithDetail } from '../db/types'
 import type { PreparedImage } from '../lib/image'
@@ -13,6 +13,7 @@ import {
   formatQty, hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput,
   onNumericChange,
 } from '../lib/numeric'
+import { pluralSpecies } from '../lib/husbandry'
 import { getFarmLocation } from '../lib/weather'
 import { Sheet } from './Sheet'
 import { AssetSelect } from './AssetSelect'
@@ -164,9 +165,6 @@ function ProduceForm({ spec, onDone, onClose }: FormProps & { spec: HarvestSpec 
 
 const SPECIES_PREFIX = 'species:'
 
-const pluralSpecies = (species: string) =>
-  species === 'Other' || species.endsWith('s') ? species : species + 's'
-
 /** Animals and groups eligible to be fed — same filter AssetSelect applies. */
 function feedEligible(assets: Asset[]): Asset[] {
   return assets.filter((a) => a.status === 'active' && !a.parent_id && !a.attributes?.external)
@@ -219,7 +217,12 @@ function feedSubjectIds(assets: Asset[], picked: string): string[] {
     .map((a) => a.id)
 }
 
-const FEED_MATERIALS = ['Feed', 'Hay']
+/**
+ * What the Feeding sheet will offer to draw from. Minerals are put out for
+ * stock the same way feed is — a block that never appears here is one whose
+ * cost never reaches the animals that ate it.
+ */
+const FEED_MATERIALS = ['Feed', 'Hay', 'Mineral']
 
 /** "Sep 5" — enough to tell one bag from the next without crowding the row. */
 const shortDate = (iso: string) =>
@@ -274,7 +277,7 @@ function groupFeedLots(lots: LotBalance[]): { label: string; lots: LotBalance[] 
       return a.localeCompare(b)
     })
     .map(([key, lots]) => ({
-      label: key ? `For ${pluralSpecies(key)}` : 'General',
+      label: key ? pluralSpecies(key) : 'General',
       lots,
     }))
 }
@@ -291,6 +294,7 @@ function FeedForm({ onDone, onClose }: FormProps) {
   const [amount, setAmount] = useState('')
   const { data: lots } = useAsync(() => lotBalances(), [])
   const { data: candidates } = useAsync(() => listAssets(['animal', 'group']), [])
+  const { data: species } = useAsync(() => listTerms('species'), [])
   const selected = lots?.find((l) => l.id === lot)
   const unit = selected?.unit ?? 'lb'
   // Edible, and still actually there. A bag that has been fed out is not a
@@ -320,6 +324,19 @@ function FeedForm({ onDone, onClose }: FormProps) {
   }, [subject, options.length])
   const subjectIds = feedSubjectIds(candidates ?? [], subject)
 
+  // Which stock the chosen lot is for, settable right here rather than only
+  // back on the purchase. A bale bought by the load isn't obviously for one
+  // species when it's paid for — it becomes so the first time it's fed —
+  // and that is the moment someone is actually looking at it.
+  //
+  // Follows the lot rather than being typed fresh each feeding: this sets
+  // the lot's own category, so a bale tagged once stays grouped under that
+  // heading for every feeding after. Deliberately not inferred from who is
+  // being fed — silently retagging a lot because today it went to the
+  // horses is not something anyone asked for.
+  const [category, setCategory] = useState('')
+  useEffect(() => { setCategory(selected?.category ?? '') }, [selected?.id])
+
   const save = async () => {
     const assets = [
       ...subjectIds.map((id) => ({ id, role: 'subject' as const })),
@@ -334,6 +351,11 @@ function FeedForm({ onDone, onClose }: FormProps) {
         ? [{ measure: 'weight' as const, value: Number(amount), unit }]
         : [],
     })
+    // Only when it actually changed — an untouched dropdown shouldn't write
+    // to the lot on every feeding.
+    if (selected && category !== (selected.category ?? '')) {
+      await setLotCategory(selected.id, category || null)
+    }
     onDone()
   }
   const { run, busy, error } = useSave(save)
@@ -370,6 +392,19 @@ function FeedForm({ onDone, onClose }: FormProps) {
             ))}
         </select>
       </label>
+      {selected && (
+        <label className="field">
+          <span>For (optional)</span>
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="">General — not just one kind of stock</option>
+            {(species ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <small className="hint">
+            Sticks to this {(selected.material ?? 'feed').toLowerCase()}, so it
+            stays under that heading next time.
+          </small>
+        </label>
+      )}
       <label className="field">
         <span>Quantity ({unit}, optional)</span>
         <input type="number" inputMode="decimal" min="0" value={amount}

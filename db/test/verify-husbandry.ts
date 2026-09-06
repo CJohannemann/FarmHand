@@ -8,7 +8,7 @@
 //
 //   npm run verify:husbandry
 import {
-  GENERIC_SEX_TERMS, SEX_TERMS, purposeLabel, sexTermsFor, speciesGlyph,
+  GENERIC_SEX_TERMS, SEX_TERMS, pluralSpecies, purposeLabel, sexTermsFor, speciesGlyph,
 } from '../../src/lib/husbandry.ts'
 import { SPECIES_PURPOSES } from '../../src/lib/tiles.ts'
 
@@ -66,6 +66,29 @@ console.log('\nCards always get a glyph')
 check('a known species has its own', speciesGlyph('Pig') === '🐖', speciesGlyph('Pig'))
 check('an unknown species still gets one', speciesGlyph('Water buffalo') === '🐾')
 check('the no-species bucket still gets one', speciesGlyph(null) === '🐾')
+
+// Naming a whole species at once — "All Cattle (5)" on the Feeding sheet,
+// and the section headings in its feed picker. Adding an "s" to everything
+// is what these lists exist to stop: "Cattles" and "Sheeps" read as bugs.
+console.log('\nSpecies plurals are the words a farm would use')
+check('Pig pluralises normally', pluralSpecies('Pig') === 'Pigs', pluralSpecies('Pig'))
+check('Cattle is already plural', pluralSpecies('Cattle') === 'Cattle', pluralSpecies('Cattle'))
+check('so is Sheep', pluralSpecies('Sheep') === 'Sheep', pluralSpecies('Sheep'))
+check('Goose is irregular', pluralSpecies('Goose') === 'Geese', pluralSpecies('Goose'))
+check('Quail takes the unmarked plural', pluralSpecies('Quail') === 'Quail',
+  pluralSpecies('Quail'))
+check('Honeybee pluralises normally', pluralSpecies('Honeybee') === 'Honeybees',
+  pluralSpecies('Honeybee'))
+check('a farm-invented species still gets a plural',
+  pluralSpecies('Water buffalo') === 'Water buffalos', pluralSpecies('Water buffalo'))
+check('and one already ending in s is left alone',
+  pluralSpecies('Alpacas') === 'Alpacas', pluralSpecies('Alpacas'))
+
+console.log('\nEvery seeded species has a plural that is not just +s guesswork')
+for (const species of Object.keys(SEX_TERMS)) {
+  const p = pluralSpecies(species)
+  check(`${species} → ${p}`, Boolean(p) && !p.endsWith('ss'))
+}
 
 console.log(fails === 0 ? '\nAll checks passed.\n' : `\n${fails} FAILED\n`)
 process.exit(fails ? 1 : 0)

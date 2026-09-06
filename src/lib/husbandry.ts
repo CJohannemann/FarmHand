@@ -39,6 +39,29 @@ export function sexTermsFor(species: string | undefined | null): string[] {
 }
 
 /**
+ * Species whose plural isn't the singular plus an "s".
+ *
+ * Two of the seeded species are already plural ("five Cattles" reads as a
+ * typo, because it is one), and Goose is irregular outright. Quail takes
+ * the unmarked plural the way farms actually say it — "we run 200 quail".
+ */
+const PLURAL_SPECIES: Record<string, string> = {
+  Cattle: 'Cattle', Sheep: 'Sheep', Goose: 'Geese', Quail: 'Quail',
+  Bison: 'Bison', Elk: 'Elk', Deer: 'Deer', Fish: 'Fish', Swine: 'Swine',
+}
+
+/**
+ * "Pigs", "Geese", "Cattle" — for a heading or a count that names a whole
+ * species at once. A farm-invented species falls back to plus-"s", which is
+ * right often enough and never mangles what was typed beyond recognition.
+ */
+export function pluralSpecies(species: string): string {
+  const known = PLURAL_SPECIES[species]
+  if (known) return known
+  return species.endsWith('s') ? species : `${species}s`
+}
+
+/**
  * Only the terms breeding actually cares about — a steer or a wether is
  * just as male as a bull or a ram, but neither can sire anything, so
  * "male" alone is the wrong question for a Sire picker. Juvenile terms

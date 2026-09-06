@@ -349,12 +349,16 @@ export async function assetCounts(): Promise<Record<string, number>> {
 // --------------------------------------------------------------- purchases
 
 /**
- * Materials an animal actually eats — the only ones worth asking "for which
- * stock?" about. Most purchases (fencing, fuel, a truck repair) have no
- * single species to charge, and forcing a category on those would just be a
- * required field nobody has an honest answer for.
+ * Materials an animal actually consumes — the only ones worth asking "for
+ * which stock?" about. Most purchases (fencing, fuel, a truck repair) have
+ * no single species to charge, and forcing a category on those would just
+ * be a required field nobody has an honest answer for.
+ *
+ * Minerals belong here for the same reason feed does: a cattle block and a
+ * goat block are different purchases bought for different animals, and
+ * lumping both under "Mineral" loses exactly the split worth having.
  */
-export const CATEGORIZABLE_MATERIALS = ['Feed', 'Hay']
+export const CATEGORIZABLE_MATERIALS = ['Feed', 'Hay', 'Mineral']
 
 /**
  * A bought lot and the purchase log that records what it cost.
