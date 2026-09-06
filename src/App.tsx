@@ -39,6 +39,13 @@ const TABS: { id: Tab; label: string; glyph: string }[] = [
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('today')
+  // Bumped for a tab when it's tapped while already open, so its screen
+  // remounts fresh via `key` below instead of sitting wherever a drill-down
+  // (Inventory > Stores > a lot, say) had left it — tapping the tab bar is
+  // how a phone app means "take me to the top of this section."
+  const [resetAt, setResetAt] = useState<Record<Tab, number>>(
+    { today: 0, stock: 0, analytics: 0, settings: 0 },
+  )
   const { session, checking, recovery, clearRecovery, linkError: badLink, clearLinkError } = useSession()
   const route = useRoute()
   const [link, setLink] = useState<FarmLink | null>(null)
@@ -340,10 +347,10 @@ export default function App() {
           as a second bar permanently above the tab bar. */}
       <div className="scroll">
       <main className="content">
-        {current === 'today' && <Today onGoToStock={() => setTab('stock')} />}
-        {current === 'stock' && <Stock />}
-        {current === 'analytics' && <Analytics />}
-        {current === 'settings' && <Settings />}
+        {current === 'today' && <Today key={resetAt.today} onGoToStock={() => setTab('stock')} />}
+        {current === 'stock' && <Stock key={resetAt.stock} />}
+        {current === 'analytics' && <Analytics key={resetAt.analytics} />}
+        {current === 'settings' && <Settings key={resetAt.settings} />}
       </main>
 
       {session && (
@@ -363,7 +370,10 @@ export default function App() {
           <button
             key={t.id}
             className={current === t.id ? 'on' : ''}
-            onClick={() => setTab(t.id)}
+            onClick={() => {
+              if (current === t.id) setResetAt((r) => ({ ...r, [t.id]: r[t.id] + 1 }))
+              else setTab(t.id)
+            }}
             aria-current={current === t.id ? 'page' : undefined}
           >
             <span className="glyph">{t.glyph}</span>
