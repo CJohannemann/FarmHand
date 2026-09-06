@@ -969,6 +969,33 @@ export async function weightHistory(assetId: string): Promise<
   return rows
 }
 
+/**
+ * The most recent past maintenance of one specific kind on this equipment,
+ * with the hour-meter reading recorded at the time — what "how long since
+ * the last oil change" is actually computed from. Matched by `kind` (the
+ * log's own name, e.g. "Oil change") because service intervals are set per
+ * kind of service, not for maintenance in general — an inspection three
+ * weeks ago says nothing about when the oil was last changed.
+ */
+export async function lastServiceHours(
+  assetId: string, kind: string,
+): Promise<{ hours: number; timestamp: string } | null> {
+  const pg = await db()
+  const { rows } = await pg.query<{ hours: number; timestamp: string }>(
+    `select q.value as hours, l.timestamp
+       from log l
+       join log_asset la on la.log_id = l.id
+            and la.asset_id = $1 and la.role = 'subject'
+       join quantity q on q.log_id = l.id
+            and q.measure = 'hours' and q.deleted_at is null
+      where l.type = 'input_application' and l.name = $2 and l.deleted_at is null
+      order by l.timestamp desc
+      limit 1`,
+    [assetId, kind],
+  )
+  return rows[0] ?? null
+}
+
 // ------------------------------------------------------------ farm identity
 
 export async function getFarmName(): Promise<string> {

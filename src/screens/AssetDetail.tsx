@@ -3,8 +3,8 @@ import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
   archiveAsset, assetCosts, childAssets, createAsset, createHarvest, createLog,
-  createPurchase, getAsset, listTerms, logsForAsset, lotBalances, offspringOf, sellAsset,
-  updateAsset,
+  createPurchase, getAsset, lastServiceHours, listTerms, logsForAsset, lotBalances,
+  offspringOf, sellAsset, updateAsset,
   weightHistory, type AssetEvent,
 } from '../db/queries'
 import type { Asset } from '../db/types'
@@ -617,10 +617,21 @@ function InputForm({
   const [lot, setLot] = useState('')
   const [used, setUsed] = useState('')
   const [cost, setCost] = useState('')
+  const [hours, setHours] = useState('')
   const [notes, setNotes] = useState('')
   const { data: kinds } = useAsync(() => listTerms(vocabulary), [vocabulary])
   const { data: lots } = useAsync(() => lotBalances(), [])
   const selected = lots?.find((l) => l.id === lot)
+  const timeZone = useFarmTimezone()
+
+  // Service intervals are set per kind ("oil every 100 hrs"), so what matters
+  // is the last time THIS kind was done, not maintenance in general — an
+  // inspection three weeks ago says nothing about the oil.
+  const tracksHours = vocabulary === 'service'
+  const lastService = useAsync(
+    () => (tracksHours && kind ? lastServiceHours(asset.id, kind) : Promise.resolve(null)),
+    [asset.id, tracksHours, kind],
+  )
 
   const save = async () => {
     const lotId = lot || (hasNumericValue(cost)
@@ -640,7 +651,22 @@ function InputForm({
           unit: lot ? selected?.unit : undefined,
         }] : []),
       ],
+      quantities: hasNumericValue(hours)
+        ? [{ measure: 'hours', value: Number(hours), unit: 'hr' }]
+        : [],
     })
+    // Keeps Details' own reading current without a separate edit — but never
+    // backwards: logging an old service after the fact with a lower reading
+    // than what the meter already shows now would be a regression, not an
+    // update.
+    if (hasNumericValue(hours)) {
+      const current = asset.attributes?.hours
+      if (current == null || Number(hours) > Number(current)) {
+        await updateAsset(asset.id, {
+          attributes: { ...asset.attributes, hours: Number(hours) },
+        })
+      }
+    }
     onDone()
   }
   const { run, busy, error } = useSave(save)
@@ -654,6 +680,28 @@ function InputForm({
           {(kinds ?? []).map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
       </label>
+
+      {tracksHours && (
+        <label className="field">
+          <span>Hour meter now (optional)</span>
+          <input type="number" inputMode="decimal" min="0" value={hours}
+            onChange={onNumericChange(setHours)} onWheel={ignoreScrollOnNumberInput}
+            onKeyDown={ignoreArrowKeysOnNumberInput}
+            placeholder={asset.attributes?.hours != null ? String(asset.attributes.hours) : '850'} />
+          {kind && lastService.data && (
+            <small className="hint">
+              Last {kind.toLowerCase()}: {formatQty(lastService.data.hours)} hrs on{' '}
+              {logDate(lastService.data.timestamp, timeZone)}
+              {hasNumericValue(hours) && Number(hours) > lastService.data.hours && (
+                <> — {formatQty(Number(hours) - lastService.data.hours)} hrs since</>
+              )}
+            </small>
+          )}
+          {kind && !lastService.loading && lastService.data === null && (
+            <small className="hint">No earlier {kind.toLowerCase()} on record yet.</small>
+          )}
+        </label>
+      )}
 
       <AssetSelect value={lot} onChange={setLot} types={['lot']}
         materials={vocabulary === 'treatment' ? ['Medicine', 'Mineral'] : ['Parts', 'Fuel']}

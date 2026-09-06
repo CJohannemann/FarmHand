@@ -6,6 +6,9 @@ export type AssetRole = 'subject' | 'input' | 'output'
 export type Measure =
   | 'weight' | 'count' | 'volume' | 'area' | 'length'
   | 'temperature' | 'price' | 'time'
+  // An hour meter's cumulative reading (a tractor's engine hours) — distinct
+  // from 'time', which is a duration (labor spent), not an odometer.
+  | 'hours'
 
 export interface Asset {
   id: string
