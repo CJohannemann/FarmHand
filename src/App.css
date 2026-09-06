@@ -168,6 +168,22 @@ h1 { margin: 0 0 0.15rem; font-size: 1.6rem; letter-spacing: -0.02em; }
 .chip.on { border-color: var(--accent); color: var(--accent); }
 .chip.remove { display: inline-flex; align-items: center; gap: 0.35rem; }
 
+/* Sized to its content rather than the .field select's full-width form
+   styling — this sits beside/above a list as a filter, not inside a form. */
+.year-picker {
+  display: block;
+  width: auto;
+  margin-bottom: 0.75rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
 /* -------------------------------------------------------------- log list */
 
 .loglist, .assetlist { list-style: none; margin: 0; padding: 0; }

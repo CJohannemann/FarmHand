@@ -61,17 +61,17 @@ export function Records() {
 
   return (
     <>
-      {/* Worth its own row only once there is more than one year to choose
-          between — a farm on its first year has nowhere else to go yet. */}
+      {/* Worth showing only once there is more than one year to choose
+          between — a farm on its first year has nowhere else to go yet. A
+          dropdown rather than a chip row: a chip per year reads fine for the
+          first few, but keeps growing the list of things above the records
+          themselves, which is exactly the screen space this is trying not
+          to spend. */}
       {years.length > 1 && (
-        <div className="chipwrap" style={{ marginBottom: '0.5rem' }}>
-          {years.map((y) => (
-            <button key={y} className={activeYear === y ? 'chip on' : 'chip'}
-              onClick={() => setYear(y)}>
-              {y}
-            </button>
-          ))}
-        </div>
+        <select className="year-picker" value={activeYear ?? ''}
+          onChange={(e) => setYear(Number(e.target.value))}>
+          {years.map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
       )}
 
       {/* Worth its own row only once there is more than one kind to choose
