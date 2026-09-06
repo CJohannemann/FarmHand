@@ -299,7 +299,7 @@ export function AssetDetail({
                 <span className="log-type">{e.name ?? EVENT_LABELS[e.type] ?? e.type}</span>
                 {e.summary && <span className="log-qty">{withThousands(e.summary)}</span>}
               </div>
-              {e.others && <div className="log-sub">{e.others}</div>}
+              {e.others && <div className="log-sub"><em>{e.others}</em></div>}
               {e.notes && <div className="log-note">{e.notes}</div>}
               <time className="log-time">{logDate(e.timestamp)}</time>
             </button>

@@ -89,9 +89,14 @@ export function LogList({
           <span className="log-type">{l.name ?? logLabel(l.type)}</span>
           {l.summary && <span className="log-qty">{withThousands(l.summary)}</span>}
         </div>
+        {/* `uses` (the feed lot, say) is italicized — plain text next to a
+            comma-separated name list like "Bacon, Pinkie, Rita, Runt" reads
+            as just one more name in it, not the material that was drawn on. */}
         {(l.subjects || l.uses) && (
           <div className="log-sub">
-            {[l.subjects, l.uses].filter(Boolean).join(' · ')}
+            {l.subjects}
+            {l.subjects && l.uses && ' · '}
+            {l.uses && <em>{l.uses}</em>}
           </div>
         )}
         {l.notes && <div className="log-note">{l.notes}</div>}
