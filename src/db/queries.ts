@@ -577,6 +577,11 @@ export interface AssetEvent {
   notes: string | null
   role: string
   summary: string | null
+  /** Whoever/whatever else was on this log — the flock a feeding went to,
+   * seen from the feed lot's own page, or the lot it drew on, seen from the
+   * flock's. Without it a lot's own history says only "Fed, 50 lb" and never
+   * says to whom. */
+  others: string | null
 }
 
 export async function logsForAsset(assetId: string): Promise<AssetEvent[]> {
@@ -585,7 +590,10 @@ export async function logsForAsset(assetId: string): Promise<AssetEvent[]> {
     `select l.id, l.type, l.timestamp, l.name, l.notes, la.role,
             (select group_concat(printf('%.10g', q.value) || ' ' || q.unit, ', ')
                from quantity q
-              where q.log_id = l.id and q.deleted_at is null) as summary
+              where q.log_id = l.id and q.deleted_at is null) as summary,
+            (select group_concat(a2.name, ', ' order by a2.name)
+               from log_asset la2 join asset a2 on a2.id = la2.asset_id
+              where la2.log_id = l.id and la2.asset_id <> la.asset_id) as others
        from log_asset la
        join log l on l.id = la.log_id
       where la.asset_id = $1 and l.deleted_at is null
