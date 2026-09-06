@@ -62,6 +62,16 @@ function BarnIcon() {
 }
 
 /**
+ * Whether a lot is finished, as opposed to merely unmeasured.
+ *
+ * came_in is 0 both for "nothing ever came in" and for "bought, but the
+ * amount was never recorded" — and the second is not an empty sack, it is a
+ * sack nobody weighed. Calling that one used up would quietly hide stock the
+ * farm actually has. The Feeding picker draws the same distinction.
+ */
+const isUsedUp = (l: LotBalance) => l.came_in > 0.001 && l.remaining <= 0.001
+
+/**
  * Section headings come from what a thing IS, not from the table it lives
  * in. "Lots" is a word out of the schema — nobody buys a lot, they buy hay,
  * and hay belongs under Feed. Same for a tractor, which belongs under
@@ -288,33 +298,60 @@ export function Stock() {
           ‹ Back
         </button>
         <h1>{g.heading}</h1>
-        {section === 'lot' && (
+        {section === 'lot' && (() => {
           // Stores is the one section not backed by the asset list — see
           // `lots` above. Its rows carry a balance and draw the lot down
           // rather than opening an asset page.
-          bucketBy(lots.data ?? [], (l) => l.material, 'Other supplies').map(({ heading, items }) => (
-            <div key={heading}>
-              <h2 className="section">{heading}</h2>
-              <ul className="assetlist">
-                {items.map((l) => (
-                  <li key={l.id} className={l.remaining > 0.001 ? '' : 'gone'}>
-                    <button className="assetrow" onClick={() => setTaking(l)}>
-                      <span className="asset-name">{l.name}</span>
-                      <span className="asset-meta">
-                        {l.remaining > 0.001 ? (
-                          <strong className="remaining">
-                            {formatQty(l.remaining)} {l.unit ?? ''}
-                          </strong>
-                        ) : `${formatQty(l.came_in)} ${l.unit ?? ''} in, none left`}
-                        <span className="chev">›</span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))
-        )}
+          //
+          // Emptied lots fold away the same way closed-out animals do. This
+          // screen answers "what have I got"; eight rows of feed with six of
+          // them gone answers it wrongly, and the six crowd out the two that
+          // are the point. The records are not deleted — every one of them
+          // still carries its cost into Analytics.
+          const all = lots.data ?? []
+          const usedUp = all.filter(isUsedUp)
+          const shown = showClosed ? all : all.filter((l) => !isUsedUp(l))
+          return (
+            <>
+              {bucketBy(shown, (l) => l.material, 'Other supplies').map(({ heading, items }) => (
+                <div key={heading}>
+                  <h2 className="section">{heading}</h2>
+                  <ul className="assetlist">
+                    {items.map((l) => (
+                      <li key={l.id} className={isUsedUp(l) ? 'gone' : ''}>
+                        <button className="assetrow" onClick={() => setTaking(l)}>
+                          <span className="asset-name">{l.name}</span>
+                          <span className="asset-meta">
+                            {l.came_in > 0.001 ? (
+                              l.remaining > 0.001 ? (
+                                <strong className="remaining">
+                                  {formatQty(l.remaining)} {l.unit ?? ''}
+                                </strong>
+                              ) : `${formatQty(l.came_in)} ${l.unit ?? ''} in, none left`
+                            ) : (
+                              // Not "0 lb in, none left" — that reads as an
+                              // empty sack when it means nobody weighed it.
+                              'amount not recorded'
+                            )}
+                            <span className="chev">›</span>
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              {usedUp.length > 0 && (
+                <button type="button" className="linkish showclosed"
+                  onClick={() => setShowClosed(!showClosed)}>
+                  {showClosed
+                    ? `Hide ${formatQty(usedUp.length)} used up`
+                    : `Show ${formatQty(usedUp.length)} used up`}
+                </button>
+              )}
+            </>
+          )
+        })()}
         {section === 'equipment' && (
           // A tractor and the bush hog behind it are different things to own
           // and different things to service — one heading over both hides that.
@@ -424,12 +461,16 @@ export function Stock() {
           if (g.type === 'lot') {
             const all = lots.data ?? []
             if (all.length === 0) return null
+            // "On hand" is a claim, so it counts what is actually on hand.
+            // This counted every lot ever bought, emptied ones included —
+            // eight bags of feed reported by a farm holding two.
+            const onHand = all.filter((l) => !isUsedUp(l)).length
             return (
               <button key={g.type} type="button" className="speciescard"
                 onClick={() => setSection('lot')}>
                 <span className="glyph"><BarnIcon /></span>
                 <span className="speciescard-name">{g.heading}</span>
-                <span className="speciescard-count">{formatQty(all.length)} on hand</span>
+                <span className="speciescard-count">{formatQty(onHand)} on hand</span>
               </button>
             )
           }
