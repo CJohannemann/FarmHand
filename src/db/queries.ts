@@ -322,7 +322,7 @@ export async function recentLogs(
                from log_asset la join asset a on a.id = la.asset_id
               where la.log_id = l.id and la.role = 'subject') as subjects,
             -- A feeding's lot (or a processing's consumed lots) is an
-            -- `input`, not a `subject`, so without this a "Fed" entry named
+            -- 'input', not a 'subject', so without this a "Fed" entry named
             -- only "Fed" over "Layers" never says which bag it came from —
             -- the one thing someone checking Records actually wants to know.
             (select group_concat(a.name, ', ' order by a.name)
