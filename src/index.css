@@ -45,6 +45,21 @@
 
 * { box-sizing: border-box; }
 
+/*
+ * A safety net against any element (an unbroken email address, a wide
+ * table, a chart) pushing wider than the phone it's on and leaving the
+ * whole page horizontally scrollable — which is exactly what let
+ * Settings' overflowing "Remove" link scroll out of view instead of
+ * simply not fitting. The real fix for that one is its own layout bug
+ * (see .assetlist li.member-row in App.css); this is the backstop for
+ * the next thing that overflows before its layout gets the same
+ * attention. Landing, sign-in, and the boot screens scroll the page
+ * itself (see .app's own comment in App.css for why the signed-in shell
+ * doesn't), so this lives on html/body rather than a container only
+ * some screens have.
+ */
+html, body { overflow-x: hidden; }
+
 body {
   margin: 0;
   min-height: 100dvh;
