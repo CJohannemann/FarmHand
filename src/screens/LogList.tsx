@@ -87,7 +87,11 @@ export function LogList({
       <>
         <div className="log-main">
           <span className="log-type">{l.name ?? logLabel(l.type)}</span>
-          {l.summary && <span className="log-qty">{withThousands(l.summary)}</span>}
+          {(l.summary || l.cost) && (
+            <span className="log-qty">
+              {withThousands([l.summary, l.cost].filter(Boolean).join(', '))}
+            </span>
+          )}
         </div>
         {/* `uses` (the feed lot, say) is italicized — plain text next to a
             comma-separated name list like "Bacon, Pinkie, Rita, Runt" reads

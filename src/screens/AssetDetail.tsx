@@ -297,7 +297,11 @@ export function AssetDetail({
             <button className="logrow" onClick={() => setEditingLog(e)}>
               <div className="log-main">
                 <span className="log-type">{e.name ?? EVENT_LABELS[e.type] ?? e.type}</span>
-                {e.summary && <span className="log-qty">{withThousands(e.summary)}</span>}
+                {(e.summary || e.cost) && (
+                  <span className="log-qty">
+                    {withThousands([e.summary, e.cost].filter(Boolean).join(', '))}
+                  </span>
+                )}
               </div>
               {e.others && <div className="log-sub"><em>{e.others}</em></div>}
               {e.notes && <div className="log-note">{e.notes}</div>}

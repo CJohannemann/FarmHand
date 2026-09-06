@@ -31,6 +31,8 @@ export interface LogWithDetail extends LogRow {
   /** What was drawn on to do it — a feeding's lot, a processing's inputs. */
   uses: string | null
   summary: string | null
+  /** What a one-off service lot (a vet visit, a repair) used here cost. */
+  cost: string | null
 }
 
 export interface QuantityInput {

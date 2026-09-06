@@ -330,7 +330,25 @@ export async function recentLogs(
               where la.log_id = l.id and la.role = 'input') as uses,
             (select group_concat(printf('%.10g', q.value) || ' ' || q.unit, ', ')
                from quantity q where q.log_id = l.id
-                 and q.deleted_at is null) as summary
+                 and q.deleted_at is null) as summary,
+            -- A service lot (a vet visit, a repair) carries a price and
+            -- nothing else, and is spent the moment it's used — the price
+            -- lives on its own "Paid for X" purchase, not on this log, so
+            -- without this a treatment applied to an animal shows no cost
+            -- at all even though one was typed in when it was recorded.
+            -- Ordinary feed/hay lots are left out: their cost is shared
+            -- across every feeding that draws on them, which Analytics
+            -- prorates properly and a flat number here would misstate.
+            (select group_concat(printf('%.10g', q.value) || ' ' || q.unit, ', ')
+               from log_asset li
+               join asset lot on lot.id = li.asset_id
+                    and lot.attributes->>'origin' = 'service'
+               join log_asset ls on ls.asset_id = lot.id and ls.role = 'subject'
+               join log p on p.id = ls.log_id
+                    and p.type = 'purchase' and p.deleted_at is null
+               join quantity q on q.log_id = p.id
+                    and q.deleted_at is null and q.measure = 'price'
+              where li.log_id = l.id and li.role = 'input') as cost
        from log l
       where l.deleted_at is null and l.status <> 'planned' and l.type <> 'weight'
         and l.farm_id = (select id from active_farm)
@@ -582,6 +600,8 @@ export interface AssetEvent {
    * flock's. Without it a lot's own history says only "Fed, 50 lb" and never
    * says to whom. */
   others: string | null
+  /** What a one-off service lot (a vet visit, a repair) used here cost. */
+  cost: string | null
 }
 
 export async function logsForAsset(assetId: string): Promise<AssetEvent[]> {
@@ -593,7 +613,20 @@ export async function logsForAsset(assetId: string): Promise<AssetEvent[]> {
               where q.log_id = l.id and q.deleted_at is null) as summary,
             (select group_concat(a2.name, ', ' order by a2.name)
                from log_asset la2 join asset a2 on a2.id = la2.asset_id
-              where la2.log_id = l.id and la2.asset_id <> la.asset_id) as others
+              where la2.log_id = l.id and la2.asset_id <> la.asset_id) as others,
+            -- Same reasoning as recentLogs()'s own 'cost' column: a service
+            -- lot's price lives on its own purchase, not here, so a
+            -- treatment shows no cost at all otherwise.
+            (select group_concat(printf('%.10g', q.value) || ' ' || q.unit, ', ')
+               from log_asset li
+               join asset lot on lot.id = li.asset_id
+                    and lot.attributes->>'origin' = 'service'
+               join log_asset ls on ls.asset_id = lot.id and ls.role = 'subject'
+               join log p on p.id = ls.log_id
+                    and p.type = 'purchase' and p.deleted_at is null
+               join quantity q on q.log_id = p.id
+                    and q.deleted_at is null and q.measure = 'price'
+              where li.log_id = l.id and li.role = 'input') as cost
        from log_asset la
        join log l on l.id = la.log_id
       where la.asset_id = $1 and l.deleted_at is null
