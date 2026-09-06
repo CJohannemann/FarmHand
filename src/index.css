@@ -51,3 +51,14 @@ body {
   background: var(--bg);
   color: var(--fg);
 }
+
+/*
+ * A bare <a> otherwise falls back to the browser's own default link colors
+ * (blue, then a dark purple once visited) — neither of which knows this app
+ * has a dark theme, and the visited purple in particular reads as barely
+ * more than black against --bg's near-black. --accent already exists
+ * because button.linkish needed a themed "this is tappable" color; a real
+ * <a> (Settings' mailto: link, currently the only one in the app) should
+ * read the same way instead of falling through to the browser's own guess.
+ */
+a, a:visited { color: var(--accent); }
