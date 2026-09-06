@@ -33,6 +33,13 @@ export interface LogWithDetail extends LogRow {
   summary: string | null
   /** What a one-off service lot (a vet visit, a repair) used here cost. */
   cost: string | null
+  /** Whoever entered this record — an auth user id, or null on a
+   * local-only install with no accounts to distinguish. */
+  created_by: string | null
+  /** When it was actually entered, as opposed to `timestamp`, which is
+   * whenever the person logging it says the event happened and can be
+   * backdated freely. */
+  created_at: string
 }
 
 export interface QuantityInput {

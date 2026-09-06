@@ -13,8 +13,9 @@ import {
   formatMoney, formatQty, hasNumericValue, ignoreArrowKeysOnNumberInput,
   ignoreScrollOnNumberInput, onNumericChange, withThousands,
 } from '../lib/numeric'
+import { useMembersMap } from '../lib/members'
 import { AssetSelect } from './AssetSelect'
-import { logDate } from './LogList'
+import { logDate, logTime } from './LogList'
 import { Sheet } from './Sheet'
 import { EditAsset } from './EditAsset'
 import { EditLog } from './EditLog'
@@ -48,6 +49,7 @@ export function AssetDetail({
   const material = producibleMaterial(asset)
   const producer = (livestock && material !== null) || asset.type === 'planting'
   const events = useAsync(() => logsForAsset(asset.id), [asset.id])
+  const membersById = useMembersMap()
   const costs = useAsync(() => assetCosts(asset.id), [asset.id])
   const weights = useAsync(() => weightHistory(asset.id), [asset.id])
   const members = useAsync(
@@ -305,6 +307,11 @@ export function AssetDetail({
               </div>
               {e.others && <div className="log-sub"><em>{e.others}</em></div>}
               {e.notes && <div className="log-note">{e.notes}</div>}
+              {e.created_by && membersById[e.created_by] && (
+                <div className="log-sub">
+                  Logged by {membersById[e.created_by]} · {logTime(e.created_at)}
+                </div>
+              )}
               <time className="log-time">{logDate(e.timestamp)}</time>
             </button>
           </li>

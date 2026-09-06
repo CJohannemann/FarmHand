@@ -5,6 +5,16 @@ import type {
 
 let farmId: string | null = null
 
+// Who's actually signed in on this device right now — set once from App.tsx
+// whenever the session resolves or changes, since queries.ts has no React
+// context of its own to read it from. Null on a local-only install (no
+// Supabase configured), which has no other user to distinguish from anyway.
+let currentUserId: string | null = null
+
+export function setCurrentUser(id: string | null): void {
+  currentUserId = id
+}
+
 export async function getFarmId(): Promise<string> {
   if (farmId) return farmId
   const pg = await db()
@@ -253,8 +263,9 @@ export async function createLog(input: {
   const now = new Date().toISOString()
 
   await pg.query(
-    `insert into log (id, farm_id, type, timestamp, status, name, notes, created_at, updated_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    `insert into log (id, farm_id, type, timestamp, status, name, notes, created_by,
+                       created_at, updated_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
       logId,
       farm,
@@ -263,6 +274,7 @@ export async function createLog(input: {
       input.status ?? 'done',
       input.name ?? null,
       input.notes ?? null,
+      currentUserId,
       now,
       now,
     ],
@@ -318,6 +330,7 @@ export async function recentLogs(
   }
   const { rows } = await pg.query<LogWithDetail>(
     `select l.id, l.type, l.timestamp, l.status, l.name, l.notes,
+            l.created_by, l.created_at,
             (select group_concat(a.name, ', ' order by a.name)
                from log_asset la join asset a on a.id = la.asset_id
               where la.log_id = l.id and la.role = 'subject') as subjects,
@@ -638,12 +651,15 @@ export interface AssetEvent {
   others: string | null
   /** What a one-off service lot (a vet visit, a repair) used here cost. */
   cost: string | null
+  created_by: string | null
+  created_at: string
 }
 
 export async function logsForAsset(assetId: string): Promise<AssetEvent[]> {
   const pg = await db()
   const { rows } = await pg.query<AssetEvent>(
     `select l.id, l.type, l.timestamp, l.name, l.notes, la.role,
+            l.created_by, l.created_at,
             (select group_concat(printf('%.10g', q.value) || ' ' || q.unit, ', ')
                from quantity q
               where q.log_id = l.id and q.deleted_at is null) as summary,

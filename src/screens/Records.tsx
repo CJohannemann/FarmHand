@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import { recentLogs } from '../db/queries'
 import type { LogWithDetail } from '../db/types'
+import { useMembersMap } from '../lib/members'
 import { LogList, logLabel } from './LogList'
 import { EditLog } from './EditLog'
 
@@ -19,6 +20,7 @@ export function Records() {
   const { data, loading, reload } = useAsync(() => recentLogs(200), [])
   const [editing, setEditing] = useState<LogWithDetail | null>(null)
   const [kind, setKind] = useState<string | null>(null)
+  const membersById = useMembersMap()
 
   const logs = data ?? []
 
@@ -61,6 +63,7 @@ export function Records() {
         loading={loading}
         groupByDate
         onSelect={setEditing}
+        membersById={membersById}
         empty={active
           ? `No ${logLabel(active).toLowerCase()} records yet.`
           : 'Nothing recorded yet.'}

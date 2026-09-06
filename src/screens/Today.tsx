@@ -7,6 +7,7 @@ import {
 } from '../db/queries'
 import type { Asset, LogWithDetail } from '../db/types'
 import type { PreparedImage } from '../lib/image'
+import { useMembersMap } from '../lib/members'
 import { ReceiptCapture } from './ReceiptCapture'
 import { HARVESTS, tilesFor, type HarvestSpec } from '../lib/tiles'
 import {
@@ -34,6 +35,7 @@ export function Today({ onGoToStock }: { onGoToStock: () => void }) {
   // farm is rarely twenty entries, but it should not be able to push the
   // tab bar off the bottom of the screen if it is.
   const recent = useAsync(() => recentLogs(20, 2), [])
+  const membersById = useMembersMap()
   const tasks = useAsync(() => plannedLogs(), [])
   const assets = useAsync(() => listAssets(), [])
   // Held here rather than inside WeatherPlace so that saving a location in
@@ -92,6 +94,7 @@ export function Today({ onGoToStock }: { onGoToStock: () => void }) {
 
       <h2 className="section">Recent</h2>
       <LogList logs={recent.data ?? []} loading={recent.loading} onSelect={setEditing}
+        membersById={membersById}
         empty="Nothing in the last couple of days. Everything you have ever logged is under Analytics > Records." />
 
       {editing && (

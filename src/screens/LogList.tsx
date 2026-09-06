@@ -27,6 +27,12 @@ export function logDate(timestamp: string): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+/** Wall-clock time a record was actually entered, for the "who did what and
+ * when" byline — logDate() already covers the date. */
+export function logTime(timestamp: string): string {
+  return new Date(timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+}
+
 /** What a row calls itself — the name given, or the type's own word. */
 export function logLabel(type: string): string {
   return LABELS[type] ?? type
@@ -59,7 +65,7 @@ function dayHeading(timestamp: string): string {
 }
 
 export function LogList({
-  logs, loading, onSelect, empty = 'Nothing recorded yet.', groupByDate = false,
+  logs, loading, onSelect, empty = 'Nothing recorded yet.', groupByDate = false, membersById,
 }: {
   logs: LogWithDetail[]
   loading?: boolean
@@ -78,6 +84,12 @@ export function LogList({
    */
   empty?: string
   onSelect?: (log: LogWithDetail) => void
+  /**
+   * User id -> email, from useMembersMap(). Empty on a solo farm — with only
+   * one person it could ever be, "Logged by you" on every row would be noise,
+   * not information, so useMembersMap() itself withholds it in that case.
+   */
+  membersById?: Record<string, string>
 }) {
   if (loading) return <p className="muted">Loading…</p>
   if (logs.length === 0) return <p className="empty">{empty}</p>
@@ -104,6 +116,11 @@ export function LogList({
           </div>
         )}
         {l.notes && <div className="log-note">{l.notes}</div>}
+        {membersById && l.created_by && membersById[l.created_by] && (
+          <div className="log-sub">
+            Logged by {membersById[l.created_by]} · {logTime(l.created_at)}
+          </div>
+        )}
         {/* The day's heading already says when, when there is one. */}
         {!groupByDate && <time className="log-time">{logDate(l.timestamp)}</time>}
       </>

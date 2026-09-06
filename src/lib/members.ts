@@ -1,5 +1,7 @@
-import { describeError, supabase } from './supabase'
+import { useMemo } from 'react'
+import { describeError, supabase, supabaseConfigured } from './supabase'
 import { getFarmId } from '../db/queries'
+import { useAsync } from './useAsync'
 
 export type FarmRole = 'owner' | 'manager' | 'member' | 'viewer'
 
@@ -41,6 +43,23 @@ export async function listMembers(): Promise<FarmMember[]> {
   if (error) throw new Error(describeError(error))
   return (data as { user_id: string; email: string; role: FarmRole; joined_at: string }[])
     .map((r) => ({ userId: r.user_id, email: r.email, role: r.role, joinedAt: r.joined_at }))
+}
+
+/**
+ * User id -> email, for turning a log's bare `created_by` into something
+ * readable. Empty on a local-only install (nothing to resolve) or a
+ * single-owner farm — attribution only earns its place on screen once there
+ * is more than one person it could have been.
+ */
+export function useMembersMap(): Record<string, string> {
+  const { data } = useAsync(
+    () => (supabaseConfigured ? listMembers() : Promise.resolve([])),
+    [],
+  )
+  return useMemo(() => {
+    if (!data || data.length <= 1) return {}
+    return Object.fromEntries(data.map((m) => [m.userId, m.email]))
+  }, [data])
 }
 
 /** Owner-only. Refuses to remove the owner themself — see db/schema.sql. */
