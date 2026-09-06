@@ -312,6 +312,11 @@ export function AssetDetail({
                   Logged by {membersById[e.created_by]} · {logTime(e.created_at)}
                 </div>
               )}
+              {e.edited_by && e.edited_at && membersById[e.edited_by] && (
+                <div className="log-sub">
+                  Edited by {membersById[e.edited_by]} · {logTime(e.edited_at)}
+                </div>
+              )}
               <time className="log-time">{logDate(e.timestamp)}</time>
             </button>
           </li>

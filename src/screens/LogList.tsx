@@ -121,6 +121,11 @@ export function LogList({
             Logged by {membersById[l.created_by]} · {logTime(l.created_at)}
           </div>
         )}
+        {membersById && l.edited_by && l.edited_at && membersById[l.edited_by] && (
+          <div className="log-sub">
+            Edited by {membersById[l.edited_by]} · {logTime(l.edited_at)}
+          </div>
+        )}
         {/* The day's heading already says when, when there is one. */}
         {!groupByDate && <time className="log-time">{logDate(l.timestamp)}</time>}
       </>

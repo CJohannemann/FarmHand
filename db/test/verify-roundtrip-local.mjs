@@ -42,6 +42,11 @@ async function makeServer() {
   await pg.exec(STUB)
   await pg.exec(schema)
   await pg.exec(seed)
+  // edited_by/edited_at on `log`: not in schema.sql itself (see that file's
+  // own convention — migrations layer on top rather than folding back in),
+  // but local devices push those columns unconditionally now, so a "remote"
+  // without this migration applied is not the shape production actually has.
+  await pg.exec(fs.readFileSync(R + 'migrations/014_log_edit_tracking.sql', 'utf8'))
   await pg.exec(`insert into farm (name) values ('My farm')`)
   return pg
 }

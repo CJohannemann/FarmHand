@@ -28,8 +28,13 @@ let db: number
  * never exists there and the first query touching it fails with "no such
  * table". That is exactly how `receipt` shipped broken: sync died on every
  * device that had been used before receipts were added.
+ *
+ * A new COLUMN on an existing table is not covered by re-running the schema
+ * — `create table if not exists` skips a table that's already there, columns
+ * and all — so migrate() below also needs an explicit, guarded `alter table`
+ * for that case (see the edited_by/edited_at addition for the pattern).
  */
-const SCHEMA_VERSION = '3'
+const SCHEMA_VERSION = '4'
 const SCHEMA_VERSION_KEY = 'localSchema'
 
 async function open(): Promise<void> {
@@ -61,6 +66,12 @@ async function open(): Promise<void> {
  */
 async function migrate(fresh: boolean): Promise<void> {
   await sqlite3.exec(db, schemaSql)
+  // A new column, unlike a new table, isn't picked up by re-running the
+  // schema above — see SCHEMA_VERSION's own comment. A no-op on a fresh
+  // database, which already got both columns from schemaSql's own `create
+  // table` just now.
+  await addColumnIfMissing('log', 'edited_by', 'text')
+  await addColumnIfMissing('log', 'edited_at', 'text')
   if (fresh) {
     const now = new Date().toISOString()
     const farmId = crypto.randomUUID()
@@ -86,6 +97,20 @@ async function migrate(fresh: boolean): Promise<void> {
      on conflict (key) do update set value = excluded.value`,
     [SCHEMA_VERSION_KEY, SCHEMA_VERSION],
   )
+}
+
+/**
+ * Adds a column to an existing table if it isn't there yet. SQLite has no
+ * `add column if not exists`, and running a plain `alter table` twice errors
+ * with "duplicate column name" — this is what makes the same migrate() call
+ * safe to run on every boot regardless of which schema version a device is
+ * coming from.
+ */
+async function addColumnIfMissing(table: string, column: string, type: string): Promise<void> {
+  const { rows } = await queryRaw(
+    `select 1 from pragma_table_info(?) where name = ?`, [table, column],
+  )
+  if (rows.length === 0) await execRaw(`alter table "${table}" add column "${column}" ${type}`)
 }
 
 /**

@@ -330,7 +330,7 @@ export async function recentLogs(
   }
   const { rows } = await pg.query<LogWithDetail>(
     `select l.id, l.type, l.timestamp, l.status, l.name, l.notes,
-            l.created_by, l.created_at,
+            l.created_by, l.created_at, l.edited_by, l.edited_at,
             (select group_concat(a.name, ', ' order by a.name)
                from log_asset la join asset a on a.id = la.asset_id
               where la.log_id = l.id and la.role = 'subject') as subjects,
@@ -653,13 +653,15 @@ export interface AssetEvent {
   cost: string | null
   created_by: string | null
   created_at: string
+  edited_by: string | null
+  edited_at: string | null
 }
 
 export async function logsForAsset(assetId: string): Promise<AssetEvent[]> {
   const pg = await db()
   const { rows } = await pg.query<AssetEvent>(
     `select l.id, l.type, l.timestamp, l.name, l.notes, la.role,
-            l.created_by, l.created_at,
+            l.created_by, l.created_at, l.edited_by, l.edited_at,
             (select group_concat(printf('%.10g', q.value) || ' ' || q.unit, ', ')
                from quantity q
               where q.log_id = l.id and q.deleted_at is null) as summary,
@@ -1119,6 +1121,20 @@ export async function updateLog(id: string, input: {
   const updatedAtParam = vals.push(new Date().toISOString())
   await pg.query(
     `update log set ${sets.join(', ')}, updated_at = $${updatedAtParam} where id = $1`, vals,
+  )
+}
+
+/**
+ * Marks a log as touched by an edit — the "lite" edit trail. Left to the
+ * caller to invoke, and only when something actually changed: EditLog calls
+ * this once at the end of save() if any field it touched came out different
+ * from what the record already held, not on every tap of Save regardless.
+ */
+export async function stampEdited(logId: string): Promise<void> {
+  const pg = await db()
+  await pg.query(
+    `update log set edited_by = $2, edited_at = $3 where id = $1`,
+    [logId, currentUserId, new Date().toISOString()],
   )
 }
 

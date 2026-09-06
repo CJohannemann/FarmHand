@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import {
   CATEGORIZABLE_MATERIALS, deleteLog, listTerms, purchaseLotFor, quantitiesFor,
-  serviceCostFor, setLotCategory, setQuantity, updateLog,
+  serviceCostFor, setLotCategory, setQuantity, stampEdited, updateLog,
 } from '../db/queries'
 import type { LogWithDetail, Measure } from '../db/types'
 import {
@@ -69,24 +69,45 @@ export function EditLog({
 
   const save = async () => {
     setBusy(true)
+    // Tracked separately from the writes themselves: Save is tapped on a
+    // record nobody actually touched (opened, looked, closed) far more often
+    // than one that changed, and stamping edited_by/edited_at on every tap
+    // regardless would make "has this been edited?" meaningless.
+    let changed = false
+
+    const trimmedName = name.trim() || null
+    const trimmedNotes = notes.trim() || null
+    if (trimmedName !== log.name || trimmedNotes !== log.notes
+        || date !== forInput(log.timestamp)) {
+      changed = true
+    }
     await updateLog(log.id, {
-      name: name.trim() || null,
-      notes: notes.trim() || null,
+      name: trimmedName,
+      notes: trimmedNotes,
       // Keep the original time of day; only the date is editable here.
       timestamp: new Date(`${date}T${new Date(log.timestamp).toTimeString().slice(0, 8)}`),
     })
     for (const [id, raw] of Object.entries(edited)) {
       const q = (qtys.data ?? []).find((x) => x.id === id)
-      if (q && hasNumericValue(raw)) await setQuantity(log.id, q.measure as Measure, Number(raw))
+      if (q && hasNumericValue(raw) && Number(raw) !== q.value) {
+        await setQuantity(log.id, q.measure as Measure, Number(raw))
+        changed = true
+      }
     }
     if (canAddPrice && !hasPrice && hasNumericValue(newPrice)) {
       await setQuantity(log.id, 'price', Number(newPrice), 'USD')
+      changed = true
     }
-    if (categorizable && lot.data) await setLotCategory(lot.data.assetId, category || null)
+    if (categorizable && lot.data && category !== (lot.data.category ?? '')) {
+      await setLotCategory(lot.data.assetId, category || null)
+      changed = true
+    }
     if (serviceCost.data && hasNumericValue(cost)
         && Number(cost) !== serviceCost.data.value) {
       await setQuantity(serviceCost.data.purchaseLogId, 'price', Number(cost))
+      changed = true
     }
+    if (changed) await stampEdited(log.id)
     setBusy(false)
     onChanged()
   }

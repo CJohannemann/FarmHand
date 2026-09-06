@@ -6,12 +6,15 @@
 -- between farms sharing one server, which a single farm's own on-device copy
 -- has no use for.
 --
--- The local database is always rebuilt from scratch (this file plus
--- seedLocal.ts's vocabulary, run once) rather than upgraded in place — see
--- the app's cutover-on-engine-change logic. So unlike schema.sql, this file
--- never needs an `alter table` migration file layered on top of it: a future
--- local schema change just changes this file and bumps the local engine's
--- version marker, the same way this migration itself does.
+-- The local database is always rebuilt from scratch on a brand-new device
+-- (this file plus seedLocal.ts's vocabulary, run once); an existing device
+-- instead re-runs this file in place, which is enough for a new table, index,
+-- or trigger — every such statement here is `if not exists`. It is NOT enough
+-- for a new column on a table that already exists: `create table if not
+-- exists` is a no-op once the table is there, so a column added here only
+-- ever reaches a fresh install. Adding one to an existing device needs an
+-- explicit, guarded `alter table` in worker.ts's migrate() alongside this
+-- file — see edited_by/edited_at on `log` below for the pattern.
 --
 -- No CHECK constraints on enum-like columns (status, terminal_event,
 -- unit_system, measure, ...): SQLite cannot alter an existing CHECK without
@@ -84,6 +87,8 @@ create table if not exists log (
   notes       text,
   location_id text references location(id),
   created_by  text,  -- a remote auth.users id; no local FK, nothing to check it against
+  edited_by   text,  -- same, set only when an edit actually changes something
+  edited_at   text,
   attributes  text not null default '{}',  -- JSON text
   created_at  text not null,
   updated_at  text not null,

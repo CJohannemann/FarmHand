@@ -40,6 +40,10 @@ export interface LogWithDetail extends LogRow {
    * whenever the person logging it says the event happened and can be
    * backdated freely. */
   created_at: string
+  /** Whoever last made a real change to this record after it was created,
+   * or null if it never has been. */
+  edited_by: string | null
+  edited_at: string | null
 }
 
 export interface QuantityInput {
