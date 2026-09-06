@@ -156,6 +156,26 @@ export function useFarmTimezone(): string {
   return data ?? 'UTC'
 }
 
+/**
+ * Self-heals a farm whose location was saved before timezone capture
+ * existed: setFarmLocation() only ever writes the column when a location is
+ * (re)chosen, so a farm that picked its town months ago is stuck reading
+ * everything in UTC forever with no event that would ever fix it on its
+ * own — until now. Both forecast paths already resolve a real IANA zone for
+ * this exact location on every fetch (NWS's own `timeZone`, Open-Meteo's own
+ * `timezone`), so this rides that existing call instead of asking Open-Meteo
+ * anything new. A no-op once the column already agrees.
+ */
+async function healFarmTimezone(tz: string | undefined): Promise<void> {
+  if (!tz) return
+  const pg = await db()
+  await pg.query(
+    `update farm set timezone = $1, updated_at = $2
+      where id = (select id from active_farm) and timezone <> $1`,
+    [tz, new Date().toISOString()],
+  )
+}
+
 /** Accepts a town, a postcode, or "town, state" — Open-Meteo handles all three. */
 export async function searchPlace(query: string): Promise<Place[]> {
   const url = `${GEOCODE}?name=${encodeURIComponent(query)}&count=8&language=en&format=json`
@@ -262,6 +282,7 @@ async function fetchOpenMeteoForecast(loc: FarmLocation): Promise<Forecast | nul
     const res = await timed(url)
     if (!res.ok) throw new Error(`Weather fetch failed (${res.status})`)
     const j = await res.json()
+    await healFarmTimezone(j.timezone)
 
     const days: DayForecast[] = (j.daily?.time ?? []).map((date: string, i: number) => ({
       date,
@@ -314,6 +335,7 @@ async function fetchNwsForecast(loc: FarmLocation): Promise<Forecast | null> {
     const { forecast: forecastUrl, forecastGridData: gridUrl, timeZone } =
       points.properties ?? {}
     if (!forecastUrl || !gridUrl || !timeZone) return null
+    await healFarmTimezone(timeZone)
 
     const [periodsRes, gridRes] = await Promise.all([
       timed(forecastUrl, deadline), timed(gridUrl, deadline),
