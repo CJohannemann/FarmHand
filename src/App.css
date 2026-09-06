@@ -220,6 +220,24 @@ h1 { margin: 0 0 0.15rem; font-size: 1.6rem; letter-spacing: -0.02em; }
 .asset-name { font-weight: 600; font-size: 0.95rem; }
 .asset-meta { color: var(--muted); font-size: 0.85rem; text-align: right; }
 
+/*
+ * A farm member's row is the one place in .assetlist that has a second flex
+ * item — the "Remove" link, a sibling of .assetrow rather than part of it.
+ * .assetrow already claims the full row width for name+role, so the base
+ * rule's row layout left Remove nowhere to go but off the right edge of the
+ * screen. Column instead: .assetrow keeps its own full-width layout, and
+ * Remove sits underneath, aligned to the same edge its role dropdown is on.
+ */
+.assetlist li.member-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.3rem;
+}
+.assetlist li.member-row button.linkish {
+  align-self: flex-end;
+  padding-top: 0;
+}
+
 /* ----------------------------------------------------------------- forms */
 
 .field { display: block; margin-bottom: 1rem; }

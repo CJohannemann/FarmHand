@@ -263,7 +263,7 @@ function Roster({ members, you, isOwner, onChanged }: {
       {error && <p className="error">{error}</p>}
       <ul className="assetlist">
         {members.map((m) => (
-          <li key={m.userId}>
+          <li key={m.userId} className={isOwner && m.role !== 'owner' ? 'member-row' : ''}>
             <div className="assetrow">
               <span className="asset-name">
                 {m.email}{m.userId === you ? ' (you)' : ''}
