@@ -481,6 +481,42 @@ export async function purchaseLotFor(logId: string): Promise<PurchaseLot | null>
   }
 }
 
+export interface ServiceCost {
+  /** The service lot's own "Paid for X" purchase log — where the price
+   * quantity actually lives, and what setQuantity() needs to change it. */
+  purchaseLogId: string
+  value: number
+  unit: string
+}
+
+/**
+ * What a service lot (a vet visit, a repair) used as this treatment's input
+ * cost, if it drew on one — the price lives on that lot's own one-off
+ * purchase, not on the treatment log itself, so editing it from here has to
+ * reach over to that other log. A lot bought as real stock (feed, medicine
+ * kept on a shelf) is left out on purpose: its price is shared across every
+ * log that has ever drawn on it, so there is no single number here to edit.
+ */
+export async function serviceCostFor(logId: string): Promise<ServiceCost | null> {
+  const pg = await db()
+  const { rows } = await pg.query<{ purchase_log_id: string; value: number; unit: string }>(
+    `select p.id as purchase_log_id, q.value, q.unit
+       from log_asset li
+       join asset lot on lot.id = li.asset_id
+            and lot.attributes->>'origin' = 'service'
+       join log_asset ls on ls.asset_id = lot.id and ls.role = 'subject'
+       join log p on p.id = ls.log_id
+            and p.type = 'purchase' and p.deleted_at is null
+       join quantity q on q.log_id = p.id
+            and q.deleted_at is null and q.measure = 'price'
+      where li.log_id = $1 and li.role = 'input'
+      limit 1`,
+    [logId],
+  )
+  const r = rows[0]
+  return r ? { purchaseLogId: r.purchase_log_id, value: r.value, unit: r.unit } : null
+}
+
 /**
  * Sets or clears a lot's category after the fact — attributes replace
  * wholesale (see updateAsset), so this reads the row first rather than

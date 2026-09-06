@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import {
   CATEGORIZABLE_MATERIALS, deleteLog, listTerms, purchaseLotFor, quantitiesFor,
-  setLotCategory, setQuantity, updateLog,
+  serviceCostFor, setLotCategory, setQuantity, updateLog,
 } from '../db/queries'
 import type { LogWithDetail, Measure } from '../db/types'
 import {
@@ -54,6 +54,19 @@ export function EditLog({
   const [category, setCategory] = useState('')
   useEffect(() => { setCategory(lot.data?.category ?? '') }, [lot.data])
 
+  // A med visit or repair with no lot of its own charges a one-off service
+  // lot instead, whose price lives on that lot's own purchase log rather
+  // than this one — so editing it here has to reach over and update that
+  // other log, not this one's own (nonexistent) quantities.
+  const serviceCost = useAsync(
+    () => (log.type === 'input_application' ? serviceCostFor(log.id) : Promise.resolve(null)),
+    [log.id, log.type],
+  )
+  const [cost, setCost] = useState('')
+  useEffect(() => {
+    setCost(serviceCost.data ? String(serviceCost.data.value) : '')
+  }, [serviceCost.data])
+
   const save = async () => {
     setBusy(true)
     await updateLog(log.id, {
@@ -70,6 +83,10 @@ export function EditLog({
       await setQuantity(log.id, 'price', Number(newPrice), 'USD')
     }
     if (categorizable && lot.data) await setLotCategory(lot.data.assetId, category || null)
+    if (serviceCost.data && hasNumericValue(cost)
+        && Number(cost) !== serviceCost.data.value) {
+      await setQuantity(serviceCost.data.purchaseLogId, 'price', Number(cost))
+    }
     setBusy(false)
     onChanged()
   }
@@ -105,6 +122,18 @@ export function EditLog({
             Lets Analytics tell you what feed cost each kind of stock, not
             just feed as a whole.
           </small>
+        </label>
+      )}
+
+      {serviceCost.data && (
+        <label className="field">
+          <span>Cost ($)</span>
+          <input
+            type="number" inputMode="decimal" min="0" value={cost}
+            onChange={(e) => setCost(sanitizeNumeric(e.target.value))}
+            onWheel={ignoreScrollOnNumberInput}
+            onKeyDown={ignoreArrowKeysOnNumberInput}
+          />
         </label>
       )}
 
