@@ -95,6 +95,7 @@ function PlaceStep({ onNext }: { onNext: () => void }) {
       latitude: p.latitude,
       longitude: p.longitude,
       placeName: [p.name, p.admin].filter(Boolean).join(', '),
+      timezone: p.timezone,
     })
     onNext()
   }
@@ -108,6 +109,10 @@ function PlaceStep({ onNext }: { onNext: () => void }) {
           latitude: Number(pos.coords.latitude.toFixed(4)),
           longitude: Number(pos.coords.longitude.toFixed(4)),
           placeName: 'My farm',
+          // No geocoder involved on this path — but a device sharing its own
+          // GPS position is presumably physically at the farm right now, so
+          // its own OS-reported zone is a real answer, not a guess.
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         })
         setBusy(false); onNext()
       },

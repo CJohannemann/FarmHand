@@ -14,6 +14,7 @@ import {
   ignoreScrollOnNumberInput, onNumericChange, withThousands,
 } from '../lib/numeric'
 import { useMembersMap } from '../lib/members'
+import { useFarmTimezone } from '../lib/weather'
 import { AssetSelect } from './AssetSelect'
 import { logDate, logTime } from './LogList'
 import { Sheet } from './Sheet'
@@ -50,6 +51,7 @@ export function AssetDetail({
   const producer = (livestock && material !== null) || asset.type === 'planting'
   const events = useAsync(() => logsForAsset(asset.id), [asset.id])
   const membersById = useMembersMap()
+  const timeZone = useFarmTimezone()
   const costs = useAsync(() => assetCosts(asset.id), [asset.id])
   const weights = useAsync(() => weightHistory(asset.id), [asset.id])
   const members = useAsync(
@@ -309,15 +311,15 @@ export function AssetDetail({
               {e.notes && <div className="log-note">{e.notes}</div>}
               {e.created_by && membersById[e.created_by] && (
                 <div className="log-sub">
-                  Logged by {membersById[e.created_by]} · {logTime(e.created_at)}
+                  Logged by {membersById[e.created_by]} · {logTime(e.created_at, timeZone)}
                 </div>
               )}
               {e.edited_by && e.edited_at && membersById[e.edited_by] && (
                 <div className="log-sub">
-                  Edited by {membersById[e.edited_by]} · {logTime(e.edited_at)}
+                  Edited by {membersById[e.edited_by]} · {logTime(e.edited_at, timeZone)}
                 </div>
               )}
-              <time className="log-time">{logDate(e.timestamp)}</time>
+              <time className="log-time">{logDate(e.timestamp, timeZone)}</time>
             </button>
           </li>
         ))}

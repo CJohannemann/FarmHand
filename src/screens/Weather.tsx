@@ -235,7 +235,11 @@ function LocationPicker({ onDone }: { onDone: () => void }) {
         // function's own comment), so a farm elsewhere still gets set up
         // rather than blocked on a lookup that was never going to answer.
         const placeName = await reverseGeocodePlaceName(latitude, longitude) ?? 'My farm'
-        await setFarmLocation({ latitude, longitude, placeName })
+        // No geocoder involved on this path — but a device sharing its own
+        // GPS position is presumably physically at the farm right now, so
+        // its own OS-reported zone is a real answer, not a guess.
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+        await setFarmLocation({ latitude, longitude, placeName, timezone })
         setBusy(false); onDone()
       },
       (e) => { setError(e.message); setBusy(false) },
@@ -248,6 +252,7 @@ function LocationPicker({ onDone }: { onDone: () => void }) {
       latitude: p.latitude,
       longitude: p.longitude,
       placeName: formatPlaceName(p.name, p.admin),
+      timezone: p.timezone,
     })
     onDone()
   }

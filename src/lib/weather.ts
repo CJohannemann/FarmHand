@@ -1,3 +1,4 @@
+import { useAsync } from './useAsync'
 import { db, getSyncState, setSyncState } from '../db/client'
 import {
   farmWarnings, frostDates, hardinessZone,
@@ -61,6 +62,10 @@ export interface FarmLocation {
   latitude: number
   longitude: number
   placeName: string | null
+  /** IANA zone, e.g. "America/Chicago". Optional on the way in — callers with
+   * nothing better (an old bookmark, a test) fall back to UTC in
+   * setFarmLocation() rather than being forced to invent one. */
+  timezone?: string
 }
 
 export interface Place {
@@ -69,6 +74,9 @@ export interface Place {
   country: string
   latitude: number
   longitude: number
+  /** From the same geocoder lookup, so choosing a place sets the farm's
+   * timezone without a separate question or a second network round trip. */
+  timezone: string
 }
 
 export interface Forecast {
@@ -100,7 +108,8 @@ export async function getFarmLocation(): Promise<FarmLocation | null> {
   const pg = await db()
   const { rows } = await pg.query<{
     latitude: number | null; longitude: number | null; place_name: string | null
-  }>(`select latitude, longitude, place_name from farm
+    timezone: string | null
+  }>(`select latitude, longitude, place_name, timezone from farm
        where id = (select id from active_farm)`)
   const r = rows[0]
   if (!r || r.latitude === null || r.longitude === null) return null
@@ -108,20 +117,43 @@ export async function getFarmLocation(): Promise<FarmLocation | null> {
     latitude: Number(r.latitude),
     longitude: Number(r.longitude),
     placeName: r.place_name,
+    timezone: r.timezone ?? 'UTC',
   }
 }
 
 export async function setFarmLocation(loc: FarmLocation) {
   const pg = await db()
   await pg.query(
-    `update farm set latitude = $1, longitude = $2, place_name = $3,
-            updated_at = $4
+    `update farm set latitude = $1, longitude = $2, place_name = $3, timezone = $4,
+            updated_at = $5
       where id = (select id from active_farm)`,
-    [loc.latitude, loc.longitude, loc.placeName, new Date().toISOString()],
+    [loc.latitude, loc.longitude, loc.placeName, loc.timezone ?? 'UTC', new Date().toISOString()],
   )
   // Location changed, so anything derived from it is stale.
   await setSyncState('weather:forecast', '')
   await setSyncState('weather:climate', '')
+}
+
+/**
+ * The farm's own clock, independent of whichever device is looking —
+ * defaults to UTC (the column's own default) for a farm that skipped
+ * setting a location, same as a fresh row before anyone touches it.
+ * Everything that stamps or displays a time (Records, Today, an edit's
+ * "Logged by" byline) reads this rather than the viewer's device zone, so a
+ * farm checked from three states away still reads "Today" the way the farm
+ * itself would.
+ */
+export async function getFarmTimezone(): Promise<string> {
+  const pg = await db()
+  const { rows } = await pg.query<{ timezone: string | null }>(
+    `select timezone from farm where id = (select id from active_farm)`,
+  )
+  return rows[0]?.timezone ?? 'UTC'
+}
+
+export function useFarmTimezone(): string {
+  const { data } = useAsync(() => getFarmTimezone(), [])
+  return data ?? 'UTC'
 }
 
 /** Accepts a town, a postcode, or "town, state" — Open-Meteo handles all three. */
@@ -144,6 +176,9 @@ export async function searchPlace(query: string): Promise<Place[]> {
     country: String(r.country ?? ''),
     latitude: Number(r.latitude),
     longitude: Number(r.longitude),
+    // The geocoder includes this on every result; UTC is only a fallback
+    // for the response shape changing out from under us, not a real answer.
+    timezone: String(r.timezone ?? 'UTC'),
   }))
 }
 
