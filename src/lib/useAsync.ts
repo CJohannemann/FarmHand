@@ -33,9 +33,26 @@ export function useAsync<T>(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const run = useCallback(fn, deps)
 
-  const reload = useCallback(() => {
+  /**
+   * `quiet` re-runs the query without raising `loading`, so a screen that
+   * already has data keeps showing it while the fresh copy is fetched.
+   *
+   * Every caller renders `loading` as a one-line "Loading…" *instead of*
+   * its content, which is right the first time and destructive afterwards:
+   * a 200-row list collapsing to one line takes the page height with it,
+   * the browser clamps the scroll position to the new height, and the rows
+   * come back a moment later with the reader dumped at the top. Reported as
+   * editing a record in Records and losing your place — twice, because
+   * saving reloads once and the sync round-trip fires onDataChanged for a
+   * second one just as you have scrolled back down.
+   *
+   * Only the mount-and-deps-change load below is loud. A refresh of data
+   * already on screen has nothing to announce: same query, same screen, and
+   * the rows it replaces are the rows it is replacing them with.
+   */
+  const load = useCallback((quiet = false) => {
     let live = true
-    setLoading(true)
+    if (!quiet) setLoading(true)
     run().then(
       (v) => { if (live) { setData(v); setError(null); setLoading(false) } },
       (e) => { if (live) { setError(e as Error); setLoading(false) } },
@@ -43,7 +60,11 @@ export function useAsync<T>(
     return () => { live = false }
   }, [run])
 
-  useEffect(() => reload(), [reload])
+  const reload = useCallback(() => load(true), [load])
+
+  // Loud: there is nothing on screen yet to preserve, and a deps change
+  // means what is there belongs to the old deps.
+  useEffect(() => load(), [load])
 
   // A screen that mounted and read local data before sync's first pull
   // finished — opening the app, or right after accepting a farm invite on
