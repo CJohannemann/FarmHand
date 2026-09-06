@@ -315,10 +315,19 @@ export async function createLog(input: {
  * would still be showing the evening before last, which is neither today
  * nor yesterday to the person reading it.
  *
- * Omit it for the whole history, which is what the Records view wants.
+ * Omit both `withinDays` and `year` for the whole history.
+ *
+ * `year` matches receiptYears()/receiptsForYear()'s own substr-of-timestamp
+ * grouping — a raw calendar year, not the farm's own timezone. Deliberately
+ * inconsistent with the display-side farm-timezone work: a purchase near
+ * midnight December 31st needs to land in the same year here as it does on
+ * the tax-year Receipts export, and that export already draws its line this
+ * way. Changing one without the other would make a receipt filed under 2026
+ * disappear from Records' own "2026" if picked apart at exactly the wrong
+ * hour of the wrong night.
  */
 export async function recentLogs(
-  limit = 50, withinDays?: number,
+  limit = 50, withinDays?: number, year?: number,
 ): Promise<LogWithDetail[]> {
   const pg = await db()
   let since: string | null = null
@@ -366,11 +375,32 @@ export async function recentLogs(
       where l.deleted_at is null and l.status <> 'planned' and l.type <> 'weight'
         and l.farm_id = (select id from active_farm)
         and ($2 is null or l.timestamp >= $2)
+        and ($3 is null or substr(l.timestamp, 1, 4) = $3)
       order by l.timestamp desc, l.created_at desc
       limit $1`,
-    [limit, since],
+    [limit, since, year != null ? String(year) : null],
   )
   return rows
+}
+
+/**
+ * Every year Records actually has something in, newest first — same
+ * substr-of-timestamp grouping as receiptYears(), for the reason recentLogs()
+ * now explains on its own `year` parameter. Lets Records offer a year picker
+ * that only ever lists years with something behind them, the way Past Stock
+ * and Receipts already do, rather than a fixed lookback window that quietly
+ * stops reaching a farm's early history once enough years pass.
+ */
+export async function logYears(): Promise<number[]> {
+  const pg = await db()
+  const { rows } = await pg.query<{ y: string }>(
+    `select distinct substr(l.timestamp, 1, 4) as y
+       from log l
+      where l.deleted_at is null and l.status <> 'planned' and l.type <> 'weight'
+        and l.farm_id = (select id from active_farm)
+      order by y desc`,
+  )
+  return rows.map((r) => Number(r.y)).filter((y) => Number.isFinite(y))
 }
 
 export async function assetCounts(): Promise<Record<string, number>> {
