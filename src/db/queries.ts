@@ -782,13 +782,28 @@ export async function costEntries(): Promise<CostEntry[]> {
     // which is a rounding of the truth rather than a wrong total — the
     // money is counted once either way.
     //
-    // `category` wins over `material` where it's set — a bag tagged "For:
-    // Pigs" at purchase time should report as Pigs, not fall back to the
-    // generic "Feed" every other bag without a tag still reports as.
+    // A tagged consumable reports as both at once — "Pig feed", "Cattle
+    // hay" — because either half alone answers the wrong question. Category
+    // on its own put a year of pig feed in the same row as the pigs
+    // themselves, so "Pig $1,500" was $600 of feed and $900 of livestock
+    // with no way to tell which; material on its own put every species'
+    // feed in one "Feed" row. Together they separate what was spent
+    // feeding the pigs from what was spent buying them.
+    //
+    // Untagged lots still fall back to their bare material, animals to
+    // their species, equipment to its kind.
     `select l.timestamp, q.value as value, l.type as kind,
             coalesce(
-              (select coalesce(a.attributes->>'category', a.attributes->>'material',
-                               a.attributes->>'species', a.attributes->>'kind')
+              (select case
+                        when a.attributes->>'category' is not null
+                         and a.attributes->>'material' is not null
+                        then a.attributes->>'category' || ' '
+                             || lower(a.attributes->>'material')
+                        else coalesce(a.attributes->>'category',
+                                      a.attributes->>'material',
+                                      a.attributes->>'species',
+                                      a.attributes->>'kind')
+                      end
                  from log_asset la join asset a on a.id = la.asset_id
                 where la.log_id = l.id and la.role = 'subject'
                 limit 1),

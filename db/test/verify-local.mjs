@@ -791,5 +791,67 @@ check('deleting the feeding puts it back on hand', remainingOf(emptyLot), 50)
 const [lotRow] = q(`select deleted_at from asset where id=?`, [emptyLot])
 check('and the lot itself was never removed', lotRow.deleted_at === null ? 1 : 0, 1)
 
+// ------------------- what a year of feeding one species actually cost
+// Analytics groups spending by one label per purchase. Category alone put
+// a year of pig feed in the same row as the pigs themselves — "Pig $1,500"
+// being $600 of feed and $900 of livestock, with no way to tell which.
+// Material alone put every species' feed under one "Feed". The label
+// carries both where both are known.
+console.log('\nSpending separates feed for a species from the animals themselves')
+const spendFarm = farm
+const buyThing = (name, type, attrs, price) => {
+  const a = uuid()
+  run(`insert into asset (id,farm_id,type,name,attributes,created_at,updated_at)
+       values (?,?,?,?,?,?,?)`,
+    [a, spendFarm, type, name, JSON.stringify(attrs), now(), now()])
+  const log = uuid()
+  run(`insert into log (id,farm_id,type,timestamp,name,created_at,updated_at)
+       values (?,?,'purchase','2029-04-01T12:00:00.000Z',?,?,?)`,
+    [log, spendFarm, `Bought ${name}`, now(), now()])
+  run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`, [log, a])
+  run(`insert into quantity (id,farm_id,log_id,measure,value,unit,created_at,updated_at)
+       values (?,?,?,'price',?,'USD',?,?)`, [uuid(), spendFarm, log, price, now(), now()])
+}
+buyThing('Pig feed', 'lot', { origin: 'purchased', material: 'Feed', category: 'Pig' }, 340)
+buyThing('Pig feed', 'lot', { origin: 'purchased', material: 'Feed', category: 'Pig' }, 260)
+buyThing('Chicken feed', 'lot', { origin: 'purchased', material: 'Feed', category: 'Chicken' }, 120)
+buyThing('Untagged feed', 'lot', { origin: 'purchased', material: 'Feed' }, 75)
+buyThing('Weaner pigs', 'animal', { species: 'Pig' }, 900)
+buyThing('Round bales', 'lot', { origin: 'purchased', material: 'Hay', category: 'Cattle' }, 900)
+
+// costEntries()'s label, as queries.ts computes it, for that one year.
+const spendByLabel = new Map()
+// One row per price with its label, exactly as costEntries() returns them;
+// the summing is what Analytics' materialBreakdown() then does in JS.
+for (const r of q(`
+  select label, sum(value) as total from (
+    select coalesce(
+             (select case
+                       when a.attributes->>'category' is not null
+                        and a.attributes->>'material' is not null
+                       then a.attributes->>'category' || ' '
+                            || lower(a.attributes->>'material')
+                       else coalesce(a.attributes->>'category', a.attributes->>'material',
+                                     a.attributes->>'species', a.attributes->>'kind')
+                     end
+                from log_asset la join asset a on a.id = la.asset_id
+               where la.log_id = l.id and la.role = 'subject'
+               limit 1),
+             'Other') as label,
+           q.value as value
+      from log l
+      join quantity q on q.log_id = l.id and q.deleted_at is null and q.measure = 'price'
+     where l.type = 'purchase' and l.deleted_at is null
+       and l.timestamp >= '2029-01-01' and l.timestamp < '2030-01-01'
+  ) group by label`)) {
+  spendByLabel.set(r.label, r.total)
+}
+
+check('a year of pig feed is its own figure', spendByLabel.get('Pig feed'), 600)
+check('the pigs themselves stay separate', spendByLabel.get('Pig'), 900)
+check('another species feed does not leak in', spendByLabel.get('Chicken feed'), 120)
+check('hay tagged for cattle reads as cattle hay', spendByLabel.get('Cattle hay'), 900)
+check('untagged feed keeps its bare material', spendByLabel.get('Feed'), 75)
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)
