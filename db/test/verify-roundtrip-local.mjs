@@ -47,6 +47,11 @@ async function makeServer() {
   // but local devices push those columns unconditionally now, so a "remote"
   // without this migration applied is not the shape production actually has.
   await pg.exec(fs.readFileSync(R + 'migrations/014_log_edit_tracking.sql', 'utf8'))
+  // Same reasoning, different shape of bug: schema.sql's quantity_measure
+  // CHECK constraint predates the 'hours' measure (engine-hours tracking),
+  // so a push carrying one is silently rejected by the database rather than
+  // by anything client-side — reported live as exactly that failure.
+  await pg.exec(fs.readFileSync(R + 'migrations/015_hours_measure.sql', 'utf8'))
   await pg.exec(`insert into farm (name) values ('My farm')`)
   return pg
 }
@@ -165,14 +170,19 @@ A.prepare(`insert into log (id,farm_id,type,timestamp,name,created_at,updated_at
 A.prepare(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`).run(log, flock)
 A.prepare(`insert into quantity (id,farm_id,log_id,measure,value,unit,created_at,updated_at)
    values (?,?,?,'count',18,'each',?,?)`).run(crypto.randomUUID(), farm, log, now(), now())
+// An engine-hours reading on the same log — not realistic for a harvest,
+// but the point here is purely "does measure='hours' clear the server's
+// own CHECK constraint", which doesn't care what log it rides on.
+A.prepare(`insert into quantity (id,farm_id,log_id,measure,value,unit,created_at,updated_at)
+   values (?,?,?,'hours',700,'hr',?,?)`).run(crypto.randomUUID(), farm, log, now(), now())
 
 check('A has queued its writes',
-  A.prepare(`select count(*) n from sync_outbox`).get().n >= 4)
+  A.prepare(`select count(*) n from sync_outbox`).get().n >= 5)
 
 console.log('\nA syncs up')
 const up = await runSync(asLocal(A), remote)
 const scount = async (sql, p = []) => Number((await server.query(sql, p)).rows[0].n)
-check('push reported rows', up.pushed >= 4, `${up.pushed} pushed`)
+check('push reported rows', up.pushed >= 5, `${up.pushed} pushed`)
 check('server has the farm', await scount(`select count(*)::int n from farm`) === 1)
 check('server has the flock',
   await scount(`select count(*)::int n from asset where id=$1`, [flock]) === 1)
@@ -180,8 +190,10 @@ check('server has the log',
   await scount(`select count(*)::int n from log where id=$1`, [log]) === 1)
 check('server has the link',
   await scount(`select count(*)::int n from log_asset where log_id=$1`, [log]) === 1)
-check('server has the quantity',
-  await scount(`select count(*)::int n from quantity where log_id=$1`, [log]) === 1)
+check('server has both quantities',
+  await scount(`select count(*)::int n from quantity where log_id=$1`, [log]) === 2)
+check("and the 'hours' one cleared quantity_measure_check",
+  await scount(`select count(*)::int n from quantity where log_id=$1 and measure='hours'`, [log]) === 1)
 check("A's outbox is now empty",
   A.prepare(`select count(*) n from sync_outbox`).get().n === 0)
 // The server seeded its own (unchanged, Postgres-side) vocabulary. If A had
@@ -196,8 +208,8 @@ check('B sees the flock', B.prepare(`select count(*) n from asset where id=?`).g
 check('B sees the log', B.prepare(`select count(*) n from log where id=?`).get(log).n === 1)
 check('B sees the link',
   B.prepare(`select count(*) n from log_asset where log_id=?`).get(log).n === 1)
-check('B sees the quantity',
-  B.prepare(`select count(*) n from quantity where log_id=?`).get(log).n === 1)
+check('B sees both quantities',
+  B.prepare(`select count(*) n from quantity where log_id=?`).get(log).n === 2)
 
 // The whole point: pulled rows must not look like local edits.
 check('B does NOT queue what it pulled',
@@ -225,7 +237,7 @@ check('B would not list it',
   B.prepare(`select count(*) n from log where id=? and deleted_at is null`).get(log).n === 0)
 check('its quantities died with it',
   B.prepare(`select count(*) n from quantity where log_id=? and deleted_at is not null`)
-    .get(log).n === 1)
+    .get(log).n === 2)
 // The row must still exist — a hard delete would leave other devices unable
 // to tell "deleted" from "never seen".
 check('the row itself is retained',
