@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { recordDisposition, type LotBalance } from '../db/queries'
+import { deleteAsset, recordDisposition, type LotBalance } from '../db/queries'
 import {
   formatQty as round, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
 } from '../lib/numeric'
@@ -28,6 +28,7 @@ export function TakeFromLot({
   const [amount, setAmount] = useState('')
   const [value, setValue] = useState('')
   const [busy, setBusy] = useState(false)
+  const [confirming, setConfirming] = useState(false)
 
   const n = Number(amount)
   const over = n > lot.remaining + 0.001
@@ -41,6 +42,13 @@ export function TakeFromLot({
       unit: lot.unit ?? 'lb',
       value: Number(value) || undefined,
     })
+    setBusy(false)
+    onDone()
+  }
+
+  const remove = async () => {
+    setBusy(true)
+    await deleteAsset(lot.id)
     setBusy(false)
     onDone()
   }
@@ -94,6 +102,41 @@ export function TakeFromLot({
       <button className="primary" disabled={busy || !(n > 0)} onClick={save}>
         Save
       </button>
+
+      {/*
+        The way out for a lot that should not be here at all — one entered by
+        mistake, or one left behind when the harvest that created it was
+        deleted (which keeps the lot on purpose, so the withdrawals against
+        it are not left pointing at nothing).
+        Deliberately below Save and styled as danger: taking stock out is
+        what this sheet is for, and removing the record of it is not the
+        obvious next tap.
+      */}
+      {!confirming ? (
+        <button className="danger" disabled={busy} onClick={() => setConfirming(true)}>
+          Delete this record
+        </button>
+      ) : (
+        <div className="confirm">
+          <p>
+            Remove {lot.name} from Stores? This deletes the lot itself, on
+            every device.
+            {lot.remaining > 0.001
+              ? ` It still shows ${round(lot.remaining)} ${lot.unit ?? ''} on hand — take that
+                  out above instead if you actually used it, so the cost lands
+                  where it went.`
+              : ''}
+          </p>
+          <p className="hint">
+            Anything already logged against it — what it cost, what was fed or
+            taken from it — stays in your records.
+          </p>
+          <div className="actions">
+            <button onClick={() => setConfirming(false)}>Keep it</button>
+            <button className="danger" disabled={busy} onClick={remove}>Delete</button>
+          </div>
+        </div>
+      )}
     </Sheet>
   )
 }

@@ -953,5 +953,24 @@ run(`insert into quantity (id,farm_id,log_id,measure,value,unit,created_at,updat
 check('an unweighed sack is not treated as empty',
   usedUpRule(lotFigures(unweighed)) ? 1 : 0, 0)
 
+// Hiding an orphan is not the same as being able to get rid of it, and
+// deleting its remaining withdrawal only makes it worse: nothing in and
+// nothing out reads as "bought but never weighed", which is shown. So the
+// lot itself has to be deletable — deleteAsset() from its own sheet.
+console.log('\nDeleting a lot clears it from Stores but keeps its history')
+// lotBalances()'s own filter on the asset row. Farm scoping is left out —
+// this file seeds no active_farm, and that is covered by verify-multi-farm.
+const inStores = (id) => q(
+  `select count(*) n from asset
+    where id = ? and type = 'lot' and deleted_at is null`, [id])[0].n
+
+check('the orphan is in Stores to begin with', inStores(chicoMeat), 1)
+run(`update asset set deleted_at=?, updated_at=? where id=?`, [now(), now(), chicoMeat])
+check('deleting it takes it out of Stores', inStores(chicoMeat), 0)
+check('the withdrawal against it is still on the record',
+  q(`select count(*) n from log where id = ? and deleted_at is null`, [chicoUsed])[0].n, 1)
+check('and so is the animal it came from',
+  q(`select count(*) n from asset where id = ? and deleted_at is null`, [chico])[0].n, 1)
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)
