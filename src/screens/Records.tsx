@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import { recentLogs } from '../db/queries'
 import type { LogWithDetail } from '../db/types'
-import { LogList } from './LogList'
+import { LogList, logLabel } from './LogList'
 import { EditLog } from './EditLog'
 
 /**
@@ -10,14 +10,61 @@ import { EditLog } from './EditLog'
  * be its own tab sitting next to Analytics, and the two were the same
  * question ("what has happened here?") answered at two zoom levels. They
  * share one tab now, and Analytics owns the header.
+ *
+ * Broken up by day and filterable by kind, because on a working farm this is
+ * hundreds of rows: a fortnight of feedings alone buries the one purchase
+ * someone came here to correct.
  */
 export function Records() {
   const { data, loading, reload } = useAsync(() => recentLogs(200), [])
   const [editing, setEditing] = useState<LogWithDetail | null>(null)
+  const [kind, setKind] = useState<string | null>(null)
+
+  const logs = data ?? []
+
+  // Only the kinds this farm actually has, in the order they last happened —
+  // a fixed list of every log type the schema allows would offer filters
+  // that match nothing, and alphabetical would bury the common ones.
+  const kinds = useMemo(() => {
+    const seen: string[] = []
+    for (const l of logs) if (!seen.includes(l.type)) seen.push(l.type)
+    return seen
+  }, [logs])
+
+  // A filter that survives its own kind disappearing: deleting the last
+  // purchase while filtered to purchases would otherwise leave an empty
+  // list under a chip that is no longer offered.
+  const active = kind && kinds.includes(kind) ? kind : null
+  const shown = active ? logs.filter((l) => l.type === active) : logs
 
   return (
     <>
-      <LogList logs={data ?? []} loading={loading} onSelect={setEditing} />
+      {/* Worth its own row only once there is more than one kind to choose
+          between — a single chip beside "All" is a control with no choice. */}
+      {kinds.length > 1 && (
+        <div className="chipwrap" style={{ marginBottom: '0.5rem' }}>
+          <button className={active === null ? 'chip on' : 'chip'}
+            onClick={() => setKind(null)}>
+            All
+          </button>
+          {kinds.map((k) => (
+            <button key={k} className={active === k ? 'chip on' : 'chip'}
+              onClick={() => setKind(k)}>
+              {logLabel(k)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <LogList
+        logs={shown}
+        loading={loading}
+        groupByDate
+        onSelect={setEditing}
+        empty={active
+          ? `No ${logLabel(active).toLowerCase()} records yet.`
+          : 'Nothing recorded yet.'}
+      />
 
       {editing && (
         <EditLog

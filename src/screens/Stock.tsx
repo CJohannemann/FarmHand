@@ -4,7 +4,7 @@ import { useAsync } from '../lib/useAsync'
 import {
   createAnimals, createAsset, createGroupWithMembers, createLog, createPlanting, createTerm,
   findOrCreateExternalParent,
-  listAssets, listTerms, lotBalances, type LotBalance,
+  listAssets, listTerms, lotBalances, lotIsUsedUp, type LotBalance,
 } from '../db/queries'
 import type { Asset, AssetType } from '../db/types'
 import {
@@ -60,16 +60,6 @@ function BarnIcon() {
     </svg>
   )
 }
-
-/**
- * Whether a lot is finished, as opposed to merely unmeasured.
- *
- * came_in is 0 both for "nothing ever came in" and for "bought, but the
- * amount was never recorded" — and the second is not an empty sack, it is a
- * sack nobody weighed. Calling that one used up would quietly hide stock the
- * farm actually has. The Feeding picker draws the same distinction.
- */
-const isUsedUp = (l: LotBalance) => l.came_in > 0.001 && l.remaining <= 0.001
 
 /**
  * Section headings come from what a thing IS, not from the table it lives
@@ -309,8 +299,8 @@ export function Stock() {
           // are the point. The records are not deleted — every one of them
           // still carries its cost into Analytics.
           const all = lots.data ?? []
-          const usedUp = all.filter(isUsedUp)
-          const shown = showClosed ? all : all.filter((l) => !isUsedUp(l))
+          const usedUp = all.filter(lotIsUsedUp)
+          const shown = showClosed ? all : all.filter((l) => !lotIsUsedUp(l))
           return (
             <>
               {bucketBy(shown, (l) => l.material, 'Other supplies').map(({ heading, items }) => (
@@ -318,16 +308,21 @@ export function Stock() {
                   <h2 className="section">{heading}</h2>
                   <ul className="assetlist">
                     {items.map((l) => (
-                      <li key={l.id} className={isUsedUp(l) ? 'gone' : ''}>
+                      <li key={l.id} className={lotIsUsedUp(l) ? 'gone' : ''}>
                         <button className="assetrow" onClick={() => setTaking(l)}>
                           <span className="asset-name">{l.name}</span>
                           <span className="asset-meta">
-                            {l.came_in > 0.001 ? (
-                              l.remaining > 0.001 ? (
-                                <strong className="remaining">
-                                  {formatQty(l.remaining)} {l.unit ?? ''}
-                                </strong>
-                              ) : `${formatQty(l.came_in)} ${l.unit ?? ''} in, none left`
+                            {l.remaining > 0.001 ? (
+                              <strong className="remaining">
+                                {formatQty(l.remaining)} {l.unit ?? ''}
+                              </strong>
+                            ) : l.came_in > 0.001 ? (
+                              `${formatQty(l.came_in)} ${l.unit ?? ''} in, none left`
+                            ) : l.went_out > 0.001 ? (
+                              // Its incoming record is gone (see lotIsUsedUp)
+                              // — reporting "0 lb in" as if that were measured
+                              // would be inventing a number it never had.
+                              'none left'
                             ) : (
                               // Not "0 lb in, none left" — that reads as an
                               // empty sack when it means nobody weighed it.
@@ -464,7 +459,7 @@ export function Stock() {
             // "On hand" is a claim, so it counts what is actually on hand.
             // This counted every lot ever bought, emptied ones included —
             // eight bags of feed reported by a farm holding two.
-            const onHand = all.filter((l) => !isUsedUp(l)).length
+            const onHand = all.filter((l) => !lotIsUsedUp(l)).length
             return (
               <button key={g.type} type="button" className="speciescard"
                 onClick={() => setSection('lot')}>

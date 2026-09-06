@@ -853,5 +853,105 @@ check('another species feed does not leak in', spendByLabel.get('Chicken feed'),
 check('hay tagged for cattle reads as cattle hay', spendByLabel.get('Cattle hay'), 900)
 check('untagged feed keeps its bare material', spendByLabel.get('Feed'), 75)
 
+// ------------------------- a lot whose incoming record was deleted
+// Deleting the harvest that created a lot keeps the lot alive when
+// something else already drew from it — erasing it would leave that usage
+// pointing at nothing. But the incoming quantity goes with the log, so the
+// lot is left with no "in" and a negative balance, and lingered in Stores
+// with nothing to explain it. Reported as a meat lot showing 0 lb with no
+// record behind it.
+console.log('\nA lot left with no incoming record still reads as empty')
+const chico = uuid()
+run(`insert into asset (id,farm_id,type,name,attributes,created_at,updated_at)
+     values (?,?,'animal','Chico','{"species":"Pig"}',?,?)`, [chico, farm, now(), now()])
+const chicoMeat = uuid()
+run(`insert into asset (id,farm_id,type,name,attributes,created_at,updated_at)
+     values (?,?,'lot','Chico — meat','{"origin":"produced","material":"Meat"}',?,?)`,
+  [chicoMeat, farm, now(), now()])
+const chicoButcher = uuid()
+run(`insert into log (id,farm_id,type,timestamp,name,created_at,updated_at)
+     values (?,?,'harvest',?,'Chico — meat',?,?)`, [chicoButcher, farm, now(), now(), now()])
+run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`, [chicoButcher, chico])
+run(`insert into log_asset (log_id,asset_id,role) values (?,?,'output')`, [chicoButcher, chicoMeat])
+run(`insert into quantity (id,farm_id,log_id,measure,value,unit,asset_id,created_at,updated_at)
+     values (?,?,?,'weight',50,'lb',?,?,?)`,
+  [uuid(), farm, chicoButcher, chicoMeat, now(), now()])
+const chicoUsed = uuid()
+run(`insert into log (id,farm_id,type,timestamp,name,created_at,updated_at)
+     values (?,?,'disposition',?,'Used at home',?,?)`, [chicoUsed, farm, now(), now(), now()])
+run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`, [chicoUsed, chicoMeat])
+run(`insert into quantity (id,farm_id,log_id,measure,value,unit,created_at,updated_at)
+     values (?,?,?,'weight',50,'lb',?,?)`, [uuid(), farm, chicoUsed, now(), now()])
+
+// lotBalances()'s three figures for one lot, as queries.ts computes them.
+const lotFigures = (id) => q(`
+  with came as (
+    select la.asset_id lot_id, sum(q.value) amount
+      from log_asset la
+      join log l on l.id=la.log_id and l.deleted_at is null
+      join quantity q on q.log_id=l.id and q.deleted_at is null
+           and q.measure in ('weight','count','volume')
+     where (l.type='purchase' and la.role='subject')
+        or (l.type in ('harvest','processing') and la.role='output')
+     group by la.asset_id
+  ), taken as (
+    select la.asset_id lot_id, sum(q.value) amount
+      from log_asset la
+      join log l on l.id=la.log_id and l.deleted_at is null
+           and l.type='disposition' and la.role='subject'
+      join quantity q on q.log_id=l.id and q.deleted_at is null
+           and q.measure in ('weight','count','volume')
+     group by la.asset_id
+  ), consumed as (
+    select la.asset_id lot_id, sum(la.amount) amount
+      from log_asset la
+      join log l on l.id=la.log_id and l.deleted_at is null
+     where la.role='input' and la.amount is not null
+     group by la.asset_id
+  )
+  select coalesce(c.amount,0) came_in,
+         coalesce(t.amount,0) + coalesce(u.amount,0) went_out,
+         coalesce(c.amount,0) - coalesce(t.amount,0) - coalesce(u.amount,0) remaining
+    from asset a
+    left join came c on c.lot_id=a.id
+    left join taken t on t.lot_id=a.id
+    left join consumed u on u.lot_id=a.id
+   where a.id = ?`, [id])[0]
+
+// lotIsUsedUp(), as src/db/queries.ts exports it.
+const usedUpRule = (l) => l.remaining <= 0.001 && (l.came_in > 0.001 || l.went_out > 0.001)
+
+check('drawn to nothing counts as empty', usedUpRule(lotFigures(chicoMeat)) ? 1 : 0, 1)
+
+// Delete the butchering: deleteLog() soft-deletes the log and its
+// quantities, and leaves the lot because the disposition still refers to it.
+run(`update log set deleted_at=?, updated_at=? where id=?`, [now(), now(), chicoButcher])
+run(`update quantity set deleted_at=?, updated_at=? where log_id=?`,
+  [now(), now(), chicoButcher])
+
+const orphan = lotFigures(chicoMeat)
+check('its incoming record is gone', orphan.came_in, 0)
+check('but the withdrawal still stands', orphan.went_out, 50)
+check('leaving a negative balance', orphan.remaining, -50)
+check('and it still reads as empty, not as unweighed stock',
+  usedUpRule(orphan) ? 1 : 0, 1)
+
+// The one that must NOT be swept up by that rule: bought, never weighed,
+// nothing drawn. That is stock the farm has, not an empty sack.
+const unweighed = uuid()
+run(`insert into asset (id,farm_id,type,name,attributes,created_at,updated_at)
+     values (?,?,'lot','Unweighed sack','{"origin":"purchased","material":"Feed"}',?,?)`,
+  [unweighed, farm, now(), now()])
+const unweighedBuy = uuid()
+run(`insert into log (id,farm_id,type,timestamp,name,created_at,updated_at)
+     values (?,?,'purchase',?,'Bought Unweighed sack',?,?)`,
+  [unweighedBuy, farm, now(), now(), now()])
+run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`,
+  [unweighedBuy, unweighed])
+run(`insert into quantity (id,farm_id,log_id,measure,value,unit,created_at,updated_at)
+     values (?,?,?,'price',20,'USD',?,?)`, [uuid(), farm, unweighedBuy, now(), now()])
+check('an unweighed sack is not treated as empty',
+  usedUpRule(lotFigures(unweighed)) ? 1 : 0, 0)
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)

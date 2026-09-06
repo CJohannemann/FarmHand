@@ -1162,6 +1162,24 @@ export interface LotBalance {
 }
 
 /**
+ * Whether a lot is finished, as opposed to merely unmeasured.
+ *
+ * Three states share a zero balance and only two of them are empty:
+ *
+ *   - bought and drawn down to nothing — finished
+ *   - nothing came in, but something went out — also finished, and how a
+ *     lot ends up with no record behind it: deleting the harvest that
+ *     created it keeps the lot alive (a disposition still refers to it, so
+ *     erasing it would leave that usage pointing at nothing) but takes its
+ *     incoming quantity with it. The balance goes negative and the lot
+ *     lingers in Stores with nothing to explain it.
+ *   - bought, amount never recorded, nothing drawn — NOT empty, just
+ *     unweighed. Hiding this one loses stock the farm actually has.
+ */
+export const lotIsUsedUp = (l: LotBalance) =>
+  l.remaining <= 0.001 && (l.came_in > 0.001 || l.went_out > 0.001)
+
+/**
  * What is left of each lot.
  *
  * In: what a purchase brought, or what a harvest or processing produced.

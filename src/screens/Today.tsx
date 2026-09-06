@@ -3,7 +3,7 @@ import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
   CATEGORIZABLE_MATERIALS, createLog, createPurchase, listAssets, listTerms, lotBalances,
-  planTask, plannedLogs, recentLogs, setLotCategory, type LotBalance,
+  lotIsUsedUp, planTask, plannedLogs, recentLogs, setLotCategory, type LotBalance,
 } from '../db/queries'
 import type { Asset, LogWithDetail } from '../db/types'
 import type { PreparedImage } from '../lib/image'
@@ -301,17 +301,17 @@ function FeedForm({ onDone, onClose }: FormProps) {
   // thing you can feed from, and leaving it in the list is one more
   // identical-looking row to pick the wrong one out of.
   //
-  // Only hides lots whose balance is genuinely known to be spent: came_in
-  // is 0 both for "bought nothing" and for "bought, amount never recorded",
-  // and the second must stay pickable — that lot has no balance to run out.
-  // Stores still lists everything; this is the Feeding picker's own view.
+  // lotIsUsedUp draws the one distinction that matters here: a lot bought
+  // without its amount recorded has no balance to run out and stays
+  // pickable, while one drawn to nothing — or one whose incoming record was
+  // deleted out from under it — does not.
   //
   // Safe to hide because a balance is derived from logs, never stored:
   // deleting the feeding that emptied a lot puts it straight back here.
   // Verified in db/test/verify-local.mjs.
   const feedLots = (lots ?? []).filter((l) =>
     FEED_MATERIALS.includes(l.material ?? '')
-    && (l.came_in <= 0 || l.remaining > 0.0001 || l.id === lot))
+    && (!lotIsUsedUp(l) || l.id === lot))
   const feedGroups = groupFeedLots(feedLots)
 
   const options = feedSubjectOptions(candidates ?? [])
