@@ -89,7 +89,11 @@ export function LogList({
           <span className="log-type">{l.name ?? logLabel(l.type)}</span>
           {l.summary && <span className="log-qty">{withThousands(l.summary)}</span>}
         </div>
-        {l.subjects && <div className="log-sub">{l.subjects}</div>}
+        {(l.subjects || l.uses) && (
+          <div className="log-sub">
+            {[l.subjects, l.uses].filter(Boolean).join(' · ')}
+          </div>
+        )}
         {l.notes && <div className="log-note">{l.notes}</div>}
         {/* The day's heading already says when, when there is one. */}
         {!groupByDate && <time className="log-time">{logDate(l.timestamp)}</time>}

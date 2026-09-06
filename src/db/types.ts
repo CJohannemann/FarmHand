@@ -28,6 +28,8 @@ export interface LogRow {
 
 export interface LogWithDetail extends LogRow {
   subjects: string | null
+  /** What was drawn on to do it — a feeding's lot, a processing's inputs. */
+  uses: string | null
   summary: string | null
 }
 
