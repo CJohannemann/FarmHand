@@ -1,13 +1,55 @@
+/*
+ * The signed-in shell owns the viewport, and the records scroll inside it —
+ * rather than the page scrolling with the tab bar pinned over it by
+ * `position: fixed`.
+ *
+ * A fixed tab bar is positioned against the layout viewport, which on iOS is
+ * not the part of the screen you can actually see: it stays the taller,
+ * URL-bar-hidden height, and Safari only re-syncs a fixed element when a
+ * scroll gesture ends. Mid-flick the bar was landing halfway up the screen
+ * with records visible below it. Nothing here is fixed any more, so there is
+ * nothing left to fall out of sync — the bar is simply the last row of a
+ * full-height flex column.
+ *
+ * `100dvh` rather than `inset: 0` deliberately: the dynamic unit tracks the
+ * viewport as browser chrome and the keyboard come and go, which is the
+ * measurement that was wrong to begin with.
+ *
+ * Only the signed-in shell. Landing, sign-in and the boot screens render
+ * outside `.app` and still scroll the page normally, so nothing here may
+ * lock body scrolling globally.
+ */
 .app {
-  min-height: 100dvh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
 }
 
-.content {
+/*
+ * The one scrolling element. `min-height: 0` is load-bearing: a flex child
+ * defaults to min-height:auto, which refuses to shrink below its content, so
+ * without it this grows to fit every record and pushes the tab bar off the
+ * bottom instead of scrolling.
+ */
+.scroll {
   flex: 1;
-  padding-bottom: 5rem;          /* clear the tab bar */
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  /* Keeps a flick that reaches the end from rubber-banding the page behind. */
+  overscroll-behavior: contain;
 }
+
+/* A sheet is a descendant of the scroller, so its backdrop can't stop touches
+   reaching it — freeze the scroller for as long as one is open. The second
+   rule covers the screens that have no shell (sign-in, setup), where the
+   page itself is still what scrolls. */
+body.sheet-open .scroll { overflow: hidden; }
+body.sheet-open { overflow: hidden; }
 
 .screen {
   max-width: 34rem;
@@ -266,8 +308,10 @@ button.icon {
 
 /* --------------------------------------------------------------- tabbar */
 
+/* The last row of the shell's flex column — see .app. Not fixed: that is
+   exactly what let it drift up the screen mid-scroll. */
 .tabbar {
-  position: fixed; bottom: 0; left: 0; right: 0;
+  flex: none;
   display: flex;
   border-top: 1px solid var(--line);
   background: var(--bg);
@@ -394,7 +438,9 @@ button.linkish {
 
 .account {
   display: flex; align-items: center; justify-content: center; gap: 0.75rem;
-  margin: 0; padding: 0 1rem 5rem;   /* 5rem clears the fixed tab bar below it */
+  /* Scrolls at the end of the records rather than clearing a fixed tab bar —
+     the bar is a sibling of the scroller now, not laid over it. */
+  margin: 0; padding: 0 1rem 1.5rem;
   color: var(--muted); font-size: 0.8rem;
 }
 

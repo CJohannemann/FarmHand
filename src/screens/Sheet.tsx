@@ -1,5 +1,8 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react'
 
+/** How many sheets are open — see the lock in Sheet below. */
+let openSheets = 0
+
 export function Sheet({
   title, onClose, children,
 }: { title: string; onClose: () => void; children: ReactNode }) {
@@ -9,8 +12,17 @@ export function Sheet({
     // Without this the sheet stays put (it's fixed) but the page underneath
     // it keeps scrolling on touch, which reads as the sheet being unable to
     // scroll rather than the backdrop doing its job.
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    //
+    // A class rather than an inline style on body: what scrolls behind a
+    // sheet is `.scroll` inside the app shell (see App.css), but a sheet
+    // also opens over screens that have no shell and scroll the page itself
+    // — one class covers both, with the CSS deciding what it means where.
+    //
+    // Counted, because sheets can overlap: Stock's Add sheet opens the
+    // species picker over itself, and the inner one unmounting must not
+    // release a lock the outer one still needs.
+    openSheets += 1
+    document.body.classList.add('sheet-open')
 
     // A field's autoFocus pops the on-screen keyboard the instant the sheet
     // appears, before anyone's had a chance to read it — jarring on touch,
@@ -24,7 +36,10 @@ export function Sheet({
       dialogRef.current?.focus({ preventScroll: true })
     }
 
-    return () => { document.body.style.overflow = prevOverflow }
+    return () => {
+      openSheets = Math.max(0, openSheets - 1)
+      if (openSheets === 0) document.body.classList.remove('sheet-open')
+    }
   }, [])
 
   return (

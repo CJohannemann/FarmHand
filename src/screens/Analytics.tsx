@@ -85,26 +85,12 @@ function Costs() {
   const [selected, setSelected] = useState(BUCKET_COUNT.month - 1)
   const { data: entries, loading } = useAsync(() => costEntries(), [])
 
-  // While `loading`, this renders as one short "Loading…" line; the chart
-  // and category list appear right after, growing the page. On iOS Safari,
-  // a scroll gesture that started (or landed) right around that moment
-  // keeps the old, shorter height as its rubber-band limit until the finger
-  // lifts and a new gesture begins — which reads as "can't reach the
-  // footer, then immediately can." Forcing a reflow right as the content
-  // arrives makes WebKit re-measure the page instead of waiting for that
-  // next gesture.
-  useEffect(() => {
-    if (loading) return
-    // Toggling overflow (not just reading offsetHeight) is what actually
-    // makes WebKit resync its touch-scroll bounds here — a plain forced
-    // reflow doesn't reach the compositor thread that owns those. Restores
-    // whatever was there before rather than assuming '', so this can't
-    // clobber a real overflow lock (a scroll-locked modal, say) some other
-    // feature sets around the same moment this fires.
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    requestAnimationFrame(() => { document.body.style.overflow = prev })
-  }, [loading])
+  // A body-overflow toggle used to live here, to make WebKit re-measure the
+  // page's touch-scroll bounds after "Loading…" was replaced by the taller
+  // chart. Both halves of that are gone: useAsync no longer blanks a screen
+  // that already has data, and the signed-in shell scrolls an inner element
+  // rather than the page, so there are no page-level scroll bounds left for
+  // it to resync.
 
   const buckets = useMemo(
     () => bucketize(entries ?? [], granularity),

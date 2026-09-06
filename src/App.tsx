@@ -335,6 +335,10 @@ export default function App() {
           farm. Switch between the two anytime in Settings.
         </div>
       )}
+      {/* Everything that scrolls, in one element — see .app in App.css. The
+          account line belongs inside it: it reads as the end of the page, not
+          as a second bar permanently above the tab bar. */}
+      <div className="scroll">
       <main className="content">
         {current === 'today' && <Today onGoToStock={() => setTab('stock')} />}
         {current === 'stock' && <Stock />}
@@ -352,6 +356,7 @@ export default function App() {
           </button>
         </p>
       )}
+      </div>
 
       <nav className="tabbar">
         {tabs.map((t) => (
