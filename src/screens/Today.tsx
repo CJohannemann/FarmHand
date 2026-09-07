@@ -11,8 +11,8 @@ import { useMembersMap } from '../lib/members'
 import { ReceiptCapture } from './ReceiptCapture'
 import { HARVESTS, tilesFor, type HarvestSpec } from '../lib/tiles'
 import {
-  formatQty, hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput,
-  onNumericChange,
+  formatMoney, formatQty, ignoreArrowKeysOnNumberInput,
+  ignoreScrollOnNumberInput, onNumericChange,
 } from '../lib/numeric'
 import { pluralSpecies } from '../lib/husbandry'
 import { getFarmLocation } from '../lib/weather'
@@ -457,34 +457,76 @@ function NoteForm({ onDone, onClose }: FormProps) {
   )
 }
 
+/** One line of a multi-item trip — everything BuyForm asks per item, kept as
+ * strings the way the inputs themselves hold them until save() parses them. */
+interface PurchaseLine {
+  material: string
+  category: string
+  name: string
+  amount: string
+  unit: string
+  cost: string
+}
+
+/**
+ * One trip to the store is rarely one thing bought — pig feed, chicken feed
+ * and scratch on the same receipt, say. Supplier and the receipt photo are
+ * asked once and shared; each item still becomes its own purchase (own lot,
+ * own accurate cost) rather than splitting one total evenly across them,
+ * which is right for several animals bought as a batch but wrong here — a
+ * $180 receipt of three differently-priced bags isn't three $60 bags.
+ */
 function BuyForm({ onDone, onClose }: FormProps) {
   const [material, setMaterial] = useState('Feed')
   const [category, setCategory] = useState('')
-  const [receipt, setReceipt] = useState<PreparedImage | null>(null)
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [unit, setUnit] = useState('lb')
   const [cost, setCost] = useState('')
+  const [items, setItems] = useState<PurchaseLine[]>([])
+  const [receipt, setReceipt] = useState<PreparedImage | null>(null)
   const [supplier, setSupplier] = useState('')
   const { data: materials } = useAsync(() => listTerms('material'), [])
   const { data: units } = useAsync(() => listTerms('unit'), [])
   const { data: species } = useAsync(() => listTerms('species'), [])
   const categorizable = CATEGORIZABLE_MATERIALS.includes(material)
 
+  // The item being composed right now, if it's actually fillable. Cost is
+  // the one field every purchase needs (see the hint below it), so a blank
+  // or zero cost means there's nothing here worth adding — not a half-typed
+  // row to carry along.
+  const draft = (): PurchaseLine | null => (Number(cost) > 0 ? {
+    material, category: categorizable && category ? category : '',
+    name: name.trim() || material, amount, unit, cost,
+  } : null)
+
+  const addItem = () => {
+    const d = draft()
+    if (!d) return
+    setItems([...items, d])
+    setMaterial('Feed'); setCategory(''); setName(''); setAmount(''); setUnit('lb'); setCost('')
+  }
+  const removeItem = (i: number) => setItems(items.filter((_, x) => x !== i))
+
   const save = async () => {
-    await createPurchase({
-      material,
-      name: name.trim() || material,
-      amount: Number(amount) || undefined,
-      unit,
-      cost: hasNumericValue(cost) ? Number(cost) : undefined,
-      supplier: supplier.trim() || undefined,
-      category: categorizable && category ? category : undefined,
-      receipt: receipt ?? undefined,
-    })
+    const d = draft()
+    const all = d ? [...items, d] : items
+    for (const it of all) {
+      await createPurchase({
+        material: it.material,
+        name: it.name,
+        amount: Number(it.amount) || undefined,
+        unit: it.unit,
+        cost: Number(it.cost),
+        supplier: supplier.trim() || undefined,
+        category: it.category || undefined,
+        receipt: receipt ?? undefined,
+      })
+    }
     onDone()
   }
   const { run, busy, error } = useSave(save)
+  const total = items.length + (draft() ? 1 : 0)
 
   return (
     <Sheet title="Purchase" onClose={onClose}>
@@ -492,6 +534,17 @@ function BuyForm({ onDone, onClose }: FormProps) {
         Recording what you paid is what lets the app work out cost per unit
         later.
       </p>
+
+      {items.length > 0 && (
+        <div className="chipwrap" style={{ marginBottom: '1rem' }}>
+          {items.map((it, i) => (
+            <button key={i} type="button" className="chip remove" onClick={() => removeItem(i)}>
+              {it.name} · {formatMoney(Number(it.cost))} ✕
+            </button>
+          ))}
+        </div>
+      )}
+
       <label className="field">
         <span>What kind?</span>
         <select value={material} onChange={(e) => setMaterial(e.target.value)}>
@@ -536,14 +589,25 @@ function BuyForm({ onDone, onClose }: FormProps) {
           onChange={onNumericChange(setCost)} onWheel={ignoreScrollOnNumberInput}
           onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="340" />
       </label>
+
+      <button type="button" className="linkish" disabled={!(Number(cost) > 0)} onClick={addItem}>
+        + Bought something else in the same order
+      </button>
+
       <label className="field">
         <span>Supplier (optional)</span>
         <input value={supplier} onChange={(e) => setSupplier(e.target.value)}
           placeholder="Co-op" />
       </label>
       <ReceiptCapture onChange={setReceipt} />
-      <button className="primary" disabled={busy || !(Number(cost) > 0)} onClick={run}>
-        {busy ? "Saving…" : "Save"}
+      {items.length > 0 && (
+        <p className="hint">
+          Supplier and receipt apply to all {total} items above.
+        </p>
+      )}
+
+      <button className="primary" disabled={busy || total === 0} onClick={run}>
+        {busy ? 'Saving…' : total > 1 ? `Save ${total} items` : 'Save'}
       </button>
       {error && <p className="error">{error}</p>}
     </Sheet>
