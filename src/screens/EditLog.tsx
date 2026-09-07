@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import {
-  CATEGORIZABLE_MATERIALS, deleteLog, listTerms, purchaseLotFor, quantitiesFor,
-  serviceCostFor, setLotCategory, setQuantity, stampEdited, updateLog,
+  addReceipt, CATEGORIZABLE_MATERIALS, deleteLog, listTerms, purchaseLotFor, quantitiesFor,
+  receiptsForLog, serviceCostFor, setLotCategory, setQuantity, stampEdited, updateLog,
 } from '../db/queries'
 import type { LogWithDetail, Measure } from '../db/types'
+import type { PreparedImage } from '../lib/image'
 import {
   hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, sanitizeNumeric,
 } from '../lib/numeric'
+import { ReceiptCapture } from './ReceiptCapture'
 import { Sheet } from './Sheet'
 
 const forInput = (iso: string) => {
@@ -67,6 +69,17 @@ export function EditLog({
     setCost(serviceCost.data ? String(serviceCost.data.value) : '')
   }, [serviceCost.data])
 
+  // A photo taken later for a purchase logged without one — the same gap
+  // canAddPrice already closes for a price left blank, but for the receipt
+  // itself. Only offered once, same as the price field: a purchase with a
+  // receipt already attached isn't missing anything to add back.
+  const receipts = useAsync(
+    () => (log.type === 'purchase' ? receiptsForLog(log.id) : Promise.resolve([])),
+    [log.id, log.type],
+  )
+  const canAddReceipt = log.type === 'purchase' && (receipts.data?.length ?? 0) === 0
+  const [newReceipt, setNewReceipt] = useState<PreparedImage | null>(null)
+
   const save = async () => {
     setBusy(true)
     // Tracked separately from the writes themselves: Save is tapped on a
@@ -105,6 +118,10 @@ export function EditLog({
     if (serviceCost.data && hasNumericValue(cost)
         && Number(cost) !== serviceCost.data.value) {
       await setQuantity(serviceCost.data.purchaseLogId, 'price', Number(cost))
+      changed = true
+    }
+    if (canAddReceipt && newReceipt) {
+      await addReceipt(log.id, newReceipt)
       changed = true
     }
     if (changed) await stampEdited(log.id)
@@ -184,6 +201,8 @@ export function EditLog({
           />
         </label>
       )}
+
+      {canAddReceipt && <ReceiptCapture onChange={setNewReceipt} />}
 
       <label className="field">
         <span>Notes</span>
