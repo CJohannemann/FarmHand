@@ -15,18 +15,26 @@
  * viewport as browser chrome and the keyboard come and go, which is the
  * measurement that was wrong to begin with.
  *
- * The plain `100vh` line right before it is not redundant — it is the whole
- * fix for a browser too old to know what `dvh` is. An unrecognized unit
- * makes the *entire declaration* invalid, which drops out of the cascade
- * rather than falling back to anything: with only the `dvh` line here, that
- * left `.app` at its initial `height: auto` on such a browser — position:
- * fixed with no defined height means the box just grows to fit all of its
- * content, so the tab bar (its last child) ends up however far down the
- * page that content happens to run, with nothing left to scroll the page
- * itself and reach it. Reported live as "no menu at the bottom" on an older
- * Android/Chrome. Modern browsers still get the dynamic unit: the two
- * declarations target the same property, so a browser that understands
- * both simply applies whichever comes later.
+ * Three tiers, weakest first, because an unrecognized unit makes the
+ * *entire declaration* invalid — it drops out of the cascade rather than
+ * falling back to anything, so each line here only ever matters on a
+ * browser too old for every line after it:
+ *
+ *  1. `100vh` — universally supported, but on mobile this traditionally
+ *     measures the *largest* possible viewport, as if the address bar were
+ *     always hidden. On its own this was the "no menu at the bottom" bug
+ *     reported live: too tall for the actually-visible screen on a phone
+ *     whose address bar was showing, with the excess (including the tab
+ *     bar, the last flex child) pushed past the edge with nothing left to
+ *     scroll the page down and reach it — position: fixed takes it out of
+ *     document flow entirely.
+ *  2. `var(--app-height)` — set from window.innerHeight by
+ *     lib/viewportHeight.ts, which *does* track the real visible area the
+ *     same way dvh does, just measured in JS instead of read from CSS.
+ *     Covers a browser new enough to run that script but too old for dvh
+ *     itself — which turned out to still be true on the exact phone that
+ *     reported this: fixing tier 1 alone wasn't enough.
+ *  3. `100dvh` — the ideal, once a browser actually understands it.
  *
  * Only the signed-in shell. Landing, sign-in and the boot screens render
  * outside `.app` and still scroll the page normally, so nothing here may
@@ -38,6 +46,7 @@
   left: 0;
   right: 0;
   height: 100vh;
+  height: var(--app-height, 100vh);
   height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -331,12 +340,12 @@ button.primary:disabled { opacity: 0.4; cursor: not-allowed; }
   background: var(--bg);
   border-radius: 1rem 1rem 0 0;
   padding: 1rem 1.25rem 1.75rem;
-  /* vh first, same reason as .app in this file: an unrecognized `dvh` drops
-     the whole declaration rather than falling back to it, which would
-     leave every form sheet in the app with no max-height at all on an
-     older browser — free to grow taller than the screen with its own Save
-     button pushed out of reach above the top edge. */
+  /* Same three-tier reasoning as .app above — plain vh can be too tall for
+     the actually-visible screen with a browser's address bar showing,
+     which for a form sheet means its own Save button pushed out of reach
+     above the top edge. */
   max-height: 88vh;
+  max-height: calc(var(--app-height, 100vh) * 0.88);
   max-height: 88dvh;
   overflow-y: auto;
 }

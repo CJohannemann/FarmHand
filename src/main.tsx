@@ -5,10 +5,12 @@ import './App.css'
 import App from './App.tsx'
 import { ErrorBoundary } from './screens/ErrorBoundary.tsx'
 import { applyThemePref } from './lib/theme.ts'
+import { watchViewportHeight } from './lib/viewportHeight.ts'
 
 // Stamp the theme before first paint so a saved preference doesn't flash the
 // wrong colors for a frame.
 applyThemePref()
+watchViewportHeight()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
