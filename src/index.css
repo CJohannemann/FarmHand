@@ -62,6 +62,11 @@ html, body { overflow-x: hidden; }
 
 body {
   margin: 0;
+  /* vh first: an unrecognized `dvh` drops the whole declaration rather than
+     falling back to it (see .app in App.css for where that actually breaks
+     something) — here it would just leave a short page not filling the
+     screen on a browser too old to know the unit, but the fix is free. */
+  min-height: 100vh;
   min-height: 100dvh;
   background: var(--bg);
   color: var(--fg);
