@@ -253,6 +253,18 @@ async function pullTable(local: Local, remote: Remote, tbl: string): Promise<num
   return total
 }
 
+/**
+ * One statement per chunk rather than one per row — a first sync on a new
+ * device pulls a farm's entire history, and awaiting a separate
+ * local.query() call for every single row, each its own round trip through
+ * wa-sqlite's worker, is what turned that into the ~30 seconds reported
+ * live for a farm with a season or two of daily records behind it. Same
+ * technique createGroupWithMembers() already uses for its own bulk insert,
+ * and chunked for the same reason: every row costs cols.length bind
+ * parameters, and 900 stays comfortably under SQLite's own limit
+ * (SQLITE_MAX_VARIABLE_NUMBER, 999 by default) regardless of how wide the
+ * table being synced is.
+ */
 export async function upsertLocal(local: Local, tbl: string, rows: Row[]) {
   if (rows.length === 0) return
   const cols = Object.keys(rows[0])
@@ -260,18 +272,27 @@ export async function upsertLocal(local: Local, tbl: string, rows: Row[]) {
   const assignments = cols
     .filter((c) => !conflict.includes(c))
     .map((c) => `"${c}" = excluded."${c}"`)
-
-  const sql =
-    `insert into "${tbl}" (${cols.map((c) => `"${c}"`).join(', ')}) ` +
-    `values (${cols.map((_, i) => `$${i + 1}`).join(', ')}) ` +
+  const onConflict =
     `on conflict (${conflict.map((c) => `"${c}"`).join(', ')}) ` +
     (assignments.length ? `do update set ${assignments.join(', ')}` : `do nothing`)
 
-  for (const row of rows) {
-    const values = cols.map((c) => {
-      const v = row[c]
-      return v !== null && typeof v === 'object' ? JSON.stringify(v) : v
-    })
-    await local.query(sql, values)
+  const chunkSize = Math.max(1, Math.floor(900 / cols.length))
+  for (let start = 0; start < rows.length; start += chunkSize) {
+    const chunk = rows.slice(start, start + chunkSize)
+    const values: unknown[] = []
+    const tuples: string[] = []
+    for (const row of chunk) {
+      const base = values.length
+      tuples.push(`(${cols.map((_, i) => `$${base + i + 1}`).join(', ')})`)
+      for (const c of cols) {
+        const v = row[c]
+        values.push(v !== null && typeof v === 'object' ? JSON.stringify(v) : v)
+      }
+    }
+    await local.query(
+      `insert into "${tbl}" (${cols.map((c) => `"${c}"`).join(', ')}) ` +
+      `values ${tuples.join(', ')} ${onConflict}`,
+      values,
+    )
   }
 }
