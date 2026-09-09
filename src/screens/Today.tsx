@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
@@ -163,7 +163,7 @@ function ProduceForm({ spec, onDone, onClose }: FormProps & { spec: HarvestSpec 
         />
       </label>
       <AssetSelect value={asset} onChange={setAsset} types={spec.from} producing={producing}
-        label="Where from? (optional)" />
+        label="Where from? (optional)" autoSelectSingle />
       <button className="primary" disabled={busy || !(n > 0)} onClick={run}>{busy ? "Saving…" : "Save"}</button>
       {error && <p className="error">{error}</p>}
     </Sheet>
@@ -177,15 +177,26 @@ function feedEligible(assets: Asset[]): Asset[] {
   return assets.filter((a) => a.status === 'active' && !a.parent_id && !a.attributes?.external)
 }
 
+interface SubjectOption { value: string; label: string }
+/** A run of options under one heading — null label renders with no
+ * <optgroup> wrapper, for the whole-herd section at the top. */
+interface SubjectGroup { label: string | null; options: SubjectOption[] }
+
 /**
  * "Fed what?" needs an option a dropdown of individuals doesn't have: the
  * whole herd. A round bale isn't eaten by one cow, and picking just one to
  * stand in for all five would charge that one animal the cost of feeding
- * the other four. Species with more than one active animal get an "All
- * X (n)" entry above their individuals; a lone animal of its species needs
- * no such entry — it already is the whole herd.
+ * the other four.
+ *
+ * Every such whole-herd option — "All cattle (5)", a named group like
+ * "Spring layers" — sits together at the top, ahead of any individual, so
+ * the choice that keeps a bale's cost from landing on one animal is the
+ * first thing offered rather than buried inside its own species. Below
+ * that, individuals are grouped by species (an <optgroup> each) instead of
+ * running together alphabetically by name, which is how a farm actually
+ * thinks about "who's eating this" — cattle as a set, then which cow.
  */
-function feedSubjectOptions(assets: Asset[]): { value: string; label: string }[] {
+function feedSubjectOptions(assets: Asset[]): SubjectGroup[] {
   const eligible = feedEligible(assets)
   const bySpecies = new Map<string, Asset[]>()
   const noSpecies: Asset[] = []
@@ -196,22 +207,30 @@ function feedSubjectOptions(assets: Asset[]): { value: string; label: string }[]
     const list = bySpecies.get(species)
     if (list) list.push(a); else bySpecies.set(species, [a])
   }
+  const sortedSpecies = [...bySpecies].sort(([a], [b]) => a.localeCompare(b))
 
-  const options: { value: string; label: string }[] = []
-  for (const [species, members] of [...bySpecies].sort(([a], [b]) => a.localeCompare(b))) {
+  const wholeHerd: SubjectOption[] = []
+  for (const [species, members] of sortedSpecies) {
     if (members.length > 1) {
-      options.push({
+      wholeHerd.push({
         value: SPECIES_PREFIX + species,
         label: `All ${pluralSpecies(species)} (${members.length})`,
       })
     }
-    for (const m of members) options.push({ value: m.id, label: m.name })
   }
-  for (const a of noSpecies) options.push({ value: a.id, label: a.name })
   for (const g of eligible) {
-    if (g.type === 'group') options.push({ value: g.id, label: g.name })
+    if (g.type === 'group') wholeHerd.push({ value: g.id, label: g.name })
   }
-  return options
+
+  const groups: SubjectGroup[] = []
+  if (wholeHerd.length > 0) groups.push({ label: null, options: wholeHerd })
+  for (const [species, members] of sortedSpecies) {
+    groups.push({ label: pluralSpecies(species), options: members.map((m) => ({ value: m.id, label: m.name })) })
+  }
+  if (noSpecies.length > 0) {
+    groups.push({ label: 'Other', options: noSpecies.map((a) => ({ value: a.id, label: a.name })) })
+  }
+  return groups
 }
 
 /** Expands a picked "Fed what?" value into the real asset ids it covers. */
@@ -321,7 +340,8 @@ function FeedForm({ onDone, onClose }: FormProps) {
     && (!lotIsUsedUp(l) || l.id === lot))
   const feedGroups = groupFeedLots(feedLots)
 
-  const options = feedSubjectOptions(candidates ?? [])
+  const optionGroups = feedSubjectOptions(candidates ?? [])
+  const options = optionGroups.flatMap((g) => g.options)
   // Same reasoning as AssetSelect's own allowNone={false}: a required
   // <select> with no blank option still shows its first entry without ever
   // firing onChange, so the state is kept in sync with what's on screen
@@ -372,7 +392,15 @@ function FeedForm({ onDone, onClose }: FormProps) {
       <label className="field">
         <span>Fed what?</span>
         <select value={subject} onChange={(e) => setSubject(e.target.value)}>
-          {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {optionGroups.map((g, i) => {
+            const rows = g.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)
+            // A <select>'s only valid children are <option> and <optgroup> —
+            // the whole-herd section (null label) has to stay a Fragment,
+            // not a real wrapper element, or the browser drops it silently.
+            return g.label
+              ? <optgroup key={g.label} label={g.label}>{rows}</optgroup>
+              : <Fragment key={i}>{rows}</Fragment>
+          })}
         </select>
         {options.length === 0 && (
           <small className="hint">Nothing added yet — see Inventory.</small>

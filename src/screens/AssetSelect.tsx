@@ -11,6 +11,7 @@ export const OTHER = '__other__'
 export function AssetSelect({
   value, onChange, types, materials, producing, species, excludeId,
   includeGroupMembers, otherLabel, includeExternal, role, label = 'Which one?', allowNone = true,
+  autoSelectSingle,
 }: {
   value: string
   onChange: (v: string) => void
@@ -61,6 +62,15 @@ export function AssetSelect({
   role?: 'sire' | 'dam'
   label?: string
   allowNone?: boolean
+  /**
+   * When there's only one eligible option, pick it instead of leaving an
+   * "optional" field blank for something that isn't actually a choice —
+   * e.g. "Where from?" on an egg collection when the farm has exactly one
+   * flock of layers. Left off elsewhere: a blank sire/dam or "From stores?"
+   * genuinely can mean "none," so only opt a picker in when a pre-filled
+   * value is always the right guess.
+   */
+  autoSelectSingle?: boolean
 }) {
   const { data } = useAsync(() => listAssets(types), [types?.join(',')])
   // A service-origin lot (a vet's office-call fee, a truck's fuel fill-up)
@@ -89,7 +99,8 @@ export function AssetSelect({
   // dropdown that looks filled in.
   useEffect(() => {
     if (!allowNone && !value && active.length > 0) onChange(active[0].id)
-  }, [allowNone, value, active])
+    else if (allowNone && autoSelectSingle && !value && active.length === 1) onChange(active[0].id)
+  }, [allowNone, autoSelectSingle, value, active])
 
   return (
     <label className="field">
