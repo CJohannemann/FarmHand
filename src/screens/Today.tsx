@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
-  CATEGORIZABLE_MATERIALS, createLog, createPurchase, listAssets, listTerms, lotBalances,
-  lotIsUsedUp, planTask, plannedLogs, recentLogs, setLotCategory, type LotBalance,
+  CATEGORIZABLE_MATERIALS, createHarvest, createLog, createPurchase, listAssets, listTerms,
+  lotBalances, lotIsUsedUp, planTask, plannedLogs, recentLogs, setLotCategory, type LotBalance,
 } from '../db/queries'
 import type { Asset, LogWithDetail } from '../db/types'
 import type { PreparedImage } from '../lib/image'
@@ -118,6 +118,11 @@ type FormProps = { onDone: () => void; onClose: () => void }
 /**
  * Eggs, milk, honey and picking are the same act: something the farm keeps
  * yielded something, and carried on existing. One form, four labels.
+ *
+ * Goes through createHarvest() (not a bare quantity log) so it adds to a
+ * running "on hand" lot the way a harvest anywhere else in the app does —
+ * eggs collected here and never seen again in Stores was exactly the gap
+ * reported: this was writing a diary entry, not stock.
  */
 function ProduceForm({ spec, onDone, onClose }: FormProps & { spec: HarvestSpec }) {
   const [amount, setAmount] = useState('')
@@ -133,14 +138,13 @@ function ProduceForm({ spec, onDone, onClose }: FormProps & { spec: HarvestSpec 
     undefined
 
   const save = async () => {
-    await createLog({
-      type: 'harvest',
-      name: spec.title,
-      assets: asset ? [{ id: asset, role: 'subject' }] : [],
-      quantities: [{
-        measure: spec.measure, value: n, unit: spec.unit,
-        label: spec.material.toLowerCase(),
-      }],
+    await createHarvest({
+      sourceId: asset || undefined,
+      outputName: spec.title,
+      material: spec.material,
+      amount: n,
+      unit: spec.unit,
+      measure: spec.measure,
     })
     onDone()
   }

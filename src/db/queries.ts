@@ -586,29 +586,43 @@ export async function setLotCategory(assetId: string, category: string | null) {
  * pulling a crop finish the thing off, so `endsSource` must be asked for
  * rather than assumed — an earlier version archived unconditionally and
  * silently retired every dairy cow and beehive on first harvest.
+ *
+ * An ongoing harvest's output lot is likewise ongoing: it adds to the same
+ * lot every time (see ongoingProducedLot()) rather than starting a fresh
+ * one, which is what makes "how many eggs are on hand" a real running total
+ * instead of a pile of one-collection lots nobody ever draws from. A
+ * one-time output (this animal's meat, this bed pulled and done) still gets
+ * its own fresh lot — cost tracing needs that batch kept apart from any
+ * other, which an ongoing total would blur.
  */
 export async function createHarvest(input: {
-  sourceId: string
+  /** Optional because Today's quick-entry tiles let "where from?" stay
+   * blank — a farm that just wants a running egg count doesn't always have
+   * (or need) one specific flock to credit it to. */
+  sourceId?: string
   outputName: string
   material: string
   amount: number
   unit?: string
+  measure?: Measure
   endsSource?: boolean
 }): Promise<string> {
   const pg = await db()
   const farm = await getFarmId()
 
-  const outId = await createAsset({
-    type: 'lot',
-    name: input.outputName,
-    attributes: { origin: 'produced', material: input.material },
-  })
+  const outId = input.endsSource
+    ? await createAsset({
+        type: 'lot',
+        name: input.outputName,
+        attributes: { origin: 'produced', material: input.material },
+      })
+    : await ongoingProducedLot(input.material, input.sourceId ?? null)
   const logId = await createLog({
     type: 'harvest',
     name: input.outputName,
     assets: [
-      { id: input.sourceId, role: 'subject' },
-      { id: outId, role: 'output' },
+      ...(input.sourceId ? [{ id: input.sourceId, role: 'subject' as const }] : []),
+      { id: outId, role: 'output' as const },
     ],
   })
   const now = new Date().toISOString()
@@ -620,11 +634,54 @@ export async function createHarvest(input: {
   // output lot had already been created.
   await pg.query(
     `insert into quantity (id, farm_id, log_id, measure, value, unit, asset_id, created_at, updated_at)
-     values ($1, $2, $3, 'weight', $4, $5, $6, $7, $7)`,
-    [crypto.randomUUID(), farm, logId, input.amount, input.unit ?? 'lb', outId, now],
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $8)`,
+    [crypto.randomUUID(), farm, logId, input.measure ?? 'weight', input.amount,
+      input.unit ?? 'lb', outId, now],
   )
-  if (input.endsSource) await archiveAsset(input.sourceId, 'harvested')
+  if (input.endsSource && input.sourceId) await archiveAsset(input.sourceId, 'harvested')
   return outId
+}
+
+/**
+ * The lot a repeating harvest (eggs, milk, honey, a bed picked repeatedly)
+ * should add to, starting one the first time. lotBalances() already sums a
+ * lot's incoming quantity across every log that names it as output — this
+ * is what makes that add up to a real "eggs on hand" instead of one number
+ * per collection: every entry for the same material (and, when given, the
+ * same source) points at the one lot, rather than each starting its own.
+ *
+ * Scoped by source when one is given because it can genuinely mean two
+ * different piles — a market garden's tomato bed and its lettuce bed are
+ * not the same "Produce" — but collapses to one shared lot per material
+ * when no source is picked, which is how most farms actually think about
+ * "how many eggs are in the fridge": one number, not one per flock.
+ */
+export async function ongoingProducedLot(
+  material: string, sourceId: string | null,
+): Promise<string> {
+  const pg = await db()
+  const { rows } = await pg.query<{ id: string }>(
+    `select id from asset
+      where type = 'lot' and deleted_at is null
+        and farm_id = (select id from active_farm)
+        and attributes->>'origin' = 'produced'
+        and attributes->>'material' = $1
+        and coalesce(attributes->>'ongoingSource', '') = $2
+      limit 1`,
+    [material, sourceId ?? ''],
+  )
+  if (rows[0]) return rows[0].id
+
+  const source = sourceId ? await getAsset(sourceId) : null
+  return createAsset({
+    type: 'lot',
+    name: source ? `${material}, ${source.name}` : material,
+    attributes: {
+      origin: 'produced',
+      material,
+      ...(sourceId ? { ongoingSource: sourceId } : {}),
+    },
+  })
 }
 
 /**

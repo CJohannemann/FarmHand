@@ -412,9 +412,15 @@ function HarvestForm({ asset, endsSource, onDone, onClose }: {
   const { data: units } = useAsync(() => listTerms('unit'), [])
 
   const save = async () => {
+    // This form has no separate "measure" concept of its own — unit is the
+    // only signal of what kind of quantity is being recorded, the same way
+    // Today's own quick-entry tiles imply it from which tile was tapped.
+    const measure = unit === 'each' ? 'count' as const
+      : (unit === 'gal' || unit === 'L') ? 'volume' as const
+      : 'weight' as const
     await createHarvest({
       sourceId: asset.id, outputName: name.trim(),
-      material, amount: Number(amount), unit, endsSource,
+      material, amount: Number(amount), unit, measure, endsSource,
     })
     onDone()
   }
