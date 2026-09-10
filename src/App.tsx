@@ -337,6 +337,18 @@ export default function App() {
 
   return (
     <div className="app">
+      {/*
+        The dev site runs against the SAME backend as the live one, so
+        nothing on screen would otherwise tell the two apart — and the
+        records here are the real ones, not a sandbox. Says so at the top
+        of every screen, permanently, on that build only.
+      */}
+      {import.meta.env.VITE_SITE_ENV === 'dev' && (
+        <div className="banner warn">
+          Dev build{import.meta.env.VITE_BUILD_COMMIT ? ` · ${import.meta.env.VITE_BUILD_COMMIT}` : ''}
+          {' — not the live site, but the same real records.'}
+        </div>
+      )}
       {!supabaseConfigured && (
         <div className="banner">
           Local only — no account. Add Supabase keys to <code>.env</code> to sync.

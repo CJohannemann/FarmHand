@@ -30,3 +30,6 @@ dist-ssr
 .env.*
 !.env.example
 deploy/selfhost/data/
+# Which site a checkout is — machine-specific, and differs between the
+# prod and dev clones on the VPS. deploy.env.example is the template.
+deploy/deploy.env
