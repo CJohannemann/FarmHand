@@ -115,8 +115,12 @@ export function Today({ onGoToStock, onGoToAnimal }: {
       {/*
         Chores sit above Recent, and stay on screen even when the list is
         empty: "what still needs doing" is the question this screen exists
-        to answer, and a section that disappears when the list is empty
-        takes the way to add one with it.
+        to answer, and an empty list is worth saying out loud rather than
+        leaving the screen silent about it.
+
+        No "add" control of its own — the Chore tile above opens the same
+        sheet, and two ways to do one thing a thumb's width apart reads as
+        two different things.
       */}
       <h2 className="section">Farm chores</h2>
       <TaskList
@@ -128,11 +132,10 @@ export function Today({ onGoToStock, onGoToAnimal }: {
       />
       {!tasks.loading && (tasks.data ?? []).length === 0 && dueRows.length === 0 && (
         <p className="empty">
-          Nothing on the list. Fencing, worming, a vet appointment — anything
-          that needs doing goes here.
+          Nothing on the list. Tap <strong>Chore</strong> above to add one —
+          fencing, worming, a vet appointment, anything that needs doing.
         </p>
       )}
-      <button className="linkish" onClick={() => setOpen('plan')}>+ Add a chore</button>
 
       <h2 className="section">Recent</h2>
       <LogList logs={recent.data ?? []} loading={recent.loading} onSelect={setEditing}
