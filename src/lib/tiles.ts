@@ -89,6 +89,7 @@ export const HARVESTS: Record<string, HarvestSpec> = {
 }
 
 const FEED:  TileSpec = { kind: 'feed',   label: 'Feed',  glyph: '🌾' }
+const SELL:  TileSpec = { kind: 'sell',   label: 'Sell',  glyph: '💵' }
 const BUY:   TileSpec = { kind: 'buy',    label: 'Buy',   glyph: '🧾' }
 const NOTE:  TileSpec = { kind: 'note',   label: 'Note',  glyph: '📝' }
 // Labelled for the Farm chores list it feeds, not for the abstract act
@@ -141,9 +142,9 @@ export function producibleMaterial(a: AssetLike): 'eggs' | 'milk' | 'honey' | nu
 
 /**
  * Ordered by how often a farm would reach for each: what you collect daily
- * first, then chores, then the three that suit any farm.
+ * first, then what you do with it, then the three that suit any farm.
  *
- * At most eight, and eight only on a farm that genuinely does all of it.
+ * At most nine, and nine only on a farm that genuinely does all of it.
  * Treat and Weigh are not here: both belong to one specific animal, so they
  * live on that animal's own profile instead of asking "which one?" on a
  * screen meant to be one tap.
@@ -157,6 +158,17 @@ export function tilesFor(assets: AssetLike[]): TileSpec[] {
 
   const livestock = live.some((a) => a.type === 'animal' || a.type === 'group')
   const plantings = live.some((a) => a.type === 'planting')
+  // Anything in Stores worth selling. Service lots are not stock — they
+  // exist to carry the price of a vet visit and are spent the instant they
+  // are recorded — so they never put a Sell button on the screen.
+  //
+  // Deliberately asks whether a lot EXISTS, not whether it still has a
+  // balance: the balance is a separate query, and putting one on the
+  // critical path of the first screen to decide a tile would cost every
+  // farm a round trip to spare a few the sight of one extra button. A farm
+  // that has sold every egg it has keeps the tile, which is right — it is
+  // a farm that sells.
+  const stores = live.some((a) => a.type === 'lot' && a.attributes?.origin !== 'service')
 
   const tiles: TileSpec[] = []
   if (eggWorthy) tiles.push(HARVESTS.eggs)
@@ -164,6 +176,7 @@ export function tilesFor(assets: AssetLike[]): TileSpec[] {
   if (plantings) tiles.push(HARVESTS.pick)
   if (honeyWorthy) tiles.push(HARVESTS.honey)
   if (livestock) tiles.push(FEED)
+  if (stores) tiles.push(SELL)
 
   // Buying, noting and planning suit every farm, including an empty one.
   tiles.push(BUY, NOTE, PLAN)

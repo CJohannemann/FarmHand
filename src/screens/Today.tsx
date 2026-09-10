@@ -3,8 +3,8 @@ import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
   CATEGORIZABLE_MATERIALS, createHarvest, createLog, createPurchase, expectedBirths,
-  listAssets, listTerms, lotBalances, lotIsUsedUp, plannedLogs, recentLogs, setLotCategory,
-  type LotBalance,
+  listAssets, listTerms, lotBalances, lotIsUsedUp, plannedLogs, recentLogs,
+  recordDisposition, setLotCategory, type LotBalance,
 } from '../db/queries'
 import type { Asset, LogWithDetail } from '../db/types'
 import type { PreparedImage } from '../lib/image'
@@ -151,6 +151,7 @@ export function Today({ onGoToStock, onGoToAnimal }: {
         <ProduceForm spec={harvest} onDone={done} onClose={() => setOpen(null)} />
       )}
       {open === 'feed'   && <FeedForm   onDone={done} onClose={() => setOpen(null)} />}
+      {open === 'sell'   && <SellForm   onDone={done} onClose={() => setOpen(null)} />}
       {open === 'buy'    && <BuyForm    onDone={done} onClose={() => setOpen(null)} />}
       {open === 'note'   && <NoteForm   onDone={done} onClose={() => setOpen(null)} />}
       {open === 'plan'   && <ChoreSheet onDone={done} onClose={() => setOpen(null)} />}
@@ -216,6 +217,144 @@ function ProduceForm({ spec, onDone, onClose }: FormProps & { spec: HarvestSpec 
       {error && <p className="error">{error}</p>}
     </Sheet>
   )
+}
+
+/**
+ * Selling out of Stores, in one tap from the first screen.
+ *
+ * This is not a new way to record a sale — it is the same
+ * recordDisposition() the lot's own sheet on Inventory writes, reached
+ * without going to find the lot first. That sheet still exists and still
+ * does more (gave it away, fed it back, spoiled); this one does the thing
+ * a farm does weekly, and defaults to it rather than opening on "ate it at
+ * home" and making every sale start with a correction.
+ *
+ * Livestock is deliberately not on the list. Selling an animal ends it —
+ * it archives the record and closes out its costs — which is a different
+ * act from selling a dozen eggs, and belongs where the animal's other
+ * endings are rather than on a tile meant for the routine. The hint below
+ * says where to find it instead of leaving someone hunting.
+ */
+function SellForm({ onDone, onClose }: FormProps) {
+  const [lot, setLot] = useState('')
+  const [amount, setAmount] = useState('')
+  const [price, setPrice] = useState('')
+  const [notes, setNotes] = useState('')
+  const { data: lots } = useAsync(() => lotBalances(), [])
+
+  // Same rule as the feed picker: what is actually still there, plus
+  // whatever is already selected so a lot cannot vanish mid-edit.
+  const sellable = (lots ?? []).filter((l) => !lotIsUsedUp(l) || l.id === lot)
+  const groups = groupSellLots(sellable)
+  const selected = sellable.find((l) => l.id === lot)
+  const unit = selected?.unit ?? 'lb'
+  const n = Number(amount)
+  // Only where there is a balance to exceed: a lot bought without its
+  // amount recorded has no ceiling to warn about, and treating an unknown
+  // as zero would block a sale that is perfectly real.
+  const over = !!selected && selected.came_in > 0 && n > selected.remaining + 0.001
+
+  // One lot in stores is not a choice worth making someone make — same
+  // reasoning as the "Where from?" picker on an egg collection.
+  useEffect(() => {
+    if (!lot && sellable.length === 1) setLot(sellable[0].id)
+  }, [lot, sellable.length])
+
+  const save = async () => {
+    await recordDisposition({
+      lotId: lot,
+      kind: 'sold',
+      amount: n,
+      unit,
+      value: Number(price) > 0 ? Number(price) : undefined,
+      notes: notes.trim() || undefined,
+    })
+    onDone()
+  }
+  const { run, busy, error } = useSave(save)
+
+  return (
+    <Sheet title="Sold" onClose={onClose}>
+      <label className="field">
+        <span>Sold what?</span>
+        <select value={lot} onChange={(e) => setLot(e.target.value)}>
+          <option value="">— pick one —</option>
+          {groups.length > 1
+            ? groups.map((g) => (
+              <optgroup key={g.label} label={g.label}>
+                {g.lots.map((l) => (
+                  <option key={l.id} value={l.id}>{lotLabel(l)}</option>
+                ))}
+              </optgroup>
+            ))
+            : groups.flatMap((g) => g.lots).map((l) => (
+              <option key={l.id} value={l.id}>{lotLabel(l)}</option>
+            ))}
+        </select>
+        {sellable.length === 0 && (
+          <small className="hint">
+            Nothing in Stores yet — collecting eggs or buying feed puts it there.
+          </small>
+        )}
+      </label>
+
+      <div className="pair">
+        <label className="field">
+          <span>How much{selected ? ` (${unit})` : ''}</span>
+          <input type="number" inputMode="decimal" min="0" autoFocus value={amount}
+            onChange={onNumericChange(setAmount)} onWheel={ignoreScrollOnNumberInput}
+            onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="24" />
+        </label>
+        <label className="field">
+          <span>For ($)</span>
+          <input type="number" inputMode="decimal" min="0" value={price}
+            onChange={onNumericChange(setPrice)} onWheel={ignoreScrollOnNumberInput}
+            onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="8" />
+        </label>
+      </div>
+
+      {selected && selected.came_in > 0 && (
+        <p className={over ? 'hint warn' : 'hint'}>
+          {over
+            ? `Only ${formatQty(selected.remaining)} ${unit} left — saving this `
+              + 'anyway takes the balance below zero.'
+            : `${formatQty(selected.remaining)} ${unit} on hand.`}
+        </p>
+      )}
+
+      <label className="field">
+        <span>Note (optional)</span>
+        <input value={notes} onChange={(e) => setNotes(e.target.value)}
+          placeholder="Farmers market, the Harpers" />
+      </label>
+
+      <button className="primary" disabled={busy || !lot || !(n > 0)} onClick={run}>
+        {busy ? 'Saving…' : 'Save'}
+      </button>
+      {error && <p className="error">{error}</p>}
+      <p className="hint">
+        Selling an animal is a different thing — it closes the animal out and
+        settles what it cost. That one lives on the animal's own page, under
+        Close out.
+      </p>
+    </Sheet>
+  )
+}
+
+/**
+ * Your own produce ahead of anything bought in.
+ *
+ * Without it, seven near-identical bags of pig feed sit above the eggs on a
+ * screen opened to sell eggs. Bought stock stays on the list — a farm does
+ * resell a load of hay — just not first.
+ */
+function groupSellLots(lots: LotBalance[]): { label: string; lots: LotBalance[] }[] {
+  const mine = lots.filter((l) => l.origin !== 'purchased')
+  const bought = lots.filter((l) => l.origin === 'purchased')
+  return [
+    ...(mine.length > 0 ? [{ label: 'From the farm', lots: mine }] : []),
+    ...(bought.length > 0 ? [{ label: 'Bought in', lots: bought }] : []),
+  ]
 }
 
 const SPECIES_PREFIX = 'species:'

@@ -144,5 +144,28 @@ check('but one explicitly kept for dairy does offer milk',
 check('and one explicitly kept for eggs does offer eggs',
   kinds([custom('poultry', 'eggs')]).includes('eggs'))
 
+console.log('\nSelling what is in Stores')
+const lot = (origin = 'produced', status = 'active'): AssetLike =>
+  ({ type: 'lot', status, attributes: { origin, material: 'Eggs' } })
+check('a farm with something in Stores can sell it',
+  kinds([lot()]).includes('sell'))
+check('a bought lot counts too — a farm can resell a load of hay',
+  kinds([lot('purchased')]).includes('sell'))
+check('a farm with nothing in Stores gets no Sell button',
+  !kinds([group('Chicken')]).includes('sell'))
+// A service lot is a vet's office-call fee wearing a lot's clothes: spent
+// the instant it is recorded, never stock, and kept out of Stores itself.
+check('a service lot is not stock and does not offer Sell',
+  !kinds([lot('service')]).includes('sell'), kinds([lot('service')]).join(','))
+check('nor does a lot that has been closed out',
+  !kinds([lot('produced', 'archived')]).includes('sell'))
+check('an empty farm has nothing to sell',
+  !kinds([]).includes('sell'), kinds([]).join(','))
+// Six tiles on a laying flock that sells its eggs, which is two clean rows
+// of three on a phone.
+const selling = kinds([group('Chicken'), lot()])
+check('a laying flock that sells: eggs, feed, sell, buy, note, plan',
+  selling.join() === 'eggs,feed,sell,buy,note,plan', selling.join())
+
 console.log(fails === 0 ? '\nAll checks passed.\n' : `\n${fails} FAILED\n`)
 process.exit(fails ? 1 : 0)

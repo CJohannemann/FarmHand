@@ -9,6 +9,7 @@ import {
 } from '../db/queries'
 import type { Asset } from '../db/types'
 import { producibleMaterial } from '../lib/tiles'
+import { measureForUnit } from '../lib/units'
 import {
   dueDate, dueLabel, daysUntil, gestationFor, gestationSentence, sexRole,
   OVERDUE_GRACE_DAYS, type Gestation,
@@ -551,9 +552,9 @@ function HarvestForm({ asset, endsSource, onDone, onClose }: {
     // This form has no separate "measure" concept of its own — unit is the
     // only signal of what kind of quantity is being recorded, the same way
     // Today's own quick-entry tiles imply it from which tile was tapped.
-    const measure = unit === 'each' ? 'count' as const
-      : (unit === 'gal' || unit === 'L') ? 'volume' as const
-      : 'weight' as const
+    // measureForUnit knows more units than the three this used to name:
+    // quarts, dozens and bales all read as weights before it.
+    const measure = measureForUnit(unit) as 'count' | 'volume' | 'weight'
     await createHarvest({
       sourceId: asset.id, outputName: name.trim(),
       material, amount: Number(amount), unit, measure, endsSource,

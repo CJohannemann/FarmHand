@@ -1,4 +1,5 @@
 import { db } from './client'
+import { measureForUnit } from '../lib/units'
 import type {
   Asset, AssetRole, AssetType, LogWithDetail, Measure, QuantityInput,
 } from './types'
@@ -1503,8 +1504,15 @@ export async function recordDisposition(input: {
   value?: number
   notes?: string
 }): Promise<string> {
+  // Read off the unit rather than assumed: this was hardcoded to 'weight',
+  // which recorded two dozen eggs sold as a weight of 24. Nothing broke —
+  // lotBalances counts weight, count and volume alike, so the balance was
+  // always right — but the number meant the wrong thing to anything reading
+  // it afterwards. Existing rows keep whatever they were written with;
+  // they are still counted, still correct in the unit that sits beside them.
+  const unit = input.unit ?? 'lb'
   const quantities: QuantityInput[] = [
-    { measure: 'weight', value: input.amount, unit: input.unit ?? 'lb' },
+    { measure: measureForUnit(unit), value: input.amount, unit },
   ]
   if (input.value && input.value > 0) {
     quantities.push({ measure: 'price', value: input.value, unit: 'USD' })
