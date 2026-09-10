@@ -162,7 +162,26 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d dev.farmhandmanager.com
 ```
 
-### 5. Let Auth redirect back to the dev site
+### 5. Let the API answer the dev origin
+
+Not optional — without this nothing on the dev site can talk to the
+backend at all, and it shows up as "could not reach the server" on the
+sign-in screen rather than as anything mentioning CORS.
+
+The API only answers CORS preflights for origins listed in the `map` in
+`selfhost/nginx-farmhand-cors.conf`, and the dev site is a third origin
+as far as a browser is concerned. The file already lists it; it needs
+copying into place:
+
+```bash
+sudo cp ~/FarmHand-dev/deploy/selfhost/nginx-farmhand-cors.conf         /etc/nginx/conf.d/farmhand-cors.conf
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+This is shared nginx config, not app code, so it applies to both sites at
+once. Adding an origin changes nothing about how the live site behaves.
+
+### 6. Let Auth redirect back to the dev site
 
 Only needed to sign UP or reset a password from dev — signing in with an
 existing password works without it. The app asks Auth to send people back
@@ -178,7 +197,7 @@ docker compose up -d auth      # recreates the one container, ~5s
 Do this from the **live** checkout — that is where the stack's `.env`
 lives. The database is untouched; nobody is signed out.
 
-### 6. First dev deploy
+### 7. First dev deploy
 
 ```bash
 cd ~/FarmHand-dev
