@@ -162,7 +162,23 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d dev.farmhandmanager.com
 ```
 
-### 5. First dev deploy
+### 5. Let Auth redirect back to the dev site
+
+Only needed to sign UP or reset a password from dev — signing in with an
+existing password works without it. The app asks Auth to send people back
+to whatever origin they are on, and GoTrue refuses an origin that is not
+on its allow list, falling back to the live site instead. That is already
+handled in `selfhost/docker-compose.yml`; it just needs applying:
+
+```bash
+cd ~/FarmHand/deploy/selfhost
+docker compose up -d auth      # recreates the one container, ~5s
+```
+
+Do this from the **live** checkout — that is where the stack's `.env`
+lives. The database is untouched; nobody is signed out.
+
+### 6. First dev deploy
 
 ```bash
 cd ~/FarmHand-dev

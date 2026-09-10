@@ -58,7 +58,16 @@ services:
       GOTRUE_API_PORT: 9999
       API_EXTERNAL_URL: https://${API_DOMAIN}
       GOTRUE_SITE_URL: https://${FRONTEND_DOMAIN}
-      GOTRUE_URI_ALLOW_LIST: https://${FRONTEND_DOMAIN}/**,https://www.${FRONTEND_DOMAIN}/**
+      # The dev site is on the list too, because it shares this backend and
+      # the app asks for a redirect back to whatever origin it is running on
+      # (window.location.origin, in SignIn.tsx). Without it, a password reset
+      # or a signup confirmation started on dev.farmhandmanager.com silently
+      # falls back to SITE_URL and mails a link to the live site instead --
+      # which works, and looks exactly like the dev site being broken.
+      #
+      # SITE_URL itself stays on the live domain: that is the fallback for a
+      # link with no redirect of its own, and the canonical site.
+      GOTRUE_URI_ALLOW_LIST: https://${FRONTEND_DOMAIN}/**,https://www.${FRONTEND_DOMAIN}/**,https://dev.${FRONTEND_DOMAIN}/**
       GOTRUE_DB_DRIVER: postgres
       DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
       GOTRUE_JWT_SECRET: ${JWT_SECRET}
