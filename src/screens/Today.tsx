@@ -2,8 +2,9 @@ import { Fragment, useEffect, useState } from 'react'
 import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
-  CATEGORIZABLE_MATERIALS, createHarvest, createLog, createPurchase, listAssets, listTerms,
-  lotBalances, lotIsUsedUp, planTask, plannedLogs, recentLogs, setLotCategory, type LotBalance,
+  CATEGORIZABLE_MATERIALS, createHarvest, createLog, createPurchase, expectedBirths,
+  listAssets, listTerms, lotBalances, lotIsUsedUp, plannedLogs, recentLogs, setLotCategory,
+  type LotBalance,
 } from '../db/queries'
 import type { Asset, LogWithDetail } from '../db/types'
 import type { PreparedImage } from '../lib/image'
@@ -14,18 +15,26 @@ import {
   formatMoney, formatQty, ignoreArrowKeysOnNumberInput,
   ignoreScrollOnNumberInput, onNumericChange,
 } from '../lib/numeric'
-import { pluralSpecies } from '../lib/husbandry'
+import { dueLabel, pluralSpecies, upcomingBirth } from '../lib/husbandry'
 import { getFarmLocation } from '../lib/weather'
 import { Sheet } from './Sheet'
 import { AssetSelect } from './AssetSelect'
 import { LogList } from './LogList'
 import { EditLog } from './EditLog'
-import { TaskList } from './TaskList'
+import { TaskList, type BirthRow } from './TaskList'
+import { ChoreSheet } from './ChoreSheet'
 import { WeatherPlace, WeatherStrip } from './Weather'
 
-export function Today({ onGoToStock }: { onGoToStock: () => void }) {
+export function Today({ onGoToStock, onGoToAnimal }: {
+  onGoToStock: () => void
+  /** Opens one animal's own profile on the Inventory tab. */
+  onGoToAnimal: (assetId: string) => void
+}) {
   const [open, setOpen] = useState<string | null>(null)
   const [editing, setEditing] = useState<LogWithDetail | null>(null)
+  // The chore whose details are open, if any — the same sheet the Plan
+  // tile and "+ Add a chore" open empty.
+  const [chore, setChore] = useState<LogWithDetail | null>(null)
   // Today and yesterday only. This is the Today screen — a list still
   // showing last month's feeding because nothing has happened since is
   // answering a question nobody asked here. The whole history is one tap
@@ -37,6 +46,11 @@ export function Today({ onGoToStock }: { onGoToStock: () => void }) {
   const recent = useAsync(() => recentLogs(20, 2), [])
   const membersById = useMembersMap()
   const tasks = useAsync(() => plannedLogs(), [])
+  // Who is due, drawn from the breeding logs rather than from a planned
+  // task written at the same time: moving a breeding date moves the due
+  // date with it, and a breeding deleted takes its row off the list.
+  // Nothing to keep in step, and nothing left behind.
+  const births = useAsync(() => expectedBirths(), [])
   const assets = useAsync(() => listAssets(), [])
   // Held here rather than inside WeatherPlace so that saving a location in
   // the strip's picker can refresh the place name above it — see
@@ -48,8 +62,24 @@ export function Today({ onGoToStock }: { onGoToStock: () => void }) {
   const harvest = open ? HARVESTS[open] : undefined
 
   const done = () => {
-    setOpen(null); recent.reload(); tasks.reload(); assets.reload()
+    setOpen(null); setChore(null)
+    recent.reload(); tasks.reload(); assets.reload(); births.reload()
   }
+
+  const dueRows: BirthRow[] = (births.data ?? [])
+    .map((b) => upcomingBirth(b))
+    .filter((b) => b !== null)
+    .sort((a, b) => a.days - b.days)
+    .map((b) => ({
+      assetId: b.assetId,
+      species: b.species,
+      title: `${b.name} due to ${b.term.verb}`,
+      when: [
+        `${b.due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${dueLabel(b.days)}`,
+        b.sire ? `by ${b.sire}` : '',
+      ].filter(Boolean).join(' · '),
+      late: b.days < 0,
+    }))
 
   return (
     <div className="screen">
@@ -82,15 +112,27 @@ export function Today({ onGoToStock }: { onGoToStock: () => void }) {
         </div>
       )}
 
-      {(tasks.data ?? []).length > 0 && (
-        <>
-          <h2 className="section">To do</h2>
-          <TaskList
-            tasks={tasks.data ?? []}
-            onChanged={() => { tasks.reload(); recent.reload() }}
-          />
-        </>
+      {/*
+        Chores sit above Recent, and stay on screen even when the list is
+        empty: "what still needs doing" is the question this screen exists
+        to answer, and a section that disappears when the list is empty
+        takes the way to add one with it.
+      */}
+      <h2 className="section">Farm chores</h2>
+      <TaskList
+        tasks={tasks.data ?? []}
+        births={dueRows}
+        onOpen={setChore}
+        onOpenAnimal={onGoToAnimal}
+        onChanged={() => { tasks.reload(); recent.reload() }}
+      />
+      {!tasks.loading && (tasks.data ?? []).length === 0 && dueRows.length === 0 && (
+        <p className="empty">
+          Nothing on the list. Fencing, worming, a vet appointment — anything
+          that needs doing goes here.
+        </p>
       )}
+      <button className="linkish" onClick={() => setOpen('plan')}>+ Add a chore</button>
 
       <h2 className="section">Recent</h2>
       <LogList logs={recent.data ?? []} loading={recent.loading} onSelect={setEditing}
@@ -108,7 +150,10 @@ export function Today({ onGoToStock }: { onGoToStock: () => void }) {
       {open === 'feed'   && <FeedForm   onDone={done} onClose={() => setOpen(null)} />}
       {open === 'buy'    && <BuyForm    onDone={done} onClose={() => setOpen(null)} />}
       {open === 'note'   && <NoteForm   onDone={done} onClose={() => setOpen(null)} />}
-      {open === 'plan'   && <PlanForm   onDone={done} onClose={() => setOpen(null)} />}
+      {open === 'plan'   && <ChoreSheet onDone={done} onClose={() => setOpen(null)} />}
+      {chore && (
+        <ChoreSheet chore={chore} onDone={done} onClose={() => setChore(null)} />
+      )}
     </div>
   )
 }
@@ -641,53 +686,6 @@ function BuyForm({ onDone, onClose }: FormProps) {
       <button className="primary" disabled={busy || total === 0} onClick={run}>
         {busy ? 'Saving…' : total > 1 ? `Save ${total} items` : 'Save'}
       </button>
-      {error && <p className="error">{error}</p>}
-    </Sheet>
-  )
-}
-
-function PlanForm({ onDone, onClose }: FormProps) {
-  const [name, setName] = useState('')
-  const [when, setWhen] = useState(() => {
-    const d = new Date()
-    const pad = (n: number) => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-  })
-  const [asset, setAsset] = useState('')
-  const [notes, setNotes] = useState('')
-
-  const save = async () => {
-    await planTask({
-      name: name.trim(),
-      due: new Date(`${when}T09:00:00`),
-      notes: notes.trim() || undefined,
-      assetId: asset || undefined,
-    })
-    onDone()
-  }
-  const { run, busy, error } = useSave(save)
-
-  return (
-    <Sheet title="Plan something" onClose={onClose}>
-      <p className="hint">
-        Planned work lives in the same records as everything else, so ticking it
-        off writes the history for you.
-      </p>
-      <label className="field">
-        <span>What needs doing?</span>
-        <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
-          placeholder="Worm the cattle" />
-      </label>
-      <label className="field">
-        <span>When</span>
-        <input type="date" value={when} onChange={(e) => setWhen(e.target.value)} />
-      </label>
-      <AssetSelect value={asset} onChange={setAsset} label="What for? (optional)" />
-      <label className="field">
-        <span>Notes (optional)</span>
-        <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-      </label>
-      <button className="primary" disabled={busy || !name.trim()} onClick={run}>{busy ? "Saving…" : "Save"}</button>
       {error && <p className="error">{error}</p>}
     </Sheet>
   )

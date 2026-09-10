@@ -91,7 +91,10 @@ export const HARVESTS: Record<string, HarvestSpec> = {
 const FEED:  TileSpec = { kind: 'feed',   label: 'Feed',  glyph: '🌾' }
 const BUY:   TileSpec = { kind: 'buy',    label: 'Buy',   glyph: '🧾' }
 const NOTE:  TileSpec = { kind: 'note',   label: 'Note',  glyph: '📝' }
-const PLAN:  TileSpec = { kind: 'plan',   label: 'Plan',  glyph: '📅' }
+// Labelled for the Farm chores list it feeds, not for the abstract act
+// of planning — the tile and the section have to be recognisably the
+// same thing, or the tile looks like a second, separate to-do list.
+const PLAN:  TileSpec = { kind: 'plan',   label: 'Chore', glyph: '📅' }
 
 export interface AssetLike {
   type: string

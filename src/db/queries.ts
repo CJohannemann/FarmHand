@@ -1546,6 +1546,55 @@ export async function plannedLogs(): Promise<LogWithDetail[]> {
   return rows
 }
 
+export interface ExpectedBirth {
+  assetId: string
+  name: string
+  species: string | null
+  /** The day she was bred, or the day the eggs were set. */
+  bredOn: string
+  /** Whoever else was on the breeding log — the sire, by name. */
+  sire: string | null
+}
+
+/**
+ * The most recent breeding on every animal still on the farm.
+ *
+ * No due date is worked out here: how long a species carries is husbandry,
+ * not storage, and lives in src/lib/husbandry.ts where it can be read and
+ * argued with. This just answers "who was bred, when, and to what" — the
+ * caller turns that into a date.
+ *
+ * One row per animal, not per breeding. An animal bred over several
+ * seasons has a log full of them, but only the latest can still be
+ * carrying; the rest are history and belong on her own profile, not on a
+ * list of what is coming.
+ */
+export async function expectedBirths(): Promise<ExpectedBirth[]> {
+  const pg = await db()
+  const { rows } = await pg.query<ExpectedBirth>(
+    `select a.id as "assetId", a.name as "name",
+            a.attributes->>'species' as "species",
+            l.timestamp as "bredOn",
+            (select group_concat(s.name, ', ')
+               from log_asset li join asset s on s.id = li.asset_id
+              where li.log_id = l.id and li.role = 'input') as "sire"
+       from log l
+       join log_asset la on la.log_id = l.id and la.role = 'subject'
+       join asset a on a.id = la.asset_id
+      where l.type = 'breeding' and l.status = 'done' and l.deleted_at is null
+        and l.farm_id = (select id from active_farm)
+        and a.status = 'active' and a.deleted_at is null
+        and l.timestamp = (
+              select max(l2.timestamp)
+                from log l2
+                join log_asset la2 on la2.log_id = l2.id and la2.role = 'subject'
+               where la2.asset_id = a.id and l2.type = 'breeding'
+                 and l2.status = 'done' and l2.deleted_at is null)
+      order by l.timestamp`,
+  )
+  return rows
+}
+
 export async function planTask(input: {
   name: string
   due: Date

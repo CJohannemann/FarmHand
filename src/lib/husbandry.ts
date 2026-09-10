@@ -137,3 +137,164 @@ const EQUIPMENT_GLYPH: Record<string, string> = {
 export function equipmentGlyph(kind: string | null): string {
   return EQUIPMENT_GLYPH[String(kind ?? '')] ?? '🚜'
 }
+
+/* ------------------------------------------------------------- breeding */
+
+export interface Gestation {
+  /** Days from the breeding (or from setting eggs) to the young arriving. */
+  days: number
+  /** The same span in the words a stockman actually uses. */
+  phrase: string
+  /** A sow is pregnant; a hen is just sitting on eggs. */
+  kind: 'gestation' | 'incubation'
+  /** The verb for the event — "due to farrow", not "due to give birth". */
+  verb: string
+}
+
+/**
+ * How long each species carries, in days.
+ *
+ * These are the working averages a farm plans around, not a claim to the
+ * hour: a sow really does go "three months, three weeks and three days"
+ * (114), a cow lands around 283, a ewe around 147. Anything under a week
+ * either side of the date is ordinary, which is why the Due date is shown
+ * with that caveat attached rather than as a deadline.
+ *
+ * Birds are here too, measured from the day the eggs were set rather than
+ * from any mating — the arithmetic a farm wants is identical ("when do
+ * these hatch"), the biology is not, so `kind` keeps the wording honest.
+ *
+ * A species absent from this table (anything a farm typed in itself) simply
+ * gets no due-date arithmetic offered — a made-up number would be worse
+ * than no number.
+ */
+export const GESTATION: Record<string, Gestation> = {
+  Cattle:  { days: 283, phrase: 'about 9 months',                  kind: 'gestation',   verb: 'calve' },
+  Pig:     { days: 114, phrase: '3 months, 3 weeks and 3 days',    kind: 'gestation',   verb: 'farrow' },
+  Sheep:   { days: 147, phrase: 'about 5 months',                  kind: 'gestation',   verb: 'lamb' },
+  Goat:    { days: 150, phrase: 'about 5 months',                  kind: 'gestation',   verb: 'kid' },
+  Horse:   { days: 340, phrase: 'about 11 months',                 kind: 'gestation',   verb: 'foal' },
+  Donkey:  { days: 365, phrase: 'about 12 months',                 kind: 'gestation',   verb: 'foal' },
+  Rabbit:  { days: 31,  phrase: 'about a month',                   kind: 'gestation',   verb: 'kindle' },
+  Alpaca:  { days: 335, phrase: 'about 11 months',                 kind: 'gestation',   verb: 'give birth' },
+  Llama:   { days: 350, phrase: 'about 11 and a half months',      kind: 'gestation',   verb: 'give birth' },
+  Bison:   { days: 285, phrase: 'about 9 and a half months',       kind: 'gestation',   verb: 'calve' },
+  Chicken: { days: 21,  phrase: '3 weeks',                         kind: 'incubation',  verb: 'hatch' },
+  Duck:    { days: 28,  phrase: '4 weeks',                         kind: 'incubation',  verb: 'hatch' },
+  Goose:   { days: 30,  phrase: 'about a month',                   kind: 'incubation',  verb: 'hatch' },
+  Turkey:  { days: 28,  phrase: '4 weeks',                         kind: 'incubation',  verb: 'hatch' },
+  Quail:   { days: 17,  phrase: 'about 17 days',                   kind: 'incubation',  verb: 'hatch' },
+}
+
+export function gestationFor(species: string | undefined | null): Gestation | null {
+  return GESTATION[String(species ?? '')] ?? null
+}
+
+/**
+ * When the young are expected, or null for a species with no known term.
+ *
+ * Fixed at noon, the same hour EditAsset writes a birthday at: adding
+ * whole days to a midnight timestamp lands on the previous evening the
+ * moment a daylight-saving boundary falls inside a nine-month gestation,
+ * and "due Jan 2" quietly becoming "due Jan 1" is exactly the kind of
+ * silent off-by-one a farmer would never think to check for.
+ */
+export function dueDate(
+  bredOn: Date | string, species: string | undefined | null,
+): Date | null {
+  const term = gestationFor(species)
+  if (!term) return null
+  const from = new Date(bredOn)
+  if (Number.isNaN(from.getTime())) return null
+  const due = new Date(from.getFullYear(), from.getMonth(), from.getDate() + term.days, 12)
+  return due
+}
+
+/**
+ * Whole days from today to `due` — negative once it's past. Both ends are
+ * flattened to local midnight first, so "tomorrow" is 1 whether it's read
+ * at breakfast or at midnight, rather than rounding off a part-day.
+ */
+export function daysUntil(due: Date, from: Date = new Date()): number {
+  const a = new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime()
+  const b = new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime()
+  return Math.round((b - a) / 86_400_000)
+}
+
+/**
+ * The countdown beside a due date: "in 12 days", "today", "3 days overdue".
+ *
+ * Weeks and months are deliberately not used — a sow due "in 3 months" is
+ * no help to somebody deciding whether the farrowing pen needs bedding
+ * this week. Past due says "overdue" rather than "3 days ago": the date
+ * hasn't merely passed, the animal is still carrying.
+ */
+export function dueLabel(days: number): string {
+  if (days === 0) return 'today'
+  if (days === 1) return 'tomorrow'
+  if (days > 0) return `in ${days} days`
+  return days === -1 ? '1 day overdue' : `${-days} days overdue`
+}
+
+/**
+ * Whether a breeding is still worth showing as "expecting".
+ *
+ * A breeding log is history and stays in the log forever, but the panel
+ * built on it has to stop at some point: either she delivered (and the
+ * births got recorded as their own animals) or she never settled, and
+ * neither outcome is something the app can be sure of on its own. Two
+ * weeks past due is long enough to cover a genuinely late birth and short
+ * enough that nothing sits there claiming a cow is pregnant a year on.
+ */
+export const OVERDUE_GRACE_DAYS = 14
+
+/**
+ * How much warning a birth gets on the Today screen: a month, or the whole
+ * term where that is shorter than a month.
+ *
+ * A sow bred today is due in 114 days, and a chore list that says so from
+ * day one is a chore list nobody reads. A month is about when a farm
+ * starts doing something about it — bedding the farrowing pen, moving her
+ * up — and for a clutch of eggs, three weeks IS the whole story, so the
+ * shorter term wins rather than being rounded up to a month it never had.
+ */
+export function leadDays(term: Gestation): number {
+  return Math.min(30, term.days)
+}
+
+/**
+ * A breeding turned into a due date, or null if it is not worth showing
+ * yet (or any more).
+ *
+ * Takes anything carrying a species and a breeding date — a row out of
+ * expectedBirths(), typically — and hands back the same object with the
+ * arithmetic attached, so the caller keeps whatever else it was carrying
+ * (a name, an id, the sire) without this having to know about any of it.
+ */
+export function upcomingBirth<T extends { species: string | null; bredOn: string }>(
+  row: T, now: Date = new Date(),
+): (T & { due: Date; days: number; term: Gestation }) | null {
+  const term = gestationFor(row.species)
+  if (!term) return null
+  const due = dueDate(row.bredOn, row.species)
+  if (!due) return null
+  const days = daysUntil(due, now)
+  if (days > leadDays(term)) return null
+  // Past this, she either delivered or never settled — see OVERDUE_GRACE_DAYS.
+  if (days < -OVERDUE_GRACE_DAYS) return null
+  return { ...row, due, days, term }
+}
+
+/**
+ * "Pigs carry 3 months, 3 weeks and 3 days." / "Chicken eggs take 3 weeks
+ * to hatch." — the one line that says where a due date came from, so it
+ * reads as arithmetic the farm can check rather than a number the app
+ * produced out of nowhere.
+ */
+export function gestationSentence(species: string): string | null {
+  const term = gestationFor(species)
+  if (!term) return null
+  return term.kind === 'incubation'
+    ? `${species} eggs take ${term.phrase} to hatch.`
+    : `${pluralSpecies(species)} carry ${term.phrase}.`
+}

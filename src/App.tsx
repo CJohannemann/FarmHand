@@ -47,6 +47,10 @@ export default function App() {
   const [resetAt, setResetAt] = useState<Record<Tab, number>>(
     { today: 0, stock: 0, analytics: 0, settings: 0 },
   )
+  // An animal Today has asked Inventory to open — a cow due to calve,
+  // tapped from the chore list. Cleared as soon as Inventory has it, so
+  // going Back out of that animal doesn't drop straight back into it.
+  const [openAsset, setOpenAsset] = useState<string | null>(null)
   const { session, checking, recovery, clearRecovery, linkError: badLink, clearLinkError } = useSession()
   // Every new log records who made it — see setCurrentUser's own comment.
   useEffect(() => { setCurrentUser(session?.user.id ?? null) }, [session])
@@ -350,8 +354,17 @@ export default function App() {
           as a second bar permanently above the tab bar. */}
       <div className="scroll">
       <main className="content">
-        {current === 'today' && <Today key={resetAt.today} onGoToStock={() => setTab('stock')} />}
-        {current === 'stock' && <Stock key={resetAt.stock} />}
+        {current === 'today' && (
+          <Today
+            key={resetAt.today}
+            onGoToStock={() => setTab('stock')}
+            onGoToAnimal={(id) => { setOpenAsset(id); setTab('stock') }}
+          />
+        )}
+        {current === 'stock' && (
+          <Stock key={resetAt.stock} openAssetId={openAsset}
+            onOpened={() => setOpenAsset(null)} />
+        )}
         {current === 'analytics' && <Analytics key={resetAt.analytics} />}
         {current === 'settings' && <Settings key={resetAt.settings} />}
       </main>

@@ -3,19 +3,24 @@ import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
   archiveAsset, assetCosts, childAssets, createAsset, createHarvest, createLog,
-  createPurchase, getAsset, lastServiceHours, listTerms, logsForAsset, lotBalances,
-  offspringOf, sellAsset, updateAsset,
+  createPurchase, findOrCreateExternalParent, getAsset, lastServiceHours, listTerms,
+  logsForAsset, lotBalances, offspringOf, sellAsset, updateAsset,
   weightHistory, type AssetEvent,
 } from '../db/queries'
 import type { Asset } from '../db/types'
 import { producibleMaterial } from '../lib/tiles'
+import {
+  dueDate, dueLabel, daysUntil, gestationFor, gestationSentence, sexRole,
+  OVERDUE_GRACE_DAYS, type Gestation,
+} from '../lib/husbandry'
 import {
   formatMoney, formatQty, hasNumericValue, ignoreArrowKeysOnNumberInput,
   ignoreScrollOnNumberInput, onNumericChange, withThousands,
 } from '../lib/numeric'
 import { useMembersMap } from '../lib/members'
 import { useFarmTimezone } from '../lib/weather'
-import { AssetSelect } from './AssetSelect'
+import { AssetSelect, OTHER } from './AssetSelect'
+import { ParentField } from './ParentField'
 import { logDate, logTime } from './LogList'
 import { Sheet } from './Sheet'
 import { EditAsset } from './EditAsset'
@@ -25,6 +30,7 @@ import { GrowthChart } from './GrowthChart'
 const EVENT_LABELS: Record<string, string> = {
   harvest: 'Harvest', weight: 'Weight', input_application: 'Fed',
   observation: 'Note', purchase: 'Bought', birth: 'Birth', death: 'Death',
+  breeding: 'Bred',
   disposition: 'Used', movement: 'Moved', processing: 'Processed',
 }
 
@@ -39,7 +45,7 @@ export function AssetDetail({
 }) {
   const [sheet, setSheet] = useState<
     | 'harvest' | 'pull' | 'closeout' | 'edit' | 'treat' | 'split' | 'weigh'
-    | 'maintain' | 'retire' | 'addmember' | null
+    | 'maintain' | 'retire' | 'addmember' | 'bred' | null
   >(null)
   const [editingLog, setEditingLog] = useState<AssetEvent | null>(null)
 
@@ -70,6 +76,15 @@ export function AssetDetail({
     () => (asset.type === 'animal' ? offspringOf(asset.id) : Promise.resolve([])),
     [asset.id, asset.type],
   )
+  const species = String(asset.attributes?.species ?? '')
+  // No term, no arithmetic: a species the farm typed in itself gets no
+  // Bred button rather than a made-up due date.
+  const term = gestationFor(species)
+  // Sires and steers are ruled out; an animal whose sex nobody has
+  // recorded yet is left in, the same way the Sire/Dam pickers treat
+  // "unknown" as a different claim from "wrong".
+  const breedable = asset.type === 'animal' && !!term
+    && !['sire', 'neither'].includes(sexRole(species, String(asset.attributes?.sex ?? '')))
 
   const refresh = () => {
     setSheet(null)
@@ -80,6 +95,14 @@ export function AssetDetail({
 
   const c = costs.data
   const birthEvent = (events.data ?? []).find((e) => e.type === 'birth')
+  // logsForAsset comes back newest first, so the first breeding row is the
+  // current one — anything older is a past season and stays in History.
+  const bredEvent = (events.data ?? []).find((e) => e.type === 'breeding')
+  const due = bredEvent && term ? dueDate(bredEvent.timestamp, species) : null
+  const dueIn = due ? daysUntil(due) : 0
+  // See OVERDUE_GRACE_DAYS: the log is permanent, this panel is not. Nor
+  // is anything closed out still expecting.
+  const expecting = asset.status === 'active' && due != null && dueIn >= -OVERDUE_GRACE_DAYS
   // From the log list, not `c!.purchaseCost > 0` — a $0 purchase (born on
   // the farm, cost nothing) is a real recorded fact, not the absence of
   // one, and a plain amount check can't tell those apart.
@@ -114,8 +137,7 @@ export function AssetDetail({
         {headcount ? ` · ${formatQty(Number(headcount))} head` : ''}
         {asset.attributes?.tag ? ` · Tag ${String(asset.attributes.tag)}` : ''}
         {asset.attributes?.sex ? ` · ${String(asset.attributes.sex)}` : ''}
-        {birthEvent ? ` · Born ${new Date(birthEvent.timestamp).toLocaleDateString(
-          undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}
+        {birthEvent ? ` · Born ${shortDate(birthEvent.timestamp)}` : ''}
         {asset.status === 'archived' ? ` · ${asset.terminal_event ?? 'archived'}` : ''}
       </p>
 
@@ -135,6 +157,22 @@ export function AssetDetail({
               </li>
             ))}
           </ul>
+        </>
+      )}
+
+      {expecting && (
+        <>
+          <h2 className="section">{term!.kind === 'incubation' ? 'Incubating' : 'Expecting'}</h2>
+          <div className="costbox">
+            <Row label={term!.kind === 'incubation' ? 'Eggs set' : 'Bred'}
+              value={shortDate(bredEvent!.timestamp)} />
+            {bredEvent!.others && <Row label="Sire" value={bredEvent!.others} />}
+            <Row strong label={`Due to ${term!.verb}`}
+              value={`${shortDate(due!)} · ${dueLabel(dueIn)}`} />
+          </div>
+          <p className="hint">
+            {gestationSentence(species)} A few days either side of the date is normal.
+          </p>
         </>
       )}
 
@@ -262,6 +300,11 @@ export function AssetDetail({
         {asset.status === 'active' && livestock && (
           <button onClick={() => setSheet('treat')}>Vet/Med</button>
         )}
+        {asset.status === 'active' && breedable && (
+          <button onClick={() => setSheet('bred')}>
+            {term!.kind === 'incubation' ? 'Set eggs' : 'Bred'}
+          </button>
+        )}
         {asset.status === 'active' && equipment && (
           <button onClick={() => setSheet('maintain')}>Maintenance</button>
         )}
@@ -349,6 +392,9 @@ export function AssetDetail({
       {sheet === 'weigh' && (
         <WeightForm asset={asset} onClose={() => setSheet(null)} onDone={refresh} />
       )}
+      {sheet === 'bred' && term && (
+        <BredForm asset={asset} term={term} onClose={() => setSheet(null)} onDone={refresh} />
+      )}
       {sheet === 'split' && (
         <SplitForm group={asset} onClose={() => setSheet(null)} onDone={refresh} />
       )}
@@ -383,6 +429,96 @@ function Row({ label, value, strong }: {
     <div className={strong ? 'costrow strong' : 'costrow'}>
       <span>{label}</span><span>{value}</span>
     </div>
+  )
+}
+
+/** The one date format this screen uses — "Mar 4, 2026". */
+function shortDate(when: string | Date): string {
+  return new Date(when).toLocaleDateString(
+    undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+/**
+ * A breeding date on its own is half a record. What a farm actually wants
+ * off it is the date the young are due, and that arithmetic — three
+ * months, three weeks and three days for a sow — is exactly what nobody
+ * wants to do on a phone in a barn. So the due date is worked out live as
+ * the date is picked, and the Expecting panel above keeps showing it until
+ * it is a fortnight past.
+ *
+ * The sire goes on the log as an input rather than onto the dam's own
+ * attributes: it is a fact about this breeding, not about her, and she may
+ * well go to a different bull next season. It shows up by name on her
+ * History line for free — that is logsForAsset's `others`.
+ */
+function BredForm({ asset, term, onDone, onClose }: {
+  asset: Asset; term: Gestation; onDone: () => void; onClose: () => void
+}) {
+  const species = String(asset.attributes?.species ?? '')
+  const [date, setDate] = useState(() => {
+    const d = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  })
+  const [sireId, setSireId] = useState('')
+  const [sireName, setSireName] = useState('')
+  const [notes, setNotes] = useState('')
+  const incubating = term.kind === 'incubation'
+  const when = new Date(`${date}T12:00:00`)
+  const due = dueDate(when, species)
+
+  const save = async () => {
+    let sire = sireId && sireId !== OTHER ? sireId : ''
+    // Same trick as EditAsset's parents: an outside bull typed by name
+    // becomes a minimal record, so next season he is picked from the list
+    // rather than retyped.
+    if (!sire && sireId === OTHER && sireName.trim()) {
+      sire = await findOrCreateExternalParent(sireName, species, 'sire')
+    }
+    await createLog({
+      type: 'breeding',
+      name: incubating ? 'Eggs set' : 'Bred',
+      timestamp: when,
+      notes: notes.trim() || undefined,
+      assets: [
+        { id: asset.id, role: 'subject' as const },
+        ...(sire ? [{ id: sire, role: 'input' as const }] : []),
+      ],
+    })
+    onDone()
+  }
+  const { run, busy, error } = useSave(save)
+
+  return (
+    <Sheet title={incubating ? `Eggs set under ${asset.name}` : `Bred ${asset.name}`}
+      onClose={onClose}>
+      <label className="field">
+        <span>{incubating ? 'Date set' : 'Date bred'}</span>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      </label>
+      {!incubating && (
+        <ParentField role="sire" species={species} excludeId={asset.id}
+          id={sireId} onId={setSireId} name={sireName} onName={setSireName} />
+      )}
+      <label className="field">
+        <span>Notes (optional)</span>
+        <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)}
+          placeholder={incubating ? '12 eggs under her' : 'Pasture bred, second cycle'} />
+      </label>
+      {due && (
+        <div className="costbox">
+          <Row strong label={`Due to ${term.verb}`}
+            value={`${shortDate(due)} · ${dueLabel(daysUntil(due))}`} />
+        </div>
+      )}
+      <p className="hint">
+        {gestationSentence(species)} A few days either side of the date is normal.
+      </p>
+      <button className="primary" disabled={busy || !date} onClick={run}>
+        {busy ? 'Saving…' : 'Save'}
+      </button>
+      {error && <p className="error">{error}</p>}
+    </Sheet>
   )
 }
 

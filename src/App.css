@@ -554,9 +554,23 @@ button.danger {
   padding: 0.55rem 0; border-bottom: 1px solid var(--line);
 }
 
-.task-body { flex: 1; display: flex; flex-direction: column; }
+/* The row body is a button now — the chore opens its own sheet — so it has
+   to shed the browser's button chrome and go back to reading as text. */
+button.task-body {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem;
+  border: 0; background: none; padding: 0;
+  color: var(--fg); font: inherit; text-align: left; cursor: pointer;
+}
 .task-name { font-size: 0.95rem; }
 .task-when { color: var(--muted); font-size: 0.8rem; }
+.tasklist .chev { flex: none; }
+
+/* Sits in the tick's column on a birth row, which has no tick to sit
+   there — so the two kinds of row still line up down the left edge. */
+.task-glyph {
+  flex: none; width: 1.9rem;
+  font-size: 1.15rem; line-height: 1.9rem; text-align: center;
+}
 .tasklist li.late .task-when { color: #a4571c; font-weight: 600; }
 
 button.tick {

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
@@ -150,7 +150,12 @@ function showsOwnCard(assets: Asset[], a: Asset): boolean {
   return !group || !isUnnamedMember(group, a)
 }
 
-export function Stock() {
+export function Stock({ openAssetId, onOpened }: {
+  /** One animal to open straight away — Today's due-to-farrow rows link here. */
+  openAssetId?: string | null
+  /** Called once that animal is open, so backing out of it stays backed out. */
+  onOpened?: () => void
+} = {}) {
   const [adding, setAdding] = useState(false)
   const [taking, setTaking] = useState<LotBalance | null>(null)
   // A stack, not a single value — so Back from a member returns to its
@@ -180,6 +185,17 @@ export function Stock() {
   // carry a price and nothing else.
   const lots = useAsync(() => lotBalances(), [])
   const reloadAll = () => { reload(); lots.reload() }
+
+  // Deliberately waits for the asset list rather than fetching the one
+  // asset: the stack holds whole assets, and everything below re-reads
+  // them from this list anyway.
+  useEffect(() => {
+    if (!openAssetId) return
+    const wanted = assets.find((a) => a.id === openAssetId)
+    if (!wanted) return
+    setStack([wanted])
+    onOpened?.()
+  }, [openAssetId, assets])
 
   // `underOwnHeading` rows already sit under a heading naming their species
   // or their kind — repeating it on every row is just noise, so an animal
