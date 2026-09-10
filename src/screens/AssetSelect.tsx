@@ -1,12 +1,69 @@
-import { useEffect } from 'react'
+import { Fragment, useEffect } from 'react'
 import { useAsync } from '../lib/useAsync'
 import { listAssets } from '../db/queries'
-import type { AssetType } from '../db/types'
+import type { Asset, AssetType } from '../db/types'
 import { producibleMaterial } from '../lib/tiles'
 import { sexRole } from '../lib/husbandry'
 
 /** Sentinel `<option>` value for AssetSelect's `otherLabel` — never a real asset id. */
 export const OTHER = '__other__'
+
+/**
+ * What each kind of thing is called over its section of the list, in the
+ * order a farm would look for them.
+ *
+ * "Herds & flocks" rather than "Groups": a group is what the schema calls
+ * it, and nobody standing in a barn has ever called their layers a group.
+ * Stores likewise matches the heading Inventory already uses for lots.
+ */
+const KIND_LABEL: Record<AssetType, string> = {
+  animal: 'Animals',
+  group: 'Herds & flocks',
+  planting: 'Plantings',
+  land: 'Land',
+  structure: 'Buildings',
+  equipment: 'Equipment',
+  lot: 'Stores',
+}
+
+/** The order those sections appear in — roughly what a chore is likeliest for. */
+const KIND_ORDER: AssetType[] = [
+  'animal', 'group', 'planting', 'land', 'structure', 'equipment', 'lot',
+]
+
+/**
+ * Splits a mixed list into labelled sections, one per kind.
+ *
+ * An unfiltered picker — "What for?" on a chore, "About what?" on a note —
+ * is the whole farm in one dropdown, and alphabetical order files a
+ * tractor between two pigs and puts the flock below the mineral block,
+ * off the bottom of a phone's popup. The rows a farm wants are almost
+ * always all of one kind, so the kinds are what the list should be cut
+ * into. Same reasoning as the feeding dropdown's species sections.
+ *
+ * Order within a section is left exactly as listAssets() returned it —
+ * live before closed out, then by name.
+ *
+ * Anything whose type is not in KIND_ORDER lands in a trailing "Other"
+ * rather than being dropped. KIND_LABEL is a Record over AssetType, so
+ * adding a type to the schema without naming it here is a type error — but
+ * forgetting to add it to KIND_ORDER would not be, and a picker that
+ * silently stops offering something is a far worse way to find that out
+ * than one extra heading.
+ */
+function byKind(assets: Asset[]): { label: string; assets: Asset[] }[] {
+  const out: { label: string; assets: Asset[] }[] = []
+  const placed = new Set<string>()
+  for (const type of KIND_ORDER) {
+    const rows = assets.filter((a) => a.type === type)
+    if (rows.length === 0) continue
+    rows.forEach((a) => placed.add(a.id))
+    out.push({ label: KIND_LABEL[type], assets: rows })
+  }
+  const rest = assets.filter((a) => !placed.has(a.id))
+  if (rest.length > 0) out.push({ label: 'Other', assets: rest })
+  return out
+}
 
 export function AssetSelect({
   value, onChange, types, materials, producing, species, excludeId,
@@ -93,6 +150,8 @@ export function AssetSelect({
       && !wrongRole
   })
 
+  const groups = byKind(active)
+
   // Without a "— none —" option, a <select> with no matching value still
   // shows the first <option> — the browser picks it for display without
   // ever firing onChange. Sync the value so it isn't stuck at '' behind a
@@ -107,9 +166,22 @@ export function AssetSelect({
       <span>{label}</span>
       <select value={value} onChange={(e) => onChange(e.target.value)}>
         {allowNone && <option value="">— none —</option>}
-        {active.map((a) => (
-          <option key={a.id} value={a.id}>{a.name}</option>
-        ))}
+        {/* One <optgroup> per kind, but only once there is more than one
+            kind to tell apart — a single heading over the whole list is a
+            label saying what the picker already said. A <select> takes
+            nothing but <option> and <optgroup> as children, so the flat
+            case has to stay a Fragment rather than any real wrapper. */}
+        {groups.length > 1
+          ? groups.map((g) => (
+            <optgroup key={g.label} label={g.label}>
+              {g.assets.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </optgroup>
+          ))
+          : <Fragment>{active.map((a) => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}</Fragment>}
         {otherLabel && <option value={OTHER}>{otherLabel}</option>}
       </select>
       {active.length === 0 && (
