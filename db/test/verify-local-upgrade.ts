@@ -36,9 +36,13 @@ const tables = () =>
 console.log('\nBuild a database the way it looked before receipts existed')
 // Everything except the receipt section — the exact shape a phone in the
 // field is carrying right now.
+// \r?\n, not \n: with core.autocrlf the schema is checked out CRLF on
+// Windows, a \n-only pattern matches nothing, and the receipt triggers
+// survive a cut that removed the receipt table — so `older` fails to build
+// at all with "no such table: main.receipt".
 const older = schema
   .replace(/-- -+ receipts[\s\S]*?-- -+ local sync bookkeeping/, '-- ---- local sync bookkeeping')
-  .replace(/create trigger if not exists sync_receipt[\s\S]*?end;\n/g, '')
+  .replace(/create trigger if not exists sync_receipt[\s\S]*?end;\r?\n/g, '')
 db.exec(older)
 check('no receipt table, as on an existing device', !tables().includes('receipt'))
 check('no receipt_blob either', !tables().includes('receipt_blob'))

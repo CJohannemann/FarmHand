@@ -22,8 +22,18 @@ const check = (label: string, ok: boolean, detail = '') => {
 function makeLocal(upserted: { table: string; id: string }[]): Local {
   return {
     async query<T = Row>(sql: string, params: unknown[] = []) {
-      const m = sql.match(/^insert into "(\w+)"/)
-      if (m) upserted.push({ table: m[1], id: String(params[0]) })
+      const m = sql.match(/^insert into "(\w+)" \(([^)]*)\)/)
+      if (m) {
+        // upsertLocal batches a chunk into ONE statement with a tuple per
+        // row, so params is every row's columns flattened end to end.
+        // Reading params[0] alone sees only the first row of the batch and
+        // reports every later one as missing — which made this test fail
+        // against a pull() that was ordering correctly all along.
+        const colCount = m[2].split(',').length
+        for (let i = 0; i < params.length; i += colCount) {
+          upserted.push({ table: m[1], id: String(params[i]) })
+        }
+      }
       return { rows: [] as T[] }
     },
     async applying<T>(fn: () => Promise<T>) { return fn() },
