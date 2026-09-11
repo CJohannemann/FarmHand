@@ -6,6 +6,39 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!--
+      Launch from the home screen as an app, not as a bookmark with Safari's
+      chrome wrapped around it.
+
+      Both halves are needed. The manifest is what every other platform
+      reads, and what iOS 16.4+ reads; apple-mobile-web-app-capable is the
+      older tag iOS has always honoured, and is still what actually decides
+      this on anything older. Neither existed before, which is why adding
+      the site to an iPhone home screen produced a bookmark with a URL bar.
+
+      NOTE: iOS reads these ONCE, when the icon is added, and caches them
+      against it forever. An icon already on a home screen will keep its old
+      behaviour after this ships — it has to be deleted and re-added.
+
+      status-bar-style is deliberately `default` (an opaque bar the system
+      colours) rather than `black-translucent`. Translucent hands the web
+      content the full screen including the area under the clock and the
+      notch, which needs safe-area-inset padding throughout the app to not
+      render text under them; nothing here does that yet.
+
+      .json rather than .webmanifest so nginx serves it as application/json
+      off the stock mime.types — the correct type is application/manifest+json,
+      which stock nginx does not know, and browsers accept JSON here. Saves
+      the deploy a hand-edited mime mapping in two nginx configs.
+    -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="FarmHand" />
+    <meta name="theme-color" content="#3f7d3f" />
+
     <title>Farm Hand Manager</title>
     <!-- Used by the signed-out landing page (src/screens/Landing.tsx) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">

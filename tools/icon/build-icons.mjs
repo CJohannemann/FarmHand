@@ -42,4 +42,16 @@ fs.writeFileSync(path.join(OUT, 'favicon.ico'),
 // as a double-rounded corner inside it.
 fs.writeFileSync(path.join(OUT, 'apple-touch-icon.png'), png(render(mark(0), 180), 180))
 
-console.log('wrote favicon.ico and apple-touch-icon.png to ' + OUT)
+// The two sizes a web app manifest is expected to carry: 192 for the home
+// screen, 512 for the splash. Rounded rather than square, unlike the iOS
+// tile above — nothing masks these, so the corners are ours to draw.
+//
+// Declared `purpose: any`, NOT maskable: a maskable icon has to keep its
+// content inside the middle 80% so a platform can crop it to a circle,
+// and the barn here fills very nearly the whole tile. Claiming maskable
+// would just invite Android to cut its roof off.
+for (const size of [192, 512]) {
+  fs.writeFileSync(path.join(OUT, `icon-${size}.png`), png(render(mark(14), size), size))
+}
+
+console.log('wrote favicon.ico, apple-touch-icon.png and icon-192/512.png to ' + OUT)
