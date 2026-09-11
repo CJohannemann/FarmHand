@@ -3,10 +3,10 @@ import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
   CATEGORIZABLE_MATERIALS, createHarvest, createLog, createPurchase, expectedBirths,
-  listAssets, listTerms, lotBalances, lotIsUsedUp, plannedLogs, recentLogs,
+  listAssets, listContacts, listTerms, lotBalances, lotIsUsedUp, plannedLogs, recentLogs,
   recordDisposition, setLotCategory, type LotBalance,
 } from '../db/queries'
-import type { Asset, LogWithDetail } from '../db/types'
+import type { Asset, AssetType, LogWithDetail } from '../db/types'
 import type { PreparedImage } from '../lib/image'
 import { useMembersMap } from '../lib/members'
 import { ReceiptCapture } from './ReceiptCapture'
@@ -19,6 +19,7 @@ import { dueLabel, pluralSpecies, upcomingBirth } from '../lib/husbandry'
 import { getFarmLocation } from '../lib/weather'
 import { Sheet } from './Sheet'
 import { AssetSelect } from './AssetSelect'
+import { BuyerSelect, EMPTY_BUYER_DRAFT, resolveBuyer, type BuyerDraft } from './BuyerSelect'
 import { LogList } from './LogList'
 import { EditLog } from './EditLog'
 import { TaskList, type BirthRow } from './TaskList'
@@ -234,18 +235,27 @@ function ProduceForm({ spec, onDone, onClose }: FormProps & { spec: HarvestSpec 
  * act from selling a dozen eggs, and belongs where the animal's other
  * endings are rather than on a tile meant for the routine. The hint below
  * says where to find it instead of leaving someone hunting.
+ *
+ * Purchased stock is left off too. "Sold what?" is asking what the farm
+ * produced and sold, not offering back the pig feed it bought last week —
+ * that read as the app not knowing the difference between the two. Selling
+ * a purchased lot (a farm reselling part of a hay load) is still possible,
+ * just from that lot's own sheet on Inventory rather than this shortcut.
  */
 function SellForm({ onDone, onClose }: FormProps) {
   const [lot, setLot] = useState('')
   const [amount, setAmount] = useState('')
   const [price, setPrice] = useState('')
   const [notes, setNotes] = useState('')
+  const [buyerId, setBuyerId] = useState('')
+  const [buyerDraft, setBuyerDraft] = useState<BuyerDraft>(EMPTY_BUYER_DRAFT)
   const { data: lots } = useAsync(() => lotBalances(), [])
+  const { data: contacts } = useAsync(() => listContacts(), [])
 
   // Same rule as the feed picker: what is actually still there, plus
   // whatever is already selected so a lot cannot vanish mid-edit.
-  const sellable = (lots ?? []).filter((l) => !lotIsUsedUp(l) || l.id === lot)
-  const groups = groupSellLots(sellable)
+  const sellable = (lots ?? []).filter((l) =>
+    l.origin !== 'purchased' && (!lotIsUsedUp(l) || l.id === lot))
   const selected = sellable.find((l) => l.id === lot)
   const unit = selected?.unit ?? 'lb'
   const n = Number(amount)
@@ -267,6 +277,7 @@ function SellForm({ onDone, onClose }: FormProps) {
       amount: n,
       unit,
       value: Number(price) > 0 ? Number(price) : undefined,
+      buyer: await resolveBuyer(contacts ?? [], buyerId, buyerDraft),
       notes: notes.trim() || undefined,
     })
     onDone()
@@ -279,21 +290,15 @@ function SellForm({ onDone, onClose }: FormProps) {
         <span>Sold what?</span>
         <select value={lot} onChange={(e) => setLot(e.target.value)}>
           <option value="">— pick one —</option>
-          {groups.length > 1
-            ? groups.map((g) => (
-              <optgroup key={g.label} label={g.label}>
-                {g.lots.map((l) => (
-                  <option key={l.id} value={l.id}>{lotLabel(l)}</option>
-                ))}
-              </optgroup>
-            ))
-            : groups.flatMap((g) => g.lots).map((l) => (
-              <option key={l.id} value={l.id}>{lotLabel(l)}</option>
-            ))}
+          {sellable.map((l) => (
+            <option key={l.id} value={l.id}>{lotLabel(l)}</option>
+          ))}
         </select>
         {sellable.length === 0 && (
           <small className="hint">
-            Nothing in Stores yet — collecting eggs or buying feed puts it there.
+            Nothing the farm produced yet — collecting eggs, milk, honey or
+            produce puts it here. To sell something you bought in, open that
+            lot under Inventory {'>'} Stores.
           </small>
         )}
       </label>
@@ -322,10 +327,13 @@ function SellForm({ onDone, onClose }: FormProps) {
         </p>
       )}
 
+      <BuyerSelect contacts={contacts ?? []} buyerId={buyerId} onBuyerId={setBuyerId}
+        draft={buyerDraft} onDraft={setBuyerDraft} />
+
       <label className="field">
         <span>Note (optional)</span>
         <input value={notes} onChange={(e) => setNotes(e.target.value)}
-          placeholder="Farmers market, the Harpers" />
+          placeholder="Half off for cash" />
       </label>
 
       <button className="primary" disabled={busy || !lot || !(n > 0)} onClick={run}>
@@ -339,22 +347,6 @@ function SellForm({ onDone, onClose }: FormProps) {
       </p>
     </Sheet>
   )
-}
-
-/**
- * Your own produce ahead of anything bought in.
- *
- * Without it, seven near-identical bags of pig feed sit above the eggs on a
- * screen opened to sell eggs. Bought stock stays on the list — a farm does
- * resell a load of hay — just not first.
- */
-function groupSellLots(lots: LotBalance[]): { label: string; lots: LotBalance[] }[] {
-  const mine = lots.filter((l) => l.origin !== 'purchased')
-  const bought = lots.filter((l) => l.origin === 'purchased')
-  return [
-    ...(mine.length > 0 ? [{ label: 'From the farm', lots: mine }] : []),
-    ...(bought.length > 0 ? [{ label: 'Bought in', lots: bought }] : []),
-  ]
 }
 
 const SPECIES_PREFIX = 'species:'
@@ -646,6 +638,17 @@ function FeedForm({ onDone, onClose }: FormProps) {
   )
 }
 
+/**
+ * A note is about a thing on the farm, not a bag it was fed from — "About
+ * what?" left unfiltered offered every purchased lot alongside the animals,
+ * and seven bags all called "Pig feed" buried the one cow anyone was
+ * actually trying to pick. Stores has its own note-taking (the lot's own
+ * sheet on Inventory), so it's left off here the same way Feed materials
+ * are left off AssetSelect's other unfiltered pickers.
+ */
+const NOTE_SUBJECT_TYPES: AssetType[] =
+  ['animal', 'group', 'planting', 'land', 'structure', 'equipment']
+
 function NoteForm({ onDone, onClose }: FormProps) {
   const [text, setText] = useState('')
   const [asset, setAsset] = useState('')
@@ -669,7 +672,8 @@ function NoteForm({ onDone, onClose }: FormProps) {
           onChange={(e) => setText(e.target.value)}
           placeholder="Third calf looks off — watching her." />
       </label>
-      <AssetSelect value={asset} onChange={setAsset} label="About what? (optional)" />
+      <AssetSelect value={asset} onChange={setAsset} types={NOTE_SUBJECT_TYPES}
+        label="About what? (optional)" />
       <button className="primary" disabled={busy || !text.trim()} onClick={run}>{busy ? "Saving…" : "Save"}</button>
       {error && <p className="error">{error}</p>}
     </Sheet>

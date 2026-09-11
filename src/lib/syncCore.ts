@@ -11,7 +11,7 @@ export type Row = Record<string, unknown>
 
 /** Tables that sync, in an order that satisfies their foreign keys. */
 export const SYNCED_TABLES = [
-  'farm', 'term', 'location', 'asset', 'log', 'log_asset', 'quantity', 'receipt',
+  'farm', 'term', 'location', 'contact', 'asset', 'log', 'log_asset', 'quantity', 'receipt',
 ] as const
 
 /**

@@ -47,6 +47,9 @@ export interface LogWithDetail extends LogRow {
    * or null if it never has been. */
   edited_by: string | null
   edited_at: string | null
+  /** Who bought it, on a sale or a sold disposition — null on everything
+   * else, and on a sale recorded without one. */
+  buyer: string | null
 }
 
 export interface QuantityInput {
@@ -54,4 +57,13 @@ export interface QuantityInput {
   value: number
   unit: string
   label?: string
+}
+
+/** A buyer (or anyone else worth keeping a phone number and email for). */
+export interface Contact {
+  id: string
+  name: string
+  phone: string | null
+  email: string | null
+  notes: string | null
 }

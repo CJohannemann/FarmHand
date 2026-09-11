@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
+import { useSave } from '../lib/useSave'
 import { useSession } from '../lib/useSession'
 import {
   createInvite, listMembers, removeMember, updateMemberRole,
@@ -8,9 +9,13 @@ import {
 import { ago, lastSyncedAt, pendingCount, syncClockTime, syncNow } from '../lib/sync'
 import { getThemePref, setThemePref, type ThemePref } from '../lib/theme'
 import { FarmName } from './Setup'
-import { localFarms, setActiveFarm } from '../db/queries'
+import {
+  createContact, deleteContact, localFarms, listContacts, setActiveFarm, updateContact,
+} from '../db/queries'
+import type { Contact } from '../db/types'
 import { deleteAccount, exportEverything } from '../lib/account'
 import { downloadZip } from '../lib/receipts'
+import { Sheet } from './Sheet'
 
 const ROLE_LABEL: Record<FarmRole, string> = {
   owner: 'Owner', manager: 'Manager', member: 'Member', viewer: 'Viewer',
@@ -60,6 +65,8 @@ export function Settings() {
           onChanged={members.reload}
         />
       )}
+
+      <BuyersPanel />
 
       <YourDataPanel email={session?.user.email ?? null} />
 
@@ -289,6 +296,126 @@ function Roster({ members, you, isOwner, onChanged }: {
         ))}
       </ul>
     </>
+  )
+}
+
+/**
+ * The buyer list a sale's "Buyer" field draws from — kept here rather than
+ * only reachable mid-sale, so a phone number can be looked up (or a typo
+ * fixed) without having to start one.
+ */
+function BuyersPanel() {
+  const contacts = useAsync(() => listContacts(), [])
+  const [editing, setEditing] = useState<Contact | 'new' | null>(null)
+
+  return (
+    <>
+      <h2 style={{ marginTop: '1.5rem' }}>Buyers</h2>
+      {contacts.loading && <p className="muted">Loading…</p>}
+      {contacts.data && contacts.data.length === 0 && (
+        <p className="hint">
+          Nobody yet — the "Buyer" field on a sale offers to add one on the spot.
+        </p>
+      )}
+      {contacts.data && contacts.data.length > 0 && (
+        <ul className="assetlist">
+          {contacts.data.map((c) => (
+            <li key={c.id}>
+              <button className="assetrow" onClick={() => setEditing(c)}>
+                <span className="asset-name">{c.name}</span>
+                <span className="asset-meta">
+                  {[c.phone, c.email].filter(Boolean).join(' · ')}
+                  <span className="chev">›</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <button type="button" className="linkish" onClick={() => setEditing('new')}>
+        + Add a buyer
+      </button>
+      {editing && (
+        <BuyerSheet
+          contact={editing === 'new' ? undefined : editing}
+          onClose={() => setEditing(null)}
+          onChanged={() => { setEditing(null); contacts.reload() }}
+        />
+      )}
+    </>
+  )
+}
+
+function BuyerSheet({ contact, onClose, onChanged }: {
+  /** Omitted for a brand-new buyer. */
+  contact?: Contact
+  onClose: () => void
+  onChanged: () => void
+}) {
+  const [name, setName] = useState(contact?.name ?? '')
+  const [phone, setPhone] = useState(contact?.phone ?? '')
+  const [email, setEmail] = useState(contact?.email ?? '')
+  const [notes, setNotes] = useState(contact?.notes ?? '')
+  const [removing, setRemoving] = useState(false)
+
+  const save = async () => {
+    const fields = {
+      name: name.trim(),
+      phone: phone.trim() || null,
+      email: email.trim() || null,
+      notes: notes.trim() || null,
+    }
+    if (contact) await updateContact(contact.id, fields)
+    else await createContact(fields)
+    onChanged()
+  }
+  const { run, busy, error } = useSave(save)
+
+  const remove = useSave(async () => { await deleteContact(contact!.id); onChanged() })
+
+  return (
+    <Sheet title={contact ? contact.name : 'Add a buyer'} onClose={onClose}>
+      <label className="field">
+        <span>Name</span>
+        <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
+          placeholder="The Harpers" />
+      </label>
+      <div className="pair">
+        <label className="field">
+          <span>Phone (optional)</span>
+          <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+            placeholder="555-0123" />
+        </label>
+        <label className="field">
+          <span>Email (optional)</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+            placeholder="harpers@example.com" />
+        </label>
+      </div>
+      <label className="field">
+        <span>Notes (optional)</span>
+        <input value={notes} onChange={(e) => setNotes(e.target.value)}
+          placeholder="Pays cash, wants a dozen every Friday" />
+      </label>
+      <button className="primary" disabled={busy || !name.trim()} onClick={run}>
+        {busy ? 'Saving…' : 'Save'}
+      </button>
+      {(error || remove.error) && <p className="error">{error ?? remove.error}</p>}
+      {contact && (!removing ? (
+        <button className="danger" onClick={() => setRemoving(true)}>Remove this buyer</button>
+      ) : (
+        <div className="confirm">
+          <p>
+            Remove {contact.name}? Past sales keep their name — this just
+            takes them off the list for next time.
+          </p>
+          <div className="actions">
+            <button onClick={() => setRemoving(false)}>Keep them</button>
+            <button className="danger" disabled={remove.busy} onClick={remove.run}>Remove</button>
+          </div>
+        </div>
+      ))}
+    </Sheet>
   )
 }
 

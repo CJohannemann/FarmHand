@@ -48,7 +48,7 @@ declare
   t text;
 begin
   foreach t in array
-    array['farm','term','location','asset','log','log_asset','quantity']
+    array['farm','term','location','contact','asset','log','log_asset','quantity']
   loop
     execute format('drop trigger if exists sync_%I on %I', t, t);
     execute format(

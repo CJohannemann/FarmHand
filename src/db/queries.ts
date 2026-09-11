@@ -1,7 +1,7 @@
 import { db } from './client'
 import { measureForUnit } from '../lib/units'
 import type {
-  Asset, AssetRole, AssetType, LogWithDetail, Measure, QuantityInput,
+  Asset, AssetRole, AssetType, Contact, LogWithDetail, Measure, QuantityInput,
 } from './types'
 
 let farmId: string | null = null
@@ -53,6 +53,70 @@ export async function createTerm(vocabulary: string, name: string): Promise<void
           and (farm_id is null or farm_id = (select id from active_farm))
      )`,
     [crypto.randomUUID(), farm, vocabulary, name, now, now, vocabulary, name],
+  )
+}
+
+// --------------------------------------------------------------- contacts
+
+/** Every buyer on record, for picking one again rather than retyping them. */
+export async function listContacts(): Promise<Contact[]> {
+  const pg = await db()
+  const { rows } = await pg.query<Contact>(
+    `select id, name, phone, email, notes from contact
+      where deleted_at is null and farm_id = (select id from active_farm)
+      order by name`,
+  )
+  return rows
+}
+
+export async function createContact(input: {
+  name: string
+  phone?: string
+  email?: string
+  notes?: string
+}): Promise<string> {
+  const pg = await db()
+  const farm = await getFarmId()
+  const id = crypto.randomUUID()
+  const now = new Date().toISOString()
+  await pg.query(
+    `insert into contact (id, farm_id, name, phone, email, notes, created_at, updated_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [id, farm, input.name.trim(), input.phone?.trim() || null, input.email?.trim() || null,
+      input.notes?.trim() || null, now, now],
+  )
+  return id
+}
+
+export async function updateContact(id: string, input: {
+  name?: string
+  phone?: string | null
+  email?: string | null
+  notes?: string | null
+}): Promise<void> {
+  const pg = await db()
+  const sets: string[] = []
+  const vals: unknown[] = [id]
+  if (input.name !== undefined) { sets.push(`name = $${vals.push(input.name)}`) }
+  if (input.phone !== undefined) { sets.push(`phone = $${vals.push(input.phone)}`) }
+  if (input.email !== undefined) { sets.push(`email = $${vals.push(input.email)}`) }
+  if (input.notes !== undefined) { sets.push(`notes = $${vals.push(input.notes)}`) }
+  if (sets.length === 0) return
+  const updatedAtParam = vals.push(new Date().toISOString())
+  await pg.query(
+    `update contact set ${sets.join(', ')}, updated_at = $${updatedAtParam} where id = $1`, vals,
+  )
+}
+
+/** A buyer no longer worth keeping around. Past sales keep the name they
+ * were recorded with, plain text rather than a reference to this row, so
+ * removing a contact never touches sale history. */
+export async function deleteContact(id: string): Promise<void> {
+  const pg = await db()
+  const now = new Date().toISOString()
+  await pg.query(
+    `update contact set deleted_at = $2, updated_at = $2 where id = $1`,
+    [id, now],
   )
 }
 
@@ -257,6 +321,7 @@ export async function createLog(input: {
   status?: 'planned' | 'done'
   assets?: { id: string; role?: AssetRole; amount?: number; unit?: string }[]
   quantities?: QuantityInput[]
+  attributes?: Record<string, unknown>
 }): Promise<string> {
   const pg = await db()
   const farm = await getFarmId()
@@ -264,9 +329,9 @@ export async function createLog(input: {
   const now = new Date().toISOString()
 
   await pg.query(
-    `insert into log (id, farm_id, type, timestamp, status, name, notes, created_by,
-                       created_at, updated_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    `insert into log (id, farm_id, type, timestamp, status, name, notes, attributes,
+                       created_by, created_at, updated_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
     [
       logId,
       farm,
@@ -275,6 +340,7 @@ export async function createLog(input: {
       input.status ?? 'done',
       input.name ?? null,
       input.notes ?? null,
+      JSON.stringify(input.attributes ?? {}),
       currentUserId,
       now,
       now,
@@ -341,6 +407,7 @@ export async function recentLogs(
   const { rows } = await pg.query<LogWithDetail>(
     `select l.id, l.type, l.timestamp, l.status, l.name, l.notes,
             l.created_by, l.created_at, l.edited_by, l.edited_at,
+            l.attributes->>'buyer' as buyer,
             (select group_concat(a.name, ', ' order by a.name)
                from log_asset la join asset a on a.id = la.asset_id
               where la.log_id = l.id and la.role = 'subject') as subjects,
@@ -1069,7 +1136,14 @@ export async function localIsEmpty(): Promise<boolean> {
   const { rows } = await pg.query<{ n: number }>(
     `select ((select count(*) from asset    where farm_id = (select id from active_farm)) +
              (select count(*) from log      where farm_id = (select id from active_farm)) +
-             (select count(*) from location where farm_id = (select id from active_farm))) as n`,
+             (select count(*) from location where farm_id = (select id from active_farm)) +
+             -- A buyer saved before signing in is a real record someone
+             -- typed. Left out, the device reads as empty, adoptFarmId()
+             -- deletes the placeholder farm out from under the contact row
+             -- (local FKs aren't enforced), and the orphan wedges every
+             -- table behind it on the next push — purgeOrphanOutbox can't
+             -- reach it either, since the farm it named is gone.
+             (select count(*) from contact  where farm_id = (select id from active_farm))) as n`,
   )
   return (rows[0]?.n ?? 0) === 0
 }
@@ -1128,7 +1202,7 @@ export async function adoptFarmId(
 export async function purgeOrphanOutbox(realFarmIds: string[]): Promise<void> {
   const pg = await db()
   const farms = await localFarms()
-  const byOwnColumn = ['asset', 'log', 'term', 'location', 'quantity', 'receipt']
+  const byOwnColumn = ['asset', 'log', 'term', 'location', 'contact', 'quantity', 'receipt']
   for (const farm of farms) {
     if (realFarmIds.includes(farm.id)) continue
     for (const tbl of byOwnColumn) {
@@ -1502,6 +1576,7 @@ export async function recordDisposition(input: {
   amount: number
   unit?: string
   value?: number
+  buyer?: string
   notes?: string
 }): Promise<string> {
   // Read off the unit rather than assumed: this was hardcoded to 'weight',
@@ -1523,6 +1598,10 @@ export async function recordDisposition(input: {
     notes: input.notes,
     assets: [{ id: input.lotId, role: 'subject' }],
     quantities,
+    // Kept on the log itself rather than the price quantity — a sale
+    // recorded before the price is known (or given away, no price at all)
+    // still has somewhere to keep the buyer's name.
+    attributes: input.buyer ? { buyer: input.buyer } : undefined,
   })
 }
 
@@ -1545,7 +1624,7 @@ export async function plannedLogs(): Promise<LogWithDetail[]> {
             (select group_concat(a.name, ', ' order by a.name)
                from log_asset la join asset a on a.id = la.asset_id
               where la.log_id = l.id and la.role = 'subject') as subjects,
-            null as summary
+            null as summary, null as buyer
        from log l
       where l.deleted_at is null and l.status = 'planned'
         and l.farm_id = (select id from active_farm)
@@ -1808,17 +1887,21 @@ export async function sellAsset(input: {
   buyer?: string
   notes?: string
 }): Promise<void> {
-  const name = (await getAsset(input.assetId))?.name ?? 'stock'
+  const asset = await getAsset(input.assetId)
   await createLog({
     type: 'sale',
-    name: `Sold ${name}`,
+    name: `Sold ${asset?.name ?? 'stock'}`,
     notes: input.notes,
     assets: [{ id: input.assetId, role: 'subject' }],
-    // Buyer rides in the price row's label, the same place createPurchase
-    // puts a supplier — one column, both directions of a transaction.
     quantities: input.price != null && input.price >= 0
-      ? [{ measure: 'price', value: input.price, unit: 'USD', label: input.buyer }]
+      ? [{ measure: 'price', value: input.price, unit: 'USD' }]
       : [],
+    // On the log rather than the price quantity's label, which is where
+    // this used to ride: with no price there is no quantity row at all, so
+    // a sale recorded before the cheque is worked out lost the buyer
+    // entirely. Same slot recordDisposition uses, so both ways of selling
+    // read back through one field (see LogWithDetail.buyer).
+    attributes: input.buyer ? { buyer: input.buyer } : undefined,
   })
   await archiveAsset(input.assetId, 'sold')
 }

@@ -61,6 +61,19 @@ create table if not exists location (
 );
 create index if not exists location_farm_parent on location (farm_id, parent_id);
 
+create table if not exists contact (
+  id         text primary key,
+  farm_id    text not null references farm(id),
+  name       text not null,
+  phone      text,
+  email      text,
+  notes      text,
+  created_at text not null,
+  updated_at text not null,
+  deleted_at text
+);
+create index if not exists contact_farm on contact (farm_id);
+
 create table if not exists asset (
   id             text primary key,
   farm_id        text not null references farm(id),
@@ -254,6 +267,19 @@ create trigger if not exists sync_location_update after update on location
   when (select applying from sync_control) = 0
 begin
   insert into sync_outbox (tbl, row_id, queued_at) values ('location', new.id, datetime('now'))
+  on conflict (tbl, row_id) do update set queued_at = datetime('now');
+end;
+
+create trigger if not exists sync_contact_insert after insert on contact
+  when (select applying from sync_control) = 0
+begin
+  insert into sync_outbox (tbl, row_id, queued_at) values ('contact', new.id, datetime('now'))
+  on conflict (tbl, row_id) do update set queued_at = datetime('now');
+end;
+create trigger if not exists sync_contact_update after update on contact
+  when (select applying from sync_control) = 0
+begin
+  insert into sync_outbox (tbl, row_id, queued_at) values ('contact', new.id, datetime('now'))
   on conflict (tbl, row_id) do update set queued_at = datetime('now');
 end;
 

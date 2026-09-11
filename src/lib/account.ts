@@ -22,7 +22,7 @@ import { csvField, makeZip, safeFileName, base64ToBytes } from './zip'
  * farm, and would only confuse someone opening the archive.
  */
 const EXPORTED = [
-  'farm', 'location', 'asset', 'log', 'log_asset', 'quantity', 'term', 'receipt',
+  'farm', 'location', 'contact', 'asset', 'log', 'log_asset', 'quantity', 'term', 'receipt',
 ] as const
 
 export interface ExportProgress { label: string; done: number; total: number }

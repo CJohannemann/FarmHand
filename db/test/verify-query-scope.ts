@@ -25,7 +25,7 @@ const check = (label: string, ok: boolean, detail = '') => {
 }
 
 /** Tables carrying a farm_id, so a read of one can belong to the wrong farm. */
-const SCOPED = ['asset', 'log', 'quantity', 'location', 'receipt', 'term']
+const SCOPED = ['asset', 'log', 'quantity', 'location', 'receipt', 'term', 'contact']
 
 /**
  * Every template literal in the file, with the function it sits in.

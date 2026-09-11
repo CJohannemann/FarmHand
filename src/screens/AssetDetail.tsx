@@ -3,11 +3,12 @@ import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
   archiveAsset, assetCosts, childAssets, createAsset, createHarvest, createLog,
-  createPurchase, findOrCreateExternalParent, getAsset, lastServiceHours, listTerms,
-  logsForAsset, lotBalances, offspringOf, sellAsset, updateAsset,
+  createPurchase, findOrCreateExternalParent, getAsset, lastServiceHours, listContacts,
+  listTerms, logsForAsset, lotBalances, offspringOf, sellAsset, updateAsset,
   weightHistory, type AssetEvent,
 } from '../db/queries'
 import type { Asset } from '../db/types'
+import { BuyerSelect, EMPTY_BUYER_DRAFT, resolveBuyer, type BuyerDraft } from './BuyerSelect'
 import { producibleMaterial } from '../lib/tiles'
 import { measureForUnit } from '../lib/units'
 import {
@@ -631,9 +632,11 @@ function CloseOutForm({ asset, producible, onDone, onClose }: {
   // Selling was the half of the ledger the app never recorded: it could say
   // what a pig cost and nothing about what it fetched.
   const [price, setPrice] = useState('')
-  const [buyer, setBuyer] = useState('')
+  const [buyerId, setBuyerId] = useState('')
+  const [buyerDraft, setBuyerDraft] = useState<BuyerDraft>(EMPTY_BUYER_DRAFT)
   const { data: materials } = useAsync(() => listTerms('material'), [])
   const { data: units } = useAsync(() => listTerms('unit'), [])
+  const { data: contacts } = useAsync(() => listContacts(), [])
 
   const save = async () => {
     if (reason === 'processed') {
@@ -645,7 +648,7 @@ function CloseOutForm({ asset, producible, onDone, onClose }: {
       await sellAsset({
         assetId: asset.id,
         price: hasNumericValue(price) ? Number(price) : undefined,
-        buyer: buyer.trim() || undefined,
+        buyer: await resolveBuyer(contacts ?? [], buyerId, buyerDraft),
       })
     } else {
       await archiveAsset(asset.id, reason)
@@ -680,11 +683,8 @@ function CloseOutForm({ asset, producible, onDone, onClose }: {
               Leave blank if you don't know yet — you can add it later.
             </small>
           </label>
-          <label className="field">
-            <span>Buyer (optional)</span>
-            <input value={buyer} onChange={(e) => setBuyer(e.target.value)}
-              placeholder="Sale barn" />
-          </label>
+          <BuyerSelect contacts={contacts ?? []} buyerId={buyerId} onBuyerId={setBuyerId}
+            draft={buyerDraft} onDraft={setBuyerDraft} />
         </>
       )}
 

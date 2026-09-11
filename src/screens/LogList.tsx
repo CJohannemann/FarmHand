@@ -127,6 +127,11 @@ export function LogList({
             {l.uses && <em>{l.uses}</em>}
           </div>
         )}
+        {/* Who bought it. The whole point of asking for a buyer is being
+            able to find them again — kept off the subject line above so a
+            sale still reads "what, then who" rather than running the two
+            together. */}
+        {l.buyer && <div className="log-sub">Sold to {l.buyer}</div>}
         {l.notes && <div className="log-note">{l.notes}</div>}
         {membersById && l.created_by && membersById[l.created_by] && (
           <div className="log-sub">

@@ -34,7 +34,7 @@ let db: number
  * and all — so migrate() below also needs an explicit, guarded `alter table`
  * for that case (see the edited_by/edited_at addition for the pattern).
  */
-const SCHEMA_VERSION = '4'
+const SCHEMA_VERSION = '5'
 const SCHEMA_VERSION_KEY = 'localSchema'
 
 async function open(): Promise<void> {

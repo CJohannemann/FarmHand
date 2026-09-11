@@ -70,7 +70,8 @@ psql -c "
   union all select 'logs',      count(*) from log      where farm_id = '$FARM_ID' and deleted_at is null
   union all select 'quantities',count(*) from quantity where farm_id = '$FARM_ID' and deleted_at is null
   union all select 'locations', count(*) from location where farm_id = '$FARM_ID' and deleted_at is null
-  union all select 'receipts',  count(*) from receipt  where farm_id = '$FARM_ID' and deleted_at is null;"
+  union all select 'receipts',  count(*) from receipt  where farm_id = '$FARM_ID' and deleted_at is null
+  union all select 'buyers',    count(*) from contact  where farm_id = '$FARM_ID' and deleted_at is null;"
 echo
 echo "Keeps: the farm itself, every login, and who belongs to it."
 echo "Keeps: your own added vocabulary (species, materials, units)."
@@ -102,6 +103,10 @@ delete from quantity where farm_id = '$FARM_ID';
 delete from log      where farm_id = '$FARM_ID';
 delete from asset    where farm_id = '$FARM_ID';
 delete from location where farm_id = '$FARM_ID';
+-- Buyers are personal data (names, phones, emails). The farm row itself is
+-- deliberately kept, so contact's on-delete-cascade never fires — without
+-- this line a "purge" leaves every buyer behind and still syncing.
+delete from contact  where farm_id = '$FARM_ID';
 commit;
 SQL
 else
@@ -114,6 +119,7 @@ update log      set deleted_at = now(), updated_at = now() where farm_id = '$FAR
 update quantity set deleted_at = now(), updated_at = now() where farm_id = '$FARM_ID' and deleted_at is null;
 update location set deleted_at = now(), updated_at = now() where farm_id = '$FARM_ID' and deleted_at is null;
 update receipt  set deleted_at = now(), updated_at = now() where farm_id = '$FARM_ID' and deleted_at is null;
+update contact  set deleted_at = now(), updated_at = now() where farm_id = '$FARM_ID' and deleted_at is null;
 commit;
 SQL
 fi
