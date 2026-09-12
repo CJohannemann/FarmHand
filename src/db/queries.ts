@@ -452,6 +452,51 @@ export async function recentLogs(
 }
 
 /**
+ * What the Schedule screen shows on days that have already been: chores
+ * that were done, and births that happened.
+ *
+ * Deliberately NOT every log. A farm logging daily would put something on
+ * every square of the month, which tells nobody anything and is already
+ * Records' job — this calendar means "things I scheduled, or that were
+ * coming", in both directions.
+ *
+ * 'activity' is exactly a chore: planTask() is the only thing in the app
+ * that writes that type, so `activity` + done identifies one without
+ * needing a marker on the row. 'birth' is written when an animal's
+ * birthday is set (see Stock/EditAsset/AssetDetail).
+ *
+ * Cancelled is left out on purpose. Dropping a chore says it was never
+ * done — see ChoreSheet's own confirm copy, which offers ticking it
+ * instead if it actually happened.
+ *
+ * Note a completed chore carries the date it was TICKED, not the date it
+ * was due: completeTask() overwrites the timestamp. That is the right day
+ * for a calendar of what took place, but it means the due date is gone by
+ * the time it gets here, so nothing downstream can say "done three days
+ * late".
+ */
+export async function loggedEvents(from: Date, to: Date): Promise<LogWithDetail[]> {
+  const pg = await db()
+  const { rows } = await pg.query<LogWithDetail>(
+    `select l.id, l.type, l.timestamp, l.status, l.name, l.notes,
+            l.created_by, l.created_at, l.edited_by, l.edited_at,
+            l.attributes->>'buyer' as buyer,
+            (select group_concat(a.name, ', ' order by a.name)
+               from log_asset la join asset a on a.id = la.asset_id
+              where la.log_id = l.id and la.role = 'subject') as subjects,
+            null as uses, null as summary, null as cost
+       from log l
+      where l.deleted_at is null and l.status = 'done'
+        and l.type in ('activity', 'birth')
+        and l.farm_id = (select id from active_farm)
+        and l.timestamp >= $1 and l.timestamp <= $2
+      order by l.timestamp asc`,
+    [from.toISOString(), to.toISOString()],
+  )
+  return rows
+}
+
+/**
  * Every year Records actually has something in, newest first — same
  * substr-of-timestamp grouping as receiptYears(), for the reason recentLogs()
  * now explains on its own `year` parameter. Lets Records offer a year picker

@@ -52,7 +52,7 @@ export function logLabel(type: string): string {
  * day the person logging it was having on the farm, not whatever day it
  * already is by the clock of someone checking Records from London.
  */
-function dayKeyOf(d: Date, timeZone: string): string {
+export function dayKeyOf(d: Date, timeZone: string): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
     .format(d)
 }

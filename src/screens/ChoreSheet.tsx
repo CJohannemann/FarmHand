@@ -30,15 +30,22 @@ function forInput(when: Date | string): string {
  * that showing the answer read-only beats a half-working picker.
  */
 export function ChoreSheet({
-  chore, onDone, onClose,
+  chore, initialDate, onDone, onClose,
 }: {
   /** Omitted for a brand-new chore. */
   chore?: LogWithDetail
+  /**
+   * What day a NEW chore starts on — the day tapped on the Schedule
+   * calendar. Ignored when editing, which takes its date from the chore
+   * itself. Without it, planning next month's worming from the calendar
+   * would open on today and make every chore start with a correction.
+   */
+  initialDate?: Date
   onDone: () => void
   onClose: () => void
 }) {
   const [name, setName] = useState(chore?.name ?? '')
-  const [when, setWhen] = useState(() => forInput(chore?.timestamp ?? new Date()))
+  const [when, setWhen] = useState(() => forInput(chore?.timestamp ?? initialDate ?? new Date()))
   const [asset, setAsset] = useState('')
   const [notes, setNotes] = useState(chore?.notes ?? '')
   const [dropping, setDropping] = useState(false)

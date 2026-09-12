@@ -24,6 +24,7 @@ import { LogList } from './LogList'
 import { EditLog } from './EditLog'
 import { TaskList, type BirthRow } from './TaskList'
 import { ChoreSheet } from './ChoreSheet'
+import { Schedule } from './Schedule'
 import { WeatherPlace, WeatherStrip } from './Weather'
 
 export function Today({ onGoToStock, onGoToAnimal }: {
@@ -36,6 +37,9 @@ export function Today({ onGoToStock, onGoToAnimal }: {
   // The chore whose details are open, if any — the same sheet the Plan
   // tile and "+ Add a chore" open empty.
   const [chore, setChore] = useState<LogWithDetail | null>(null)
+  // The month calendar, rendered in this screen's place rather than as a
+  // tab of its own — the same shape Stock uses to open an animal's profile.
+  const [schedule, setSchedule] = useState(false)
   // Today and yesterday only. This is the Today screen — a list still
   // showing last month's feeding because nothing has happened since is
   // answering a question nobody asked here. The whole history is one tap
@@ -81,6 +85,30 @@ export function Today({ onGoToStock, onGoToAnimal }: {
       ].filter(Boolean).join(' · '),
       late: b.days < 0,
     }))
+
+  // What the Schedule card says it is holding. Counted off what this screen
+  // has already loaded rather than a query of its own — the point is a
+  // reason to tap, not a second source of truth.
+  const monthEnd = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59)
+  const choresThisMonth = (tasks.data ?? [])
+    .filter((t) => new Date(t.timestamp) <= monthEnd).length
+  // dueRows is already only what upcomingBirth() lets through — inside its
+  // ~30-day lead window — so "still coming" is the whole count minus the
+  // overdue ones. No date arithmetic of its own to get wrong.
+  const birthsComing = dueRows.filter((b) => !b.late).length
+  const scheduleSummary = [
+    choresThisMonth > 0
+      ? `${choresThisMonth} ${choresThisMonth === 1 ? 'chore' : 'chores'}` : '',
+    birthsComing > 0
+      ? `${birthsComing} due to give birth` : '',
+  ].filter(Boolean).join(' · ')
+
+  if (schedule) {
+    return (
+      <Schedule onBack={() => { setSchedule(false); tasks.reload() }}
+        onOpenAnimal={onGoToAnimal} />
+    )
+  }
 
   return (
     <div className="screen">
@@ -137,6 +165,21 @@ export function Today({ onGoToStock, onGoToAnimal }: {
           fencing, worming, a vet appointment, anything that needs doing.
         </p>
       )}
+
+      {/* The whole month, one tap away. The list above is "what's next";
+          this is "what does the month look like" — a different question,
+          and one a list sorted soonest-first cannot answer. */}
+      <ul className="assetlist" style={{ marginTop: '0.75rem' }}>
+        <li>
+          <button className="assetrow" onClick={() => setSchedule(true)}>
+            <span className="asset-name">Schedule</span>
+            <span className="asset-meta">
+              {scheduleSummary || 'Nothing planned yet'}
+              <span className="chev">›</span>
+            </span>
+          </button>
+        </li>
+      </ul>
 
       <h2 className="section">Recent</h2>
       <LogList logs={recent.data ?? []} loading={recent.loading} onSelect={setEditing}

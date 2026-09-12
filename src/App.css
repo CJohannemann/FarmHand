@@ -587,6 +587,60 @@ button.task-drop {
   font-size: 0.85rem; cursor: pointer; padding: 0.3rem;
 }
 
+/* A day that has already been: done chores and births. No tick, nothing to
+   open, so the body is a span rather than a button and has to be told to
+   lay out like one. */
+.tasklist .task-body.static {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem;
+  text-align: left;
+}
+.tasklist li.done .task-name { color: var(--muted); }
+
+/* ------------------------------------------------------------- schedule */
+
+.monthnav {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: 1rem 0 0.5rem;
+}
+.monthnav-label { font-weight: 600; }
+button.monthnav-step {
+  border: 1px solid var(--line); border-radius: 0.5rem;
+  background: var(--card); color: var(--fg);
+  width: 2.2rem; height: 2.2rem; font-size: 1.1rem; line-height: 1;
+  cursor: pointer;
+}
+button.monthnav-step:active { background: var(--accent); color: #fff; }
+
+/* Seven columns, Sunday first. The weekday letters are the first seven
+   children and occupy row one, so the 1st only needs placing when it is
+   not a Sunday — see the gridColumnStart on the first square, the same
+   trick .tile-solo uses. */
+.monthgrid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.25rem;
+}
+.monthgrid-head {
+  text-align: center; font-size: 0.7rem; color: var(--muted);
+  padding-bottom: 0.2rem;
+}
+button.monthgrid-day {
+  display: flex; flex-direction: column; align-items: center; gap: 0.15rem;
+  aspect-ratio: 1; padding: 0.2rem 0;
+  border: 1px solid var(--line); border-radius: 0.5rem;
+  background: var(--card); color: var(--fg); font: inherit; cursor: pointer;
+}
+.monthgrid-num { font-size: 0.85rem; }
+.monthgrid-day.today .monthgrid-num { font-weight: 700; color: var(--accent); }
+.monthgrid-day.on { border-color: var(--accent); border-width: 2px; }
+.monthgrid-day.late .monthgrid-num { color: #a4571c; font-weight: 700; }
+
+.monthgrid-dots { display: flex; gap: 0.15rem; min-height: 0.4rem; }
+.monthgrid-dots .dot {
+  width: 0.32rem; height: 0.32rem; border-radius: 50%; display: block;
+}
+.monthgrid-dots .dot.chore { background: var(--accent); }
+.monthgrid-dots .dot.due { background: #a4571c; }
+.monthgrid-dots .dot.past { background: var(--muted); }
+
 .pair { display: flex; gap: 0.75rem; }
 .pair .field { flex: 1; }
 
