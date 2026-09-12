@@ -35,8 +35,8 @@ export function ChoreSheet({
   /** Omitted for a brand-new chore. */
   chore?: LogWithDetail
   /**
-   * What day a NEW chore starts on — the day tapped on the Schedule
-   * calendar. Ignored when editing, which takes its date from the chore
+   * What day a NEW chore starts on — the day tapped on the Calendar.
+   * Ignored when editing, which takes its date from the chore
    * itself. Without it, planning next month's worming from the calendar
    * would open on today and make every chore start with a correction.
    */

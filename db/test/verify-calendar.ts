@@ -1,4 +1,4 @@
-// The Schedule calendar: what lands on a day, and what must not.
+// The Calendar: what lands on a day, and what must not.
 //
 // The grid arithmetic is not what is worth guarding — a wrong offset is
 // visible the moment anyone opens the screen. What is worth guarding is
@@ -22,7 +22,7 @@
 // test: queries.ts talks to the wa-sqlite worker, which has no Node
 // equivalent. The statements below are copied from it.
 //
-//   npm run verify:schedule
+//   npm run verify:calendar
 import { DatabaseSync } from 'node:sqlite'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -135,7 +135,7 @@ check('and it is months away', due !== null && daysUntil(due) > 200,
 const soon = upcomingBirth({ species: 'Cattle', bredOn: bredOn.toISOString() })
 check('upcomingBirth() correctly hides it from Today\'s "due soon" list',
   soon === null)
-check('so Schedule must not be built on upcomingBirth — dueDate is the primitive',
+check('so Calendar must not be built on upcomingBirth — dueDate is the primitive',
   due !== null && soon === null)
 
 // A birth already within the lead window still works through both.
@@ -148,7 +148,7 @@ check('a cow due within the month appears in both',
 // ---------------------------------------------------------------------------
 console.log('\nA day key follows the farm, not the viewer')
 
-// dayKeyOf() from src/screens/LogList.tsx, which Schedule reuses.
+// dayKeyOf() from src/screens/LogList.tsx, which Calendar reuses.
 const dayKeyOf = (d: Date, timeZone: string) =>
   new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
     .format(d)

@@ -58,7 +58,7 @@ function shiftMonth(d: Date, delta: number): Date {
   return new Date(d.getFullYear(), d.getMonth() + delta, 1)
 }
 
-export function Schedule({ onBack, onOpenAnimal }: {
+export function Calendar({ onBack, onOpenAnimal }: {
   onBack: () => void
   /** Opens one animal's own profile on the Inventory tab. */
   onOpenAnimal: (assetId: string) => void
@@ -134,7 +134,7 @@ export function Schedule({ onBack, onOpenAnimal }: {
   return (
     <div className="screen">
       <button className="back" onClick={onBack}>‹ Back</button>
-      <h1>Schedule</h1>
+      <h1>Calendar</h1>
       <p className="tagline">What's coming, and what got done.</p>
 
       <div className="monthnav">

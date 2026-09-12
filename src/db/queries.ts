@@ -452,7 +452,7 @@ export async function recentLogs(
 }
 
 /**
- * What the Schedule screen shows on days that have already been: chores
+ * What the Calendar screen shows on days that have already been: chores
  * that were done, and births that happened.
  *
  * Deliberately NOT every log. A farm logging daily would put something on

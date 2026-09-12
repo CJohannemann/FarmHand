@@ -596,7 +596,7 @@ button.task-drop {
 }
 .tasklist li.done .task-name { color: var(--muted); }
 
-/* ------------------------------------------------------------- schedule */
+/* ------------------------------------------------------------- calendar */
 
 .monthnav {
   display: flex; align-items: center; justify-content: space-between;

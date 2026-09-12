@@ -24,7 +24,7 @@ import { LogList } from './LogList'
 import { EditLog } from './EditLog'
 import { TaskList, type BirthRow } from './TaskList'
 import { ChoreSheet } from './ChoreSheet'
-import { Schedule } from './Schedule'
+import { Calendar } from './Calendar'
 import { WeatherPlace, WeatherStrip } from './Weather'
 
 export function Today({ onGoToStock, onGoToAnimal }: {
@@ -39,7 +39,7 @@ export function Today({ onGoToStock, onGoToAnimal }: {
   const [chore, setChore] = useState<LogWithDetail | null>(null)
   // The month calendar, rendered in this screen's place rather than as a
   // tab of its own — the same shape Stock uses to open an animal's profile.
-  const [schedule, setSchedule] = useState(false)
+  const [calendar, setCalendar] = useState(false)
   // Today and yesterday only. This is the Today screen — a list still
   // showing last month's feeding because nothing has happened since is
   // answering a question nobody asked here. The whole history is one tap
@@ -86,7 +86,7 @@ export function Today({ onGoToStock, onGoToAnimal }: {
       late: b.days < 0,
     }))
 
-  // What the Schedule card says it is holding. Counted off what this screen
+  // What the Calendar card says it is holding. Counted off what this screen
   // has already loaded rather than a query of its own — the point is a
   // reason to tap, not a second source of truth.
   const monthEnd = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59)
@@ -96,16 +96,16 @@ export function Today({ onGoToStock, onGoToAnimal }: {
   // ~30-day lead window — so "still coming" is the whole count minus the
   // overdue ones. No date arithmetic of its own to get wrong.
   const birthsComing = dueRows.filter((b) => !b.late).length
-  const scheduleSummary = [
+  const calendarSummary = [
     choresThisMonth > 0
       ? `${choresThisMonth} ${choresThisMonth === 1 ? 'chore' : 'chores'}` : '',
     birthsComing > 0
       ? `${birthsComing} due to give birth` : '',
   ].filter(Boolean).join(' · ')
 
-  if (schedule) {
+  if (calendar) {
     return (
-      <Schedule onBack={() => { setSchedule(false); tasks.reload() }}
+      <Calendar onBack={() => { setCalendar(false); tasks.reload() }}
         onOpenAnimal={onGoToAnimal} />
     )
   }
@@ -171,10 +171,10 @@ export function Today({ onGoToStock, onGoToAnimal }: {
           and one a list sorted soonest-first cannot answer. */}
       <ul className="assetlist" style={{ marginTop: '0.75rem' }}>
         <li>
-          <button className="assetrow" onClick={() => setSchedule(true)}>
-            <span className="asset-name">Schedule</span>
+          <button className="assetrow" onClick={() => setCalendar(true)}>
+            <span className="asset-name">Calendar</span>
             <span className="asset-meta">
-              {scheduleSummary || 'Nothing planned yet'}
+              {calendarSummary || 'Nothing planned yet'}
               <span className="chev">›</span>
             </span>
           </button>
