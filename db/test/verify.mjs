@@ -103,7 +103,7 @@ check('meat yield', yield_.lb, 240)
 check('cost per lb', cost.input_cost / yield_.lb, 0.71)
 
 const [terms] = await q(`select count(*)::int n from term`)
-check('seeded vocabulary terms', terms.n, 133)
+check('seeded vocabulary terms', terms.n, 135)
 const [crops] = await q(`select count(*)::int n from term where vocabulary='crop'`)
 check('crop vocabulary present', crops.n, 43)
 

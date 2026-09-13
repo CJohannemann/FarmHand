@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
-  CATEGORIZABLE_MATERIALS, createHarvest, createLog, createPurchase, expectedBirths,
+  CATEGORIZABLE_MATERIALS, createHarvest, createLog, createPurchase, createTerm, expectedBirths,
   listAssets, listContacts, listTerms, lotBalances, lotIsUsedUp, plannedLogs, recentLogs,
   recordDisposition, setLotCategory, type LotBalance,
 } from '../db/queries'
@@ -18,7 +18,7 @@ import {
 import { dueLabel, pluralSpecies, upcomingBirth } from '../lib/husbandry'
 import { getFarmLocation } from '../lib/weather'
 import { Sheet } from './Sheet'
-import { AssetSelect } from './AssetSelect'
+import { AssetSelect, OTHER } from './AssetSelect'
 import { BuyerSelect, EMPTY_BUYER_DRAFT, resolveBuyer, type BuyerDraft } from './BuyerSelect'
 import { LogList } from './LogList'
 import { EditLog } from './EditLog'
@@ -742,8 +742,24 @@ interface PurchaseLine {
  * which is right for several animals bought as a batch but wrong here — a
  * $180 receipt of three differently-priced bags isn't three $60 bags.
  */
+/**
+ * Bought, but never held — so it must not land in Stores.
+ *
+ * Everything else on this form becomes a lot you draw down: a bag of feed,
+ * a bale, a box of parts. Wiring a barn and the electric bill leave nothing
+ * to draw down, and recorded as ordinary purchases they would sit in Stores
+ * forever as stock that can never be used up. `origin: 'service'` is the
+ * flag that already keeps a vet's call-out and an oil change out of there
+ * (see createPurchase), and it is the right one here.
+ */
+const SERVICE_MATERIALS = ['Improvements', 'Utilities']
+
 function BuyForm({ onDone, onClose }: FormProps) {
   const [material, setMaterial] = useState('Feed')
+  // "Other" reveals this, and typing here adds it to the farm's own list
+  // for next time — the same thing the Species picker does when you are
+  // raising something the seed list never guessed.
+  const [materialOther, setMaterialOther] = useState('')
   const [category, setCategory] = useState('')
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
@@ -755,28 +771,39 @@ function BuyForm({ onDone, onClose }: FormProps) {
   const { data: materials } = useAsync(() => listTerms('material'), [])
   const { data: units } = useAsync(() => listTerms('unit'), [])
   const { data: species } = useAsync(() => listTerms('species'), [])
-  const categorizable = CATEGORIZABLE_MATERIALS.includes(material)
+  const resolvedMaterial = material === OTHER ? materialOther.trim() : material
+  const categorizable = CATEGORIZABLE_MATERIALS.includes(resolvedMaterial)
 
   // The item being composed right now, if it's actually fillable. Cost is
   // the one field every purchase needs (see the hint below it), so a blank
   // or zero cost means there's nothing here worth adding — not a half-typed
   // row to carry along.
-  const draft = (): PurchaseLine | null => (Number(cost) > 0 ? {
-    material, category: categorizable && category ? category : '',
-    name: name.trim() || material, amount, unit, cost,
+  //
+  // A half-typed "Other" has no material yet, which is not a line either.
+  const draft = (): PurchaseLine | null => (Number(cost) > 0 && resolvedMaterial ? {
+    material: resolvedMaterial, category: categorizable && category ? category : '',
+    name: name.trim() || resolvedMaterial, amount, unit, cost,
   } : null)
 
   const addItem = () => {
     const d = draft()
     if (!d) return
     setItems([...items, d])
-    setMaterial('Feed'); setCategory(''); setName(''); setAmount(''); setUnit('lb'); setCost('')
+    setMaterial('Feed'); setMaterialOther(''); setCategory('')
+    setName(''); setAmount(''); setUnit('lb'); setCost('')
   }
   const removeItem = (i: number) => setItems(items.filter((_, x) => x !== i))
 
   const save = async () => {
     const d = draft()
     const all = d ? [...items, d] : items
+    // A material typed into "Other" joins the farm's own list, so it is
+    // there to pick next time rather than retyped every month.
+    for (const it of all) {
+      if (!(materials ?? []).includes(it.material)) {
+        await createTerm('material', it.material)
+      }
+    }
     for (const it of all) {
       await createPurchase({
         material: it.material,
@@ -787,6 +814,8 @@ function BuyForm({ onDone, onClose }: FormProps) {
         supplier: supplier.trim() || undefined,
         category: it.category || undefined,
         receipt: receipt ?? undefined,
+        // Work on the place, not stock — keeps it out of Stores.
+        origin: SERVICE_MATERIALS.includes(it.material) ? 'service' : undefined,
       })
     }
     onDone()
@@ -813,10 +842,34 @@ function BuyForm({ onDone, onClose }: FormProps) {
 
       <label className="field">
         <span>What kind?</span>
-        <select value={material} onChange={(e) => setMaterial(e.target.value)}>
+        <select value={material} onChange={(e) => {
+          setMaterial(e.target.value)
+          if (e.target.value !== OTHER) setMaterialOther('')
+        }}>
           {(materials ?? []).map((m) => <option key={m} value={m}>{m}</option>)}
+          <option value={OTHER}>Other — something else</option>
         </select>
       </label>
+
+      {material === OTHER && (
+        <label className="field">
+          <span>What is it?</span>
+          <input autoFocus value={materialOther}
+            onChange={(e) => setMaterialOther(e.target.value)}
+            placeholder="Twine" />
+          <small className="hint">
+            Saved to your farm's own list — pick it straight from What kind
+            next time.
+          </small>
+        </label>
+      )}
+
+      {SERVICE_MATERIALS.includes(resolvedMaterial) && (
+        <p className="hint">
+          Recorded as money spent, not as stock — this is work on the place
+          rather than something to draw down, so it stays out of Stores.
+        </p>
+      )}
       {categorizable && (
         <label className="field">
           <span>For (optional)</span>

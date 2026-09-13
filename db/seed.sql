@@ -41,7 +41,10 @@ insert into term (farm_id, vocabulary, name) values
   (null,'material','Meat'),        (null,'material','Eggs'),
   (null,'material','Milk'),        (null,'material','Honey'),
   (null,'material','Produce'),     (null,'material','Firewood'),
-  (null,'material','Canning supplies');
+  (null,'material','Canning supplies'),
+  -- Not stock, unlike everything above: work done on the place, and the
+  -- bill that follows it. See migrations/017 and db/seedLocal.ts.
+  (null,'material','Improvements'), (null,'material','Utilities');
 
 -- ----------------------------------------------- processing methods --
 

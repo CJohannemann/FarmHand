@@ -37,10 +37,17 @@ const BREEDS: [name: string, species: string][] = [
   ['Nigerian Dwarf', 'Goat'], ['Boer', 'Goat'],
 ]
 
+// Everything here is something a farm holds, except the last two. Running
+// electric to a barn had nowhere to go: it is not stock, it is work done on
+// the place. Improvements covers the lasting kind (wiring, fencing, a
+// concrete pad, a well); Utilities the bill that arrives every month after.
+// Kept apart on purpose — a capital improvement is depreciated where a
+// utility bill is simply an expense, and merging them merges two lines the
+// tax year keeps separate.
 const MATERIALS = [
   'Feed', 'Hay', 'Straw', 'Bedding', 'Seed', 'Fertilizer', 'Compost',
   'Medicine', 'Mineral', 'Fuel', 'Meat', 'Eggs', 'Milk', 'Honey', 'Produce',
-  'Firewood', 'Canning supplies', 'Parts',
+  'Firewood', 'Canning supplies', 'Parts', 'Improvements', 'Utilities',
 ]
 
 const METHODS = [
