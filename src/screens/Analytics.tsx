@@ -169,32 +169,50 @@ function Costs() {
               selected={idx} onSelect={setSelected} mode={mode} />
           )}
 
-          {anyIncome && earnedBy.length > 0 && (
+          {/* The breakdown follows the chips, same as the chart above it.
+              It used to show both sides whatever was selected, which read
+              as the screen ignoring you: picking Money in on a month with
+              no sales left a chart saying $0.00 sitting on top of a list
+              headed Money out, and nothing on screen answered the question
+              actually asked. Net shows both, because that is what net is.
+
+              An empty side now says so rather than silently vanishing —
+              "nothing sold this month" is a real answer, and it is the one
+              the missing list used to leave to guesswork. */}
+          {anyIncome && (mode === 'in' || mode === 'net') && (
             <>
               <h2 className="section">Money in</h2>
-              <div className="costbox">
-                {earnedBy.map((b) => (
-                  <div className="costrow" key={b.material}>
-                    <span>{b.material}</span>
-                    <span className="net-up">{formatMoney(b.total)}</span>
-                  </div>
-                ))}
-              </div>
+              {earnedBy.length === 0 ? (
+                <p className="hint">Nothing sold in this period.</p>
+              ) : (
+                <div className="costbox">
+                  {earnedBy.map((b) => (
+                    <div className="costrow" key={b.material}>
+                      <span>{b.material}</span>
+                      <span className="net-up">{formatMoney(b.total)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
 
-          <h2 className="section">{anyIncome ? 'Money out' : 'By category'}</h2>
-          {spentBy.length === 0 ? (
-            <p className="hint">Nothing bought in this period.</p>
-          ) : (
-            <div className="costbox">
-              {spentBy.map((b) => (
-                <div className="costrow" key={b.material}>
-                  <span>{b.material}</span>
-                  <span>{formatMoney(b.total)}</span>
+          {(!anyIncome || mode === 'out' || mode === 'net') && (
+            <>
+              <h2 className="section">{anyIncome ? 'Money out' : 'By category'}</h2>
+              {spentBy.length === 0 ? (
+                <p className="hint">Nothing bought in this period.</p>
+              ) : (
+                <div className="costbox">
+                  {spentBy.map((b) => (
+                    <div className="costrow" key={b.material}>
+                      <span>{b.material}</span>
+                      <span>{formatMoney(b.total)}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </>
       )}
