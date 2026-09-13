@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { formatQty } from '../lib/numeric'
 
-interface WeightPoint { timestamp: string; value: number; unit: string }
+interface SeriesPoint { timestamp: string; value: number; unit: string }
 
 const W = 320
 const H = 160
@@ -23,12 +23,25 @@ const dateFmt = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 
 /**
- * A single line, no legend — one series needs none, the "Growth" heading
+ * A single line, no legend — one series needs none, and the section heading
  * above it already says what's plotted. Colors ride the app's own --accent
  * token rather than a new palette: it is already contrast-checked for both
  * themes everywhere else in the app, so reusing it here adds no new risk.
+ *
+ * Nothing here is weight-specific; the unit rides the points. An animal's
+ * Growth and a flock's daily lay rate are the same picture, so they are the
+ * same component.
  */
-export function GrowthChart({ points }: { points: WeightPoint[] }) {
+export function LineChart({ points, caption = 'readings' }: {
+  points: SeriesPoint[]
+  /**
+   * What one point is, pluralised — "weigh-ins", "days". Only used for the
+   * resting caption. It said "weigh-ins" unconditionally while this was
+   * only ever a weight chart, which then read as "29 weigh-ins" under a
+   * flock's egg production.
+   */
+  caption?: string
+}) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [hover, setHover] = useState<number | null>(null)
 
@@ -113,7 +126,7 @@ export function GrowthChart({ points }: { points: WeightPoint[] }) {
       <p className="chart-tooltip">
         {hp
           ? <><strong>{formatQty(hp.value)} {hp.unit}</strong> · {dateFmt(hp.timestamp)}</>
-          : <>{points.length} weigh-ins · touch the line for a date</>}
+          : <>{points.length} {caption} · touch the line for a date</>}
       </p>
     </div>
   )

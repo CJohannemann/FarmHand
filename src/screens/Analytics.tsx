@@ -9,10 +9,11 @@ import { RangeSheet } from './RangeSheet'
 import { formatMoney } from '../lib/numeric'
 import { CostChart, type ChartMode } from './CostChart'
 import { Records } from './Records'
+import { Buyers } from './Buyers'
 import { Receipts } from './Receipts'
 import { PastStock } from './PastStock'
 
-type View = 'costs' | 'records' | 'receipts' | 'stock'
+type View = 'costs' | 'records' | 'receipts' | 'stock' | 'buyers'
 
 const VIEWS: { id: View; label: string; title: string; tagline: string }[] = [
   { id: 'costs', label: 'Costs', title: 'Analytics',
@@ -23,6 +24,8 @@ const VIEWS: { id: View; label: string; title: string; tagline: string }[] = [
     tagline: 'Filed by tax year. Export a year when it is time to do the books.' },
   { id: 'stock', label: 'Past stock', title: 'Past stock',
     tagline: 'What the farm ran each year, and what became of it.' },
+  { id: 'buyers', label: 'Buyers', title: 'Buyers',
+    tagline: 'Who you sell to, and how to reach them.' },
 ]
 
 /**
@@ -51,6 +54,7 @@ export function Analytics() {
       {view === 'records' ? <Records />
         : view === 'receipts' ? <Receipts />
         : view === 'stock' ? <PastStock />
+        : view === 'buyers' ? <Buyers />
         : <Costs />}
     </div>
   )

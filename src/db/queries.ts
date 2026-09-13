@@ -1159,6 +1159,38 @@ export async function weightHistory(assetId: string): Promise<
 }
 
 /**
+ * What this animal or flock has produced of one material, oldest first —
+ * every egg collection off a flock, every milking of a cow.
+ *
+ * Same shape as weightHistory above so both feed the same chart.
+ *
+ * The quantity is joined to the output lot through q.asset_id rather than
+ * through a second log_asset row. createHarvest stamps the lot's id on the
+ * quantity it writes, so this stays one row per collection — joining
+ * log_asset twice would multiply the row by the number of assets on the
+ * log, which is exactly how a $6,000 purchase once reported as $30,000.
+ */
+export async function productionHistory(
+  assetId: string, material: string,
+): Promise<{ timestamp: string; value: number; unit: string }[]> {
+  const pg = await db()
+  const { rows } = await pg.query<{ timestamp: string; value: number; unit: string }>(
+    `select l.timestamp, q.value as value, q.unit
+       from log l
+       join log_asset la on la.log_id = l.id
+            and la.asset_id = $1 and la.role = 'subject'
+       join quantity q on q.log_id = l.id and q.deleted_at is null
+       join asset out on out.id = q.asset_id
+            and out.attributes->>'material' = $2
+      where l.type = 'harvest' and l.deleted_at is null
+        and l.farm_id = (select id from active_farm)
+      order by l.timestamp asc`,
+    [assetId, material],
+  )
+  return rows
+}
+
+/**
  * The most recent past maintenance of one specific kind on this equipment,
  * with the hour-meter reading recorded at the time — what "how long since
  * the last oil change" is actually computed from. Matched by `kind` (the

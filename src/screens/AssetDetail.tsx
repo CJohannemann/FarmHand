@@ -1,15 +1,16 @@
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
   archiveAsset, assetCosts, childAssets, createAsset, createHarvest, createLog,
   createPurchase, findOrCreateExternalParent, getAsset, lastServiceHours, listContacts,
   listTerms, logsForAsset, lotBalances, offspringOf, sellAsset, updateAsset,
-  weightHistory, type AssetEvent,
+  productionHistory, weightHistory, type AssetEvent,
 } from '../db/queries'
 import type { Asset } from '../db/types'
 import { BuyerSelect, EMPTY_BUYER_DRAFT, resolveBuyer, type BuyerDraft } from './BuyerSelect'
-import { producibleMaterial } from '../lib/tiles'
+import { HARVESTS, producibleMaterial, type HarvestSpec } from '../lib/tiles'
+import { rollingDaily } from '../lib/production'
 import { measureForUnit } from '../lib/units'
 import {
   dueDate, dueLabel, daysUntil, gestationFor, gestationSentence, sexRole,
@@ -27,7 +28,18 @@ import { logDate, logTime } from './LogList'
 import { Sheet } from './Sheet'
 import { EditAsset } from './EditAsset'
 import { EditLog } from './EditLog'
-import { GrowthChart } from './GrowthChart'
+import { LineChart } from './LineChart'
+
+/**
+ * What a rate of this reads as — "eggs/day", "gal/day".
+ *
+ * Eggs are counted in `each`, which is right on a collection ("18 each")
+ * and nonsense as a rate ("2.6 each/day"), so a count says what it is
+ * counting instead. Everything measured in a real unit keeps it.
+ */
+function perDayUnit(spec: HarvestSpec): string {
+  return `${spec.measure === 'count' ? spec.label.toLowerCase() : spec.unit}/day`
+}
 
 const EVENT_LABELS: Record<string, string> = {
   harvest: 'Harvest', weight: 'Weight', input_application: 'Fed',
@@ -62,6 +74,24 @@ export function AssetDetail({
   const timeZone = useFarmTimezone()
   const costs = useAsync(() => assetCosts(asset.id), [asset.id])
   const weights = useAsync(() => weightHistory(asset.id), [asset.id])
+  // Reuses `material` above — null for a beef steer, and then nothing here
+  // is loaded or drawn.
+  const harvestSpec = material ? HARVESTS[material] : undefined
+  const production = useAsync(
+    () => (harvestSpec
+      ? productionHistory(asset.id, harvestSpec.material)
+      : Promise.resolve([])),
+    [asset.id, harvestSpec?.material],
+  )
+  // Smoothed to a daily rate — see rollingDaily for why the raw
+  // collections cannot be plotted as they are.
+  const productionRate = useMemo(
+    () => (harvestSpec
+      ? rollingDaily(production.data ?? [])
+        .map((p) => ({ ...p, unit: perDayUnit(harvestSpec) }))
+      : []),
+    [production.data, harvestSpec],
+  )
   const members = useAsync(
     () => (asset.type === 'group' ? childAssets(asset.id) : Promise.resolve([])),
     [asset.id, asset.type],
@@ -331,7 +361,18 @@ export function AssetDetail({
       {(weights.data ?? []).length >= 2 && (
         <>
           <h2 className="section">Growth</h2>
-          <GrowthChart points={weights.data!} />
+          <LineChart points={weights.data!} caption="weigh-ins" />
+        </>
+      )}
+
+      {/* Why this is here at all: a flock winding down — molt, shortening
+          days, age — is invisible in a list of collections and obvious as a
+          slope. Needs a full window plus a second day before there is a
+          line to draw, so a farm that started this week sees nothing yet. */}
+      {harvestSpec && productionRate.length >= 2 && (
+        <>
+          <h2 className="section">{harvestSpec.label}</h2>
+          <LineChart points={productionRate} caption="days" />
         </>
       )}
 
