@@ -1,6 +1,6 @@
 import {
-  axisLabel, money, niceMax, rangeLabel, ticksTo,
-  type Bucket, type Granularity,
+  axisLabel, money, niceMax, rangeDates, ticksTo,
+  type Bucket, type DateRange,
 } from '../lib/periods'
 import { formatMoney } from '../lib/numeric'
 
@@ -29,16 +29,16 @@ export type ChartMode = 'in' | 'out'
  * no separate single-series path to keep in step.
  */
 export function CostChart({
-  buckets, granularity, selected, onSelect, mode = 'out',
+  buckets, range, mode = 'out',
 }: {
   buckets: Bucket[]
-  granularity: Granularity
-  selected: number
-  onSelect: (i: number) => void
+  /** The window being read. Supplies the caption, and the bucket size. */
+  range: DateRange
   /** Which side of the ledger to draw. Never both at once — see the header. */
   mode?: ChartMode
 }) {
   if (buckets.length === 0) return null
+  const granularity = range.granularity
 
   // Suppressing a side is just zeroing its peak: the split below already
   // gives each side room in proportion to its own maximum, so a maximum of
@@ -58,13 +58,21 @@ export function CostChart({
   const plotH = H - PAD_T - PAD_B
   const earnedH = plotH * (earnedMax / span)
   const zeroY = PAD_T + earnedH
-  const gap = 4
+  // A flat gap of 4 was fine at twelve bars and ruinous at thirty — it ate
+  // 116px of a 272px plot and left 5px bars. Daily ranges need the room.
+  const gap = n > 20 ? 1 : 4
   const barW = Math.max((plotW - gap * (n - 1)) / n, 2)
   const x = (i: number) => PAD_L + i * (barW + gap)
   const barH = (v: number) => (v / span) * plotH
 
-  const labelEvery = n <= 6 ? 1 : n <= 10 ? 2 : 3
-  const active = buckets[selected]
+  // Aim at roughly five labels once the bars get dense; the fixed rungs
+  // below keep 6/10/12-bar charts spaced exactly as they always were.
+  const labelEvery = n <= 6 ? 1 : n <= 10 ? 2 : n <= 14 ? 3 : Math.ceil(n / 5)
+
+  // The range's own total, not a tapped bucket's. Bars are no longer
+  // selectable: the range IS the selection now, and two ways to choose a
+  // period on one screen is what made "Week" show three months of bars.
+  const total = buckets.reduce((t, b) => t + (mode === 'in' ? b.earned : b.spent), 0)
 
   return (
     <div className="costchart">
@@ -93,23 +101,17 @@ export function CostChart({
 
         {buckets.map((b, i) => {
           const bx = x(i)
-          const on = i === selected
           const inH = mode !== 'out' && b.earned > 0 ? Math.max(barH(b.earned), 2) : 0
           const outH = mode !== 'in' && b.spent > 0 ? Math.max(barH(b.spent), 2) : 0
           return (
-            // eslint-disable-next-line jsx-a11y/no-static-element-interactions
-            <g key={i} onClick={() => onSelect(i)} style={{ cursor: 'pointer' }}>
-              {/* Full-height hit area: the bars themselves are too thin to
-                  tap reliably with a thumb, and an empty period has none. */}
-              <rect x={bx - gap / 2} y={PAD_T} width={barW + gap} height={plotH}
-                fill="transparent" />
+            <g key={i}>
               {inH > 0 && (
                 <rect x={bx} y={zeroY - inH} width={barW} height={inH} rx={2}
-                  className={on ? 'bar-in on' : 'bar-in'} />
+                  className="bar-in" />
               )}
               {outH > 0 && (
                 <rect x={bx} y={zeroY} width={barW} height={outH} rx={2}
-                  className={on ? 'bar-out on' : 'bar-out'} />
+                  className="bar-out" />
               )}
               {i % labelEvery === 0 && (
                 <text x={bx + barW / 2} y={H - PAD_B + 16} textAnchor="middle"
@@ -122,15 +124,15 @@ export function CostChart({
         })}
       </svg>
 
-      {/* The only reading of the selected period on the screen — there used
-          to be a large headline above repeating this exact figure. Coloured
-          to match its own bars. The net lives in its own panel now, reached
-          from the third chip. */}
+      {/* The only reading of the period on the screen — there used to be a
+          large headline above repeating this exact figure. Coloured to match
+          its own bars. The net lives in its own panel now, reached from the
+          third chip. */}
       <p className="chart-tooltip">
         <strong className={mode === 'in' ? 'net-up' : 'net-down'}>
-          {formatMoney(mode === 'in' ? active.earned : active.spent)}
+          {formatMoney(total)}
         </strong>
-        {' · '}{rangeLabel(active.start, granularity)}
+        {' · '}{rangeDates(range)}
       </p>
     </div>
   )

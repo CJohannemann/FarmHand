@@ -8,7 +8,7 @@
 //
 //   npm run verify:chart-scale
 import {
-  bucketize, money, niceMax, ticksTo, type CostEntry,
+  bucketsIn, money, niceMax, resolveRange, ticksTo, type CostEntry,
 } from '../../src/lib/periods.ts'
 
 let fails = 0
@@ -112,7 +112,8 @@ const entries: CostEntry[] = [
   { timestamp: iso(now), value: 23501.26, material: 'Feed', kind: 'purchase' },
   { timestamp: iso(now), value: 500, material: 'Pig', kind: 'sale' },
 ]
-const buckets = bucketize(entries, 'month')
+// Twelve monthly buckets ending this month — what the screen opens on.
+const buckets = bucketsIn(entries, resolveRange('12m', entries))
 const last = buckets[buckets.length - 1]
 check('spend lands as spent', Math.abs(last.spent - 23501.26) < 0.01, String(last.spent))
 check('sale lands as earned', last.earned === 500, String(last.earned))

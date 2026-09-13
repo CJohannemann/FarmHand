@@ -1,22 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import { costEntries } from '../db/queries'
 import {
-  bucketize, bucketEnd, materialBreakdown, rangeLabel,
-  BUCKET_COUNT, type Bucket, type Granularity,
+  bucketsIn, materialBreakdown, rangeDates, resolveRange,
+  type Bucket, type DateRange, type RangeId,
 } from '../lib/periods'
+import { RangeSheet } from './RangeSheet'
 import { formatMoney } from '../lib/numeric'
 import { CostChart, type ChartMode } from './CostChart'
 import { Records } from './Records'
 import { Receipts } from './Receipts'
 import { PastStock } from './PastStock'
-
-const GRANULARITIES: { id: Granularity; label: string }[] = [
-  { id: 'week', label: 'Week' },
-  { id: 'month', label: 'Month' },
-  { id: 'quarter', label: 'Quarter' },
-  { id: 'year', label: 'Year' },
-]
 
 type View = 'costs' | 'records' | 'receipts' | 'stock'
 
@@ -76,13 +70,15 @@ const MODES: { id: Panel; label: string }[] = [
 ]
 
 function Costs() {
-  const [granularity, setGranularity] = useState<Granularity>('month')
+  // Last 12 months is the closest preset to what this screen used to open
+  // on (monthly bars, twelve of them), so it still looks familiar.
+  const [rangeId, setRangeId] = useState<RangeId>('12m')
+  const [pickingRange, setPickingRange] = useState(false)
   // One side at a time, never both together. Drawn on one chart they are
   // unreadable the moment they are lopsided — a month of $23,000 spent
   // against $500 earned leaves the income side two pixels tall — and money
   // out is what a farm looks at most, so it leads.
   const [mode, setMode] = useState<Panel>('out')
-  const [selected, setSelected] = useState(BUCKET_COUNT.month - 1)
   const { data: entries, loading } = useAsync(() => costEntries(), [])
 
   // A body-overflow toggle used to live here, to make WebKit re-measure the
@@ -92,28 +88,24 @@ function Costs() {
   // rather than the page, so there are no page-level scroll bounds left for
   // it to resync.
 
-  const buckets = useMemo(
-    () => bucketize(entries ?? [], granularity),
-    [entries, granularity],
+  // 'All time' reads the entries to find where the farm's records start, so
+  // the range depends on them as well as on the preset.
+  const range = useMemo(
+    () => resolveRange(rangeId, entries ?? []),
+    [rangeId, entries],
   )
+  const buckets = useMemo(() => bucketsIn(entries ?? [], range), [entries, range])
 
-  // A fresh granularity has its own bucket count — land back on "now".
-  useEffect(() => { setSelected(BUCKET_COUNT[granularity] - 1) }, [granularity])
-
-  const idx = Math.min(selected, buckets.length - 1)
-  const active = buckets[idx]
-
+  // Both breakdowns cover the whole range now, not a bucket someone tapped.
+  // materialBreakdown already took an explicit start/end, so this needed no
+  // change on its side.
   const spentBy = useMemo(
-    () => (entries && active
-      ? materialBreakdown(entries, active.start, bucketEnd(active.start, granularity), 'purchase')
-      : []),
-    [entries, active, granularity],
+    () => (entries ? materialBreakdown(entries, range.from, range.to, 'purchase') : []),
+    [entries, range],
   )
   const earnedBy = useMemo(
-    () => (entries && active
-      ? materialBreakdown(entries, active.start, bucketEnd(active.start, granularity), 'sale')
-      : []),
-    [entries, active, granularity],
+    () => (entries ? materialBreakdown(entries, range.from, range.to, 'sale') : []),
+    [entries, range],
   )
   // Only once something has actually sold. Until then this is a costs page,
   // and dressing it up with an empty income column and a net that is just
@@ -124,14 +116,25 @@ function Costs() {
 
   return (
     <>
-      <div className="chipwrap">
-        {GRANULARITIES.map((g) => (
-          <button key={g.id} className={granularity === g.id ? 'chip on' : 'chip'}
-            onClick={() => setGranularity(g.id)}>
-            {g.label}
+      {/* Names the window and its real dates. The chips this replaced set
+          how wide each bar was and never said what span was on screen, so
+          "Week" drew twelve weekly bars across three months. */}
+      <ul className="assetlist">
+        <li>
+          <button className="assetrow" onClick={() => setPickingRange(true)}>
+            <span className="asset-name">{range.label}</span>
+            <span className="asset-meta">
+              {rangeDates(range)}
+              <span className="chev">›</span>
+            </span>
           </button>
-        ))}
-      </div>
+        </li>
+      </ul>
+
+      {pickingRange && (
+        <RangeSheet current={rangeId} onPick={setRangeId}
+          onClose={() => setPickingRange(false)} />
+      )}
 
       {loading && <p className="muted">Loading…</p>}
 
@@ -141,7 +144,7 @@ function Costs() {
         </div>
       )}
 
-      {hasAny && active && (
+      {hasAny && buckets.length > 0 && (
         <>
           {/* No headline figure here any more. It restated, in large type,
               the number the chart's own caption already gives — and once the
@@ -163,10 +166,9 @@ function Costs() {
           )}
 
           {mode === 'net' ? (
-            <NetPanel active={active} granularity={granularity} />
+            <NetPanel buckets={buckets} range={range} />
           ) : (
-            <CostChart buckets={buckets} granularity={granularity}
-              selected={idx} onSelect={setSelected} mode={mode} />
+            <CostChart buckets={buckets} range={range} mode={mode} />
           )}
 
           {/* The breakdown follows the chips, same as the chart above it.
@@ -233,20 +235,25 @@ function Costs() {
  * and stays on whichever bar was last tapped over there — switching to Net
  * and back should not move you to a different month.
  */
-function NetPanel({ active, granularity }: { active: Bucket; granularity: Granularity }) {
-  const down = active.net < 0
+function NetPanel({ buckets, range }: { buckets: Bucket[]; range: DateRange }) {
+  // Summed over the whole range rather than read off one bucket — the range
+  // is what the screen is reading now.
+  const earned = buckets.reduce((t, b) => t + b.earned, 0)
+  const spent = buckets.reduce((t, b) => t + b.spent, 0)
+  const net = earned - spent
+  const down = net < 0
   return (
     <div className="netpanel">
       <span className={`netpanel-value ${down ? 'net-down' : 'net-up'}`}>
-        {down ? '−' : '+'}{formatMoney(Math.abs(active.net))}
+        {down ? '−' : '+'}{formatMoney(Math.abs(net))}
       </span>
       <span className="netpanel-label">
-        {down ? 'down' : 'up'} over {rangeLabel(active.start, granularity)}
+        {down ? 'down' : 'up'} over {rangeDates(range)}
       </span>
       <span className="netpanel-parts">
-        <strong className="net-up">{formatMoney(active.earned)}</strong> in
+        <strong className="net-up">{formatMoney(earned)}</strong> in
         {'  ·  '}
-        <strong className="net-down">{formatMoney(active.spent)}</strong> out
+        <strong className="net-down">{formatMoney(spent)}</strong> out
       </span>
     </div>
   )
