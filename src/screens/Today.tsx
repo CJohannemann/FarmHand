@@ -16,6 +16,7 @@ import {
   ignoreScrollOnNumberInput, onNumericChange,
 } from '../lib/numeric'
 import { dueLabel, pluralSpecies, upcomingBirth } from '../lib/husbandry'
+import { groupUnits } from '../lib/units'
 import { getFarmLocation } from '../lib/weather'
 import { Sheet } from './Sheet'
 import { AssetSelect, OTHER } from './AssetSelect'
@@ -898,7 +899,19 @@ function BuyForm({ onDone, onClose }: FormProps) {
         <label className="field">
           <span>Unit</span>
           <select value={unit} onChange={(e) => setUnit(e.target.value)}>
-            {(units ?? []).map((u) => <option key={u} value={u}>{u}</option>)}
+            {/* Sectioned, not alphabetical: the flat list filed "hour"
+
+                between "head" and "jar". See groupUnits. */}
+
+            {groupUnits(units ?? []).map((g) => (
+
+              <optgroup key={g.label} label={g.label}>
+
+                {g.units.map((u) => <option key={u} value={u}>{u}</option>)}
+
+              </optgroup>
+
+            ))}
           </select>
         </label>
       </div>

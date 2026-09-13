@@ -76,6 +76,8 @@ insert into term (farm_id, vocabulary, name) values
   (null,'unit','fl oz'),  (null,'unit','L'),     (null,'unit','mL'),
   (null,'unit','head'),   (null,'unit','dozen'), (null,'unit','each'),
   (null,'unit','bale'),   (null,'unit','bushel'),(null,'unit','jar'),
+  (null,'unit','ft'),     (null,'unit','in'),    (null,'unit','yd'),
+  (null,'unit','m'),
   (null,'unit','acre'),   (null,'unit','sq ft'), (null,'unit','ha'),
   (null,'unit','hour'),   (null,'unit','minute'),(null,'unit','USD');
 -- Crops, so plantings have something to be. Written to be idempotent and run

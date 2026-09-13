@@ -64,10 +64,13 @@ const SERVICE = [
   'Oil change', 'Filter', 'Tires', 'Repair', 'Inspection', 'Registration', 'Other',
 ]
 
+// Length was missing entirely — there was no way to record 30 ft of wire
+// run to a barn, or a roll of fencing. See groupUnits in src/lib/units.ts
+// for how these are sectioned in the picker.
 const UNITS = [
   'lb', 'oz', 'kg', 'g', 'ton', 'gal', 'qt', 'pt', 'fl oz', 'L', 'mL',
   'head', 'dozen', 'each', 'Square Bale', 'Round Bale', 'bushel', 'jar',
-  'acre', 'sq ft', 'ha', 'hour', 'minute', 'USD',
+  'ft', 'in', 'yd', 'm', 'acre', 'sq ft', 'ha', 'hour', 'minute', 'USD',
 ]
 
 const CROPS = [

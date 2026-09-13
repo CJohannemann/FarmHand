@@ -28,3 +28,48 @@ export function measureForUnit(unit: string | null | undefined): Measure {
   if (POURED.includes(u)) return 'volume'
   return 'weight'
 }
+
+/**
+ * How the unit picker is cut up — for display only, deliberately NOT the
+ * same thing as measureForUnit above.
+ *
+ * They look like they should be one table and must not be. `measure` is
+ * what gets stored on a quantity, and lotBalances only counts a withdrawal
+ * whose measure is weight, count or volume — so classifying feet as
+ * 'length' would quietly stop 50 ft drawn off a 200 ft roll from reducing
+ * the roll. Grouping a dropdown carries no such risk, so it can say what a
+ * foot really is while the stored measure stays what the balance queries
+ * understand.
+ *
+ * Ordered by how often a farm reaches for each, not alphabetically. The
+ * list was alphabetical, which filed "hour" between "head" and "jar" and
+ * read as no order at all.
+ */
+const UNIT_GROUPS: { label: string; units: string[] }[] = [
+  { label: 'Weight', units: ['lb', 'oz', 'kg', 'g', 'ton'] },
+  { label: 'Volume', units: ['gal', 'qt', 'pt', 'fl oz', 'L', 'mL', 'bushel'] },
+  { label: 'Count', units: ['each', 'head', 'dozen', 'Square Bale', 'Round Bale', 'jar'] },
+  { label: 'Length', units: ['ft', 'in', 'yd', 'm'] },
+  { label: 'Area', units: ['acre', 'sq ft', 'ha'] },
+  { label: 'Time', units: ['hour', 'minute'] },
+]
+
+/**
+ * The farm's units, in sections. Anything unrecognised — a unit typed in
+ * by the farm itself, or one added to the vocabulary after this table —
+ * falls to a trailing "Other" rather than being dropped, so a picker can
+ * never quietly stop offering something.
+ */
+export function groupUnits(units: string[]): { label: string; units: string[] }[] {
+  const out: { label: string; units: string[] }[] = []
+  const placed = new Set<string>()
+  for (const g of UNIT_GROUPS) {
+    const rows = g.units.filter((u) => units.includes(u))
+    if (rows.length === 0) continue
+    rows.forEach((u) => placed.add(u))
+    out.push({ label: g.label, units: rows })
+  }
+  const rest = units.filter((u) => !placed.has(u))
+  if (rest.length > 0) out.push({ label: 'Other', units: rest })
+  return out
+}

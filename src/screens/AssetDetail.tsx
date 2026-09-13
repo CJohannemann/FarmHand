@@ -11,7 +11,7 @@ import type { Asset } from '../db/types'
 import { BuyerSelect, EMPTY_BUYER_DRAFT, resolveBuyer, type BuyerDraft } from './BuyerSelect'
 import { HARVESTS, producibleMaterial, type HarvestSpec } from '../lib/tiles'
 import { rollingDaily } from '../lib/production'
-import { measureForUnit } from '../lib/units'
+import { groupUnits, measureForUnit } from '../lib/units'
 import {
   dueDate, dueLabel, daysUntil, gestationFor, gestationSentence, sexRole,
   OVERDUE_GRACE_DAYS, type Gestation,
@@ -641,7 +641,19 @@ function HarvestForm({ asset, endsSource, onDone, onClose }: {
         <label className="field">
           <span>Unit</span>
           <select value={unit} onChange={(e) => setUnit(e.target.value)}>
-            {(units ?? []).map((u) => <option key={u} value={u}>{u}</option>)}
+            {/* Sectioned, not alphabetical: the flat list filed "hour"
+
+                between "head" and "jar". See groupUnits. */}
+
+            {groupUnits(units ?? []).map((g) => (
+
+              <optgroup key={g.label} label={g.label}>
+
+                {g.units.map((u) => <option key={u} value={u}>{u}</option>)}
+
+              </optgroup>
+
+            ))}
           </select>
         </label>
       </div>
@@ -757,7 +769,19 @@ function CloseOutForm({ asset, producible, onDone, onClose }: {
             <label className="field">
               <span>Unit</span>
               <select value={unit} onChange={(e) => setUnit(e.target.value)}>
-                {(units ?? []).map((u) => <option key={u} value={u}>{u}</option>)}
+                {/* Sectioned, not alphabetical: the flat list filed "hour"
+
+                    between "head" and "jar". See groupUnits. */}
+
+                {groupUnits(units ?? []).map((g) => (
+
+                  <optgroup key={g.label} label={g.label}>
+
+                    {g.units.map((u) => <option key={u} value={u}>{u}</option>)}
+
+                  </optgroup>
+
+                ))}
               </select>
             </label>
           </div>
