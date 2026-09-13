@@ -8,7 +8,11 @@
 
 export type Granularity = 'week' | 'month' | 'quarter' | 'year'
 
-/** `kind` is the log type: a purchase is money out, a sale is money in. */
+/**
+ * `kind` is the direction, not the log type — 'purchase' is money out,
+ * 'sale' is money in. Both ways of selling (closing out an animal, and
+ * drawing stock out of Stores) arrive as 'sale'; see db/queries.ts.
+ */
 export interface CostEntry {
   timestamp: string
   value: number

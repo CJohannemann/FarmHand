@@ -1045,7 +1045,13 @@ export async function assetCosts(assetId: string): Promise<CostSummary> {
   }
 }
 
-/** `kind` is the log type: a purchase is money out, a sale is money in. */
+/**
+ * `kind` is the DIRECTION, not the log type: 'purchase' is money out,
+ * 'sale' is money in. Selling happens two ways — closing out an animal
+ * (a `sale` log) and drawing stock out of Stores (a `disposition`) — and
+ * both arrive here as 'sale', because a screen splitting money in from
+ * money out has no use for the difference.
+ */
 export interface CostEntry {
   timestamp: string
   value: number
@@ -1094,7 +1100,17 @@ export async function costEntries(): Promise<CostEntry[]> {
     //
     // Untagged lots still fall back to their bare material, animals to
     // their species, equipment to its kind.
-    `select l.timestamp, q.value as value, l.type as kind,
+    // Selling produce draws it out of Stores, which is a `disposition` and
+    // not a `sale` — so for as long as this counted log types, every dozen
+    // eggs sold off the Sell tile recorded its price and then went missing
+    // from Money in. Only the 'sold' ones: the same log type also covers
+    // eating it at home, giving it away, feeding it back and spoilage, none
+    // of which are income, and some of which carry a value all the same.
+    //
+    // Matched on the stored disposition kind, falling back to the display
+    // label for rows written before that was kept — see recordDisposition.
+    `select l.timestamp, q.value as value,
+            case when l.type = 'purchase' then 'purchase' else 'sale' end as kind,
             coalesce(
               (select case
                         when a.attributes->>'category' is not null
@@ -1113,8 +1129,11 @@ export async function costEntries(): Promise<CostEntry[]> {
        from log l
        join quantity q on q.log_id = l.id and q.deleted_at is null
             and q.measure = 'price'
-      where l.type in ('purchase', 'sale') and l.deleted_at is null
+      where l.deleted_at is null
         and l.farm_id = (select id from active_farm)
+        and (l.type in ('purchase', 'sale')
+             or (l.type = 'disposition'
+                 and coalesce(l.attributes->>'disposition', l.name) in ('sold', 'Sold')))
       order by l.timestamp asc`,
   )
   return rows
@@ -1643,10 +1662,18 @@ export async function recordDisposition(input: {
     notes: input.notes,
     assets: [{ id: input.lotId, role: 'subject' }],
     quantities,
-    // Kept on the log itself rather than the price quantity — a sale
-    // recorded before the price is known (or given away, no price at all)
-    // still has somewhere to keep the buyer's name.
-    attributes: input.buyer ? { buyer: input.buyer } : undefined,
+    attributes: {
+      // Which of the six this was, as a value rather than only as the
+      // display label in `name`. costEntries has to tell a sale from a
+      // giveaway to know whether the price on it is income, and matching
+      // the words on screen to do it means renaming a label quietly
+      // changes the farm's accounts.
+      disposition: input.kind,
+      // Kept on the log itself rather than the price quantity — a sale
+      // recorded before the price is known (or given away, no price at all)
+      // still has somewhere to keep the buyer's name.
+      ...(input.buyer ? { buyer: input.buyer } : {}),
+    },
   })
 }
 
