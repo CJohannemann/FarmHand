@@ -87,8 +87,16 @@ export function AssetDetail({
   // collections cannot be plotted as they are.
   const productionRate = useMemo(
     () => (harvestSpec
-      ? rollingDaily(production.data ?? [])
-        .map((p) => ({ ...p, unit: perDayUnit(harvestSpec) }))
+      ? rollingDaily(production.data ?? []).map((p) => ({
+        ...p,
+        // Whole eggs. A seven-day mean lands on 11.428571, and "11.43
+        // eggs/day" is a spurious precision nobody asked for — there is no
+        // such thing as a hundredth of an egg. Anything measured rather
+        // than counted keeps its decimals, because 2 gal/day and 2.4
+        // gal/day are genuinely different mornings.
+        value: harvestSpec.measure === 'count' ? Math.round(p.value) : p.value,
+        unit: perDayUnit(harvestSpec),
+      }))
       : []),
     [production.data, harvestSpec],
   )
@@ -172,6 +180,35 @@ export function AssetDetail({
         {birthEvent ? ` · Born ${shortDate(birthEvent.timestamp)}` : ''}
         {asset.status === 'archived' ? ` · ${asset.terminal_event ?? 'archived'}` : ''}
       </p>
+
+      {/* Charts lead the page.
+          A flock winding down — molt, shortening days, age — is invisible in
+          a list of collections and obvious as a slope, which is no use at
+          all sitting under a Cost panel that can run to thirty rows before
+          you reach it.
+
+          The line needs a full window plus a second day before there is
+          anything to draw, so a farm that started this week sees nothing
+          here yet. */}
+      {harvestSpec && productionRate.length >= 2 && (
+        <>
+          <h2 className="section">{harvestSpec.label}</h2>
+          {/* Says what the number is. Without this the chart reads "11
+              eggs/day" with no hint that it is a smoothed weekly rate
+              rather than a count of something. */}
+          <p className="hint">
+            {harvestSpec.label} a day, averaged over the week before each point.
+          </p>
+          <LineChart points={productionRate} caption="days" />
+        </>
+      )}
+
+      {(weights.data ?? []).length >= 2 && (
+        <>
+          <h2 className="section">Growth</h2>
+          <LineChart points={weights.data!} caption="weigh-ins" />
+        </>
+      )}
 
       {asset.type === 'group' && (members.data ?? []).length > 0 && (
         <>
@@ -357,24 +394,6 @@ export function AssetDetail({
           <button onClick={() => setSheet('pull')}>Pull it out</button>
         )}
       </div>
-
-      {(weights.data ?? []).length >= 2 && (
-        <>
-          <h2 className="section">Growth</h2>
-          <LineChart points={weights.data!} caption="weigh-ins" />
-        </>
-      )}
-
-      {/* Why this is here at all: a flock winding down — molt, shortening
-          days, age — is invisible in a list of collections and obvious as a
-          slope. Needs a full window plus a second day before there is a
-          line to draw, so a farm that started this week sees nothing yet. */}
-      {harvestSpec && productionRate.length >= 2 && (
-        <>
-          <h2 className="section">{harvestSpec.label}</h2>
-          <LineChart points={productionRate} caption="days" />
-        </>
-      )}
 
       <h2 className="section">History</h2>
       {events.loading && <p className="muted">Loading…</p>}
