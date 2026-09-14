@@ -972,5 +972,66 @@ check('the withdrawal against it is still on the record',
 check('and so is the animal it came from',
   q(`select count(*) n from asset where id = ? and deleted_at is null`, [chico])[0].n, 1)
 
+// ---------------------------------------------------------------------------
+// A flock's produce is one line, and counted produce actually counts.
+//
+// Two bugs reported off one screenshot. A flock laying daily writes a
+// harvest a day into the same ongoing lot, and the outputs query returned
+// every one of them — a wall of identical "Eggs, Spring layers" rows that
+// only gets worse with a real flock. Worse, that query filtered
+// `q.measure = 'weight'`, and eggs are recorded as 'count' (see HARVESTS),
+// so it matched nothing: every row read "—", the output total stayed 0,
+// and cost-per-unit was therefore null forever, leaving the page asking
+// for a harvest underneath a month of them.
+console.log('\nA laying flock rolls up to one output line')
+
+const layers = uuid()
+run(`insert into asset (id, farm_id, type, name, attributes, created_at, updated_at)
+     values (?,?,'group','Spring layers','{"species":"Chicken"}',?,?)`,
+  [layers, farm, now(), now()])
+const eggLot = uuid()
+run(`insert into asset (id, farm_id, type, name, attributes, created_at, updated_at)
+     values (?,?,'lot','Eggs, Spring layers',?,?,?)`,
+  [eggLot, farm, JSON.stringify({ origin: 'produced', material: 'Eggs' }), now(), now()])
+
+// Seven daily collections into the one ongoing lot, counted not weighed.
+for (const n of [11, 9, 14, 8, 12, 10, 13]) {
+  const h = uuid()
+  run(`insert into log (id, farm_id, type, timestamp, name, created_at, updated_at)
+       values (?,?,'harvest',?,'Eggs collected',?,?)`, [h, farm, now(), now(), now()])
+  run(`insert into log_asset (log_id,asset_id,role) values (?,?,'subject')`, [h, layers])
+  run(`insert into log_asset (log_id,asset_id,role) values (?,?,'output')`, [h, eggLot])
+  run(`insert into quantity (id,farm_id,log_id,measure,value,unit,asset_id,created_at,updated_at)
+       values (?,?,?,'count',?,'each',?,?,?)`,
+    [uuid(), farm, h, n, eggLot, now(), now()])
+}
+
+// assetCosts()'s outputs half, as queries.ts now runs it.
+const outs = q(
+  `select a.name, sum(q.value) as amount, q.unit
+     from log_asset subj
+     join log h on h.id = subj.log_id
+          and h.type = 'harvest' and h.deleted_at is null
+     join log_asset outp on outp.log_id = h.id and outp.role = 'output'
+     join asset a on a.id = outp.asset_id
+     left join quantity q on q.log_id = h.id
+          and q.asset_id = outp.asset_id and q.deleted_at is null
+          and q.measure <> 'price'
+    where subj.asset_id = ? and subj.role = 'subject'
+    group by a.id, a.name, q.unit
+    order by a.name`, [layers])
+
+check('seven collections are one row, not seven', outs.length, 1)
+check('carrying the whole yield', outs[0].amount, 77)
+// check() here compares numerically, so a string assertion is expressed as one.
+check('in the unit they were counted in', outs[0].unit === 'each' ? 1 : 0, 1)
+
+// The half that was silently broken: counted produce has to reach the
+// output total, or cost per unit can never be worked out.
+const outputAmount = outs.reduce((s, o) => s + (o.amount ?? 0), 0)
+check('counted produce reaches the output total', outputAmount, 77)
+check('so a cost per egg is actually computable',
+  outputAmount > 0 ? Math.round((7.70 / outputAmount) * 1000) / 1000 : null, 0.1)
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} FAILED\n`)
 process.exit(failures === 0 ? 0 : 1)

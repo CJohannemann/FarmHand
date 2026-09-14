@@ -998,9 +998,26 @@ export async function assetCosts(assetId: string): Promise<CostSummary> {
     [assetId],
   )
 
+  // One row per lot produced, not per collection.
+  //
+  // A flock laying daily writes a harvest a day into the same ongoing lot,
+  // and this used to return every one of them — thirty identical "Eggs,
+  // Spring layers" rows on a month-old flock, hundreds on a real one.
+  // Grouped, that is a single line saying how much came off it.
+  //
+  // Grouped by unit as well as lot so a gather recorded in dozens is never
+  // silently added to one recorded in eggs; two honest rows beat one wrong
+  // number. In practice a lot only ever has the one unit.
+  //
+  // `measure = 'weight'` used to be on that last join, which quietly broke
+  // everything counted rather than weighed: an egg harvest writes
+  // measure='count' (see HARVESTS), so the join matched nothing, every row
+  // read "—", outputAmount stayed 0, and costPerUnit was therefore null
+  // forever — the page still asking for a harvest under a month of them.
+  // Any measure but price is the yield; price is money, not produce.
   const outs = await pg.query<{ name: string; amount: number | null; unit: string | null }>(
     `select a.name,
-            q.value as amount,
+            sum(q.value) as amount,
             q.unit
        from log_asset subj
        join log h on h.id = subj.log_id
@@ -1008,8 +1025,11 @@ export async function assetCosts(assetId: string): Promise<CostSummary> {
        join log_asset outp on outp.log_id = h.id and outp.role = 'output'
        join asset a on a.id = outp.asset_id
        left join quantity q on q.log_id = h.id
-            and q.asset_id = outp.asset_id and q.measure = 'weight'
-      where subj.asset_id = $1 and subj.role = 'subject'`,
+            and q.asset_id = outp.asset_id and q.deleted_at is null
+            and q.measure <> 'price'
+      where subj.asset_id = $1 and subj.role = 'subject'
+      group by a.id, a.name, q.unit
+      order by a.name`,
     [assetId],
   )
 

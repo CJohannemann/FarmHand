@@ -328,8 +328,12 @@ export function AssetDetail({
               <Row key={i} label={o.name}
                 value={o.amount ? `${formatQty(o.amount)} ${o.unit ?? ''}` : '—'} />
             ))}
+            {/* "Cost per each" is what the raw unit would read as on
+                anything counted, so those say "unit" instead. Weighed and
+                poured produce keeps its own word — cost per lb, per gal. */}
             {c!.costPerUnit != null && (
-              <Row strong label={`Cost per ${c!.unit ?? 'unit'}`}
+              <Row strong
+                label={`Cost per ${c!.unit && c!.unit !== 'each' ? c!.unit : 'unit'}`}
                 value={formatMoney(c!.costPerUnit)} />
             )}
             {/* Only once it has actually sold. The margin is the whole point
@@ -345,7 +349,7 @@ export function AssetDetail({
           </div>
           {c!.costPerUnit == null && (c!.purchaseCost > 0 || c!.inputCost > 0) && (
             <p className="hint">
-              Record a harvest to see cost per pound.
+              Record a harvest to see what it cost per unit.
             </p>
           )}
         </>
