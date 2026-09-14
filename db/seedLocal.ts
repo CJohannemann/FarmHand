@@ -136,3 +136,45 @@ export async function seedLocalVocabulary(query: SeedQuery): Promise<void> {
   await insertTerms(query, 'unit', UNITS.map((name) => ({ name })), now)
   await insertTerms(query, 'crop', CROPS.map((name) => ({ name })), now)
 }
+
+/** The flat vocabularies, in one place so a top-up cannot drift from a seed. */
+const FLAT: [string, readonly string[]][] = [
+  ['material', MATERIALS], ['method', METHODS], ['treatment', TREATMENTS],
+  ['service', SERVICE], ['unit', UNITS], ['crop', CROPS], ['species', SPECIES],
+]
+
+/**
+ * Adds vocabulary an existing database is missing, and nothing else.
+ *
+ * Seeded terms are the farm's copy and never arrive over sync: pulling them
+ * would duplicate every species and breed, since both sides seed
+ * independently with different ids, so sync.ts filters system terms out of
+ * the pull on purpose. That left new vocabulary reaching brand-new installs
+ * only — "Improvements" was added to the seed list and to the server, and
+ * appeared on neither an existing phone nor the server's own clients.
+ *
+ * So an upgrade tops itself up. Guarded per row rather than batched like
+ * the seed above: this runs on every version bump against a database that
+ * already has ~150 of these, where correctness matters and the one-time
+ * cost does not. First boot still takes the fast path.
+ *
+ * Breeds are deliberately skipped. They hang off a species by parent_id, so
+ * topping one up means resolving the existing species' id first — worth
+ * doing when a breed actually needs adding, and not before.
+ */
+export async function topUpLocalVocabulary(query: SeedQuery): Promise<void> {
+  const now = new Date().toISOString()
+  for (const [vocabulary, names] of FLAT) {
+    for (const name of names) {
+      await query(
+        `insert into term (id, farm_id, vocabulary, name, created_at, updated_at)
+         select ?, null, ?, ?, ?, ?
+          where not exists (
+            select 1 from term
+             where vocabulary = ? and name = ? and farm_id is null
+          )`,
+        [crypto.randomUUID(), vocabulary, name, now, now, vocabulary, name],
+      )
+    }
+  }
+}

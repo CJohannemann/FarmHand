@@ -2,7 +2,7 @@ import SQLiteAsyncESMFactory from 'wa-sqlite/dist/wa-sqlite-async.mjs'
 import * as SQLite from 'wa-sqlite'
 import { IDBBatchAtomicVFS } from 'wa-sqlite/src/examples/IDBBatchAtomicVFS.js'
 import schemaSql from '../../db/schema.local.sql?raw'
-import { seedLocalVocabulary } from '../../db/seedLocal.ts'
+import { seedLocalVocabulary, topUpLocalVocabulary } from '../../db/seedLocal.ts'
 
 // The actual SQLite-in-WASM engine lives here, off the UI thread — a query
 // never blocks rendering. The main thread only ever holds a small postMessage
@@ -34,7 +34,7 @@ let db: number
  * and all — so migrate() below also needs an explicit, guarded `alter table`
  * for that case (see the edited_by/edited_at addition for the pattern).
  */
-const SCHEMA_VERSION = '5'
+const SCHEMA_VERSION = '6'
 const SCHEMA_VERSION_KEY = 'localSchema'
 
 async function open(): Promise<void> {
@@ -81,6 +81,15 @@ async function migrate(fresh: boolean): Promise<void> {
     )
     await runRaw(`insert into active_farm (id) values (?)`, [farmId])
     await seedLocalVocabulary((sql, params) => runRaw(sql, params as SQLiteCompatibleType[]))
+  } else {
+    // Vocabulary added since this device was set up. It cannot arrive over
+    // sync — system terms are seeded independently on both sides with
+    // different ids, so the pull filters them out (see sync.ts) — which
+    // meant a new material or unit reached brand-new installs and nothing
+    // else. Reported exactly that way: "Improvements" was in the seed list,
+    // in seed.sql and in a migration, and still absent from the picker on a
+    // phone that had been running for weeks.
+    await topUpLocalVocabulary((sql, params) => runRaw(sql, params as SQLiteCompatibleType[]))
   }
   // An existing device has a farm but no active_farm row, and every read is
   // scoped through that row — so without this the app upgrades into showing
