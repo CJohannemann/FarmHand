@@ -607,6 +607,8 @@ export async function createPurchase(input: {
 
 export interface PurchaseLot {
   assetId: string
+  /** What it is called in Stores, which is the lot's own name and not the log's. */
+  name: string
   material: string | null
   category: string | null
 }
@@ -620,8 +622,8 @@ export interface PurchaseLot {
  */
 export async function purchaseLotFor(logId: string): Promise<PurchaseLot | null> {
   const pg = await db()
-  const { rows } = await pg.query<{ id: string; attributes: Record<string, unknown> }>(
-    `select a.id, a.attributes
+  const { rows } = await pg.query<{ id: string; name: string; attributes: Record<string, unknown> }>(
+    `select a.id, a.name, a.attributes
        from log_asset la
        join asset a on a.id = la.asset_id
       where la.log_id = $1 and la.role = 'subject' and a.type = 'lot'
@@ -632,6 +634,7 @@ export async function purchaseLotFor(logId: string): Promise<PurchaseLot | null>
   if (!r) return null
   return {
     assetId: r.id,
+    name: r.name,
     material: (r.attributes?.material as string | undefined) ?? null,
     category: (r.attributes?.category as string | undefined) ?? null,
   }

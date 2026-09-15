@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import {
   addReceipt, CATEGORIZABLE_MATERIALS, deleteLog, listTerms, purchaseLotFor, quantitiesFor,
-  receiptsForLog, serviceCostFor, setLotCategory, setQuantity, stampEdited, updateLog,
+  receiptsForLog, serviceCostFor, setLotCategory, setQuantity, stampEdited,
+  updateAsset, updateLog,
 } from '../db/queries'
 import type { LogWithDetail, Measure } from '../db/types'
 import type { PreparedImage } from '../lib/image'
@@ -55,6 +56,17 @@ export function EditLog({
   const categorizable = Boolean(lot.data?.material && CATEGORIZABLE_MATERIALS.includes(lot.data.material))
   const [category, setCategory] = useState('')
   useEffect(() => { setCategory(lot.data?.category ?? '') }, [lot.data])
+
+  // The lot's own name, which is what Stores lists — not this log's.
+  //
+  // They are separate strings and always have been: createPurchase names
+  // the log "Bought X" and the lot plain "X". So renaming the record here
+  // renamed the history entry and left Stores showing whatever the lot was
+  // first called. Reported exactly that way — a purchase re-typed as
+  // "Cracked corn" that stayed "Feed" in Stores forever, with no way back
+  // to it short of deleting the purchase and starting again.
+  const [lotName, setLotName] = useState('')
+  useEffect(() => { setLotName(lot.data?.name ?? '') }, [lot.data])
 
   // A med visit or repair with no lot of its own charges a one-off service
   // lot instead, whose price lives on that lot's own purchase log rather
@@ -115,6 +127,10 @@ export function EditLog({
       await setLotCategory(lot.data.assetId, category || null)
       changed = true
     }
+    if (lot.data && lotName.trim() && lotName.trim() !== lot.data.name) {
+      await updateAsset(lot.data.assetId, { name: lotName.trim() })
+      changed = true
+    }
     if (serviceCost.data && hasNumericValue(cost)
         && Number(cost) !== serviceCost.data.value) {
       await setQuantity(serviceCost.data.purchaseLogId, 'price', Number(cost))
@@ -148,6 +164,21 @@ export function EditLog({
         <span>When</span>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       </label>
+
+      {/* Renaming the record above changes the history entry; this changes
+          what Stores calls it. Two fields because they are two names —
+          "Bought pig feed" reads right in a list of what happened and wrong
+          in a list of what is on hand. */}
+      {lot.data && (
+        <label className="field">
+          <span>Name in Stores</span>
+          <input value={lotName} onChange={(e) => setLotName(e.target.value)}
+            placeholder={lot.data.name} />
+          <small className="hint">
+            What this is called under Inventory {'>'} Stores.
+          </small>
+        </label>
+      )}
 
       {categorizable && (
         <label className="field">
