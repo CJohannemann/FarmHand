@@ -1,4 +1,5 @@
 import { db } from './client'
+import { renamedMemberName } from '../lib/grouping'
 import { measureForUnit } from '../lib/units'
 import type {
   Asset, AssetRole, AssetType, Contact, LogWithDetail, Measure, QuantityInput,
@@ -1597,6 +1598,31 @@ export async function deleteLog(id: string) {
         )
       }
     }
+  }
+}
+
+/**
+ * Rename a herd or flock, taking its never-named members with it.
+ *
+ * Whether a member is "just headcount" or an animal in its own right is
+ * read off its name — it still matches "<group> <n>" (see lib/grouping).
+ * So renaming the group alone broke that link for every member at once:
+ * they kept the old name, stopped matching, and all appeared on Inventory
+ * as loose stock nobody had added. Reported as "I renamed one and got a
+ * random 4 added to my inventory".
+ *
+ * Members someone actually named are left alone. Renaming the flock is not
+ * a licence to rename Henrietta.
+ */
+export async function renameGroup(groupId: string, newName: string): Promise<void> {
+  const group = await getAsset(groupId)
+  if (!group) return
+  const oldName = group.name
+  await updateAsset(groupId, { name: newName })
+  if (oldName === newName) return
+  for (const m of await childAssets(groupId)) {
+    const wanted = renamedMemberName(oldName, newName, m.name)
+    if (wanted) await updateAsset(m.id, { name: wanted })
   }
 }
 

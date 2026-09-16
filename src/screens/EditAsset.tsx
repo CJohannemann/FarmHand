@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import {
-  createLog, createTerm, deleteAsset, findOrCreateExternalParent, listTerms, updateAsset,
+  createLog, createTerm, deleteAsset, findOrCreateExternalParent, listTerms,
+  renameGroup, updateAsset,
 } from '../db/queries'
 import type { Asset } from '../db/types'
 import { EQUIPMENT_KINDS, FUEL_TYPES, SPECIES_PURPOSES, type Purpose } from '../lib/tiles'
@@ -146,10 +147,19 @@ export function EditAsset({
     }
     try {
       const groupChanged = asset.type === 'animal' && groupId !== (asset.parent_id ?? '')
-      await updateAsset(asset.id, {
-        name: name.trim(), attributes,
-        ...(groupChanged ? { parentId: groupId || null } : {}),
-      })
+      if (asset.type === 'group' && name.trim() !== asset.name) {
+        // Takes the flock's never-named members with it. Renaming the group
+        // on its own used to leave them behind under the old name, which is
+        // how a flock of four quietly became four loose animals on
+        // Inventory — see renameGroup.
+        await renameGroup(asset.id, name.trim())
+        await updateAsset(asset.id, { attributes })
+      } else {
+        await updateAsset(asset.id, {
+          name: name.trim(), attributes,
+          ...(groupChanged ? { parentId: groupId || null } : {}),
+        })
+      }
       if (birthday) {
         await createLog({
           type: 'birth', name: 'Born', timestamp: new Date(`${birthday}T12:00:00`),

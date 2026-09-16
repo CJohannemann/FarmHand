@@ -29,6 +29,7 @@ import { Sheet } from './Sheet'
 import { EditAsset } from './EditAsset'
 import { EditLog } from './EditLog'
 import { LineChart } from './LineChart'
+import { isUnnamedMember, memberLabel } from '../lib/grouping'
 
 /**
  * What a rate of this reads as — "eggs/day", "gal/day".
@@ -1179,28 +1180,10 @@ function AddMemberForm({ group, onDone, onClose }: {
   )
 }
 
-/** Group names are user text and land inside a RegExp — escape them. */
-function escapeRe(s: string) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-/** Whether a member still carries its auto-generated "<group> <n>" name — i.e. never named. */
-export function isUnnamedMember(group: Asset, member: Asset) {
-  return new RegExp(`^${escapeRe(group.name)} \\d+$`).test(member.name)
-}
-
-/**
- * "Cattle (beef) 3" tells a commercial operator nothing a tag number
- * wouldn't — and clutters a Members list that's otherwise all real names.
- * Only stands in for an auto-generated name that was never replaced with
- * one; a member someone actually named (Bessie, tag or no tag) keeps that
- * name, since that's the point of naming it.
- */
-function memberLabel(group: Asset, member: Asset): string {
-  const tag = member.attributes?.tag
-  if (tag && isUnnamedMember(group, member)) return String(tag)
-  return member.name
-}
+// isUnnamedMember / memberLabel now live in lib/grouping, so the rule can
+// be tested on its own — it turned out renaming a flock spilled every
+// member of it onto Inventory, and that is not a thing a screen test would
+// have caught.
 
 /**
  * Same reasoning as Treat and Bought for: a weight belongs to one animal,

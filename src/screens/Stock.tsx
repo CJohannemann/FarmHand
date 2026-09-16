@@ -19,7 +19,8 @@ import {
 import { OTHER } from './AssetSelect'
 import { ParentField } from './ParentField'
 import { Sheet } from './Sheet'
-import { AssetDetail, isUnnamedMember } from './AssetDetail'
+import { AssetDetail } from './AssetDetail'
+import { showsOwnCard } from '../lib/grouping'
 import { TakeFromLot } from './TakeFromLot'
 
 const GROUPS: { type: AssetType; heading: string; blurb: string }[] = [
@@ -137,20 +138,6 @@ function groupBySpecies(items: Asset[]): { species: string | null; items: Asset[
       if (b.species === null) return -1
       return a.species.localeCompare(b.species)
     })
-}
-
-/**
- * A member someone actually named — Bacon, or a pig moved in from standalone
- * — still reads as its own animal on Inventory; the group only takes over
- * for feeding and other batch logs. Only a member that never got past its
- * auto-generated "<group> N" placeholder stays folded into the group's own
- * card, since a card for "Cattle (beef) 3" would say nothing a headcount
- * doesn't already.
- */
-function showsOwnCard(assets: Asset[], a: Asset): boolean {
-  if (!a.parent_id) return true
-  const group = assets.find((g) => g.id === a.parent_id)
-  return !group || !isUnnamedMember(group, a)
 }
 
 export function Stock({ openAssetId, onOpened }: {
