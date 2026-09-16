@@ -29,7 +29,10 @@ const GROUPS: { type: AssetType; heading: string; blurb: string }[] = [
   // because each of them wants its own tag and its own sale price. Reported
   // twice by the same farm, which is a label problem rather than a bug.
   { type: 'animal',    heading: 'Animals',   blurb: 'One record each — own tag, weights, sale price' },
-  { type: 'group',     heading: 'Group',     blurb: 'One record for the whole batch, however many head' },
+  // "Herds & flocks", not "Group": a group is what the schema calls it, and
+  // nobody standing in a barn has ever called their layers a group. Same
+  // wording AssetSelect's own picker already uses.
+  { type: 'group',     heading: 'Herds & flocks', blurb: 'One record for the whole batch, however many head' },
   { type: 'planting',  heading: 'Plantings', blurb: 'A crop in a place, this season' },
   { type: 'lot',       heading: 'Stores',    blurb: 'Feed, seed, meat, produce' },
   { type: 'land',      heading: 'Land',      blurb: 'Fields, paddocks, beds' },
@@ -407,6 +410,7 @@ export function Stock({ openAssetId, onOpened }: {
         </p>
       )}
 
+      <div className="speciescards">
       {(() => {
         // An unnamed member of a group is reached through that group, not
         // listed flatly here too — a card for "Cattle (beef) 3" says
@@ -426,9 +430,15 @@ export function Stock({ openAssetId, onOpened }: {
         // One card per species, tapped to see that species' animals — a herd
         // of forty would otherwise bury everything else on this screen.
         return (
-          <section>
-            <h2 className="section">Animals</h2>
-            <div className="speciescards">
+          <>
+            {/* One grid, not two.
+                The species cards and the type cards below used to be two
+                separate grids with an "Animals" heading over the first, so
+                six cards laid out 2-1-2-1 and read as a wrapping bug rather
+                than as two sections. They are the same question anyway —
+                what have I got — and every card already says what it is, so
+                the heading was dividing them without telling anyone
+                anything. */}
               {/* A species disappears when its last animal does.
                   Inventory answers "what do I have"; a pig icon over
                   "0 animals" answers it wrongly, and a farm that sells
@@ -452,8 +462,7 @@ export function Stock({ openAssetId, onOpened }: {
                   </span>
                 </button>
               ))}
-            </div>
-          </section>
+          </>
         )
       })()}
 
@@ -504,12 +513,9 @@ export function Stock({ openAssetId, onOpened }: {
           )
         }).filter(Boolean)
         if (cards.length === 0) return null
-        return (
-          <section style={{ marginTop: '0.6rem' }}>
-            <div className="speciescards">{cards}</div>
-          </section>
-        )
+        return <>{cards}</>
       })()}
+      </div>
 
       {adding && (
         <AddForm onClose={() => setAdding(false)}
