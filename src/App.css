@@ -85,6 +85,12 @@ body.sheet-open { overflow: hidden; }
 
 h1 { margin: 0 0 0.15rem; font-size: 1.6rem; letter-spacing: -0.02em; }
 
+/* A title with one action sitting against it. Keeps the action out of the
+   vertical stack entirely, which is the whole point — a row of its own
+   pushed the real content down and competed with the line beneath it. */
+.screenhead { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+button.icon.searchbtn { font-size: 1.3rem; padding: 0.1rem 0.15rem; line-height: 1; }
+
 .tagline { margin: 0 0 1.5rem; color: var(--muted); font-size: 0.95rem; }
 
 .section {

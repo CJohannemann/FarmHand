@@ -120,25 +120,20 @@ export function Today({ onGoToStock, onGoToAnimal }: {
 
   return (
     <div className="screen">
-      <h1>Today</h1>
+      {/* Search rides on the title line rather than taking a row of its
+          own. As a full-width row it sat between the date and the farm's
+          place name — three stacked lines of left-aligned text competing
+          before the screen had said anything, which read as clutter. A
+          magnifier costs no height at all. */}
+      <div className="screenhead">
+        <h1>Today</h1>
+        <button className="icon searchbtn" aria-label="Search"
+          onClick={() => setSearching(true)}>🔍</button>
+      </div>
       <p className="tagline">
         {new Date().toLocaleDateString(undefined,
           { weekday: 'long', month: 'long', day: 'numeric' })}
       </p>
-      {/* First thing on the screen, above the weather: the one control
-          that does not care which tab a thing lives on. */}
-      <ul className="assetlist" style={{ marginBottom: '0.75rem' }}>
-        <li>
-          <button className="assetrow" onClick={() => setSearching(true)}>
-            <span className="asset-name">🔍 Search</span>
-            <span className="asset-meta">
-              Animals, stores, records
-              <span className="chev">›</span>
-            </span>
-          </button>
-        </li>
-      </ul>
-
       <WeatherPlace placeName={farmLoc.data?.placeName ?? null} />
 
       <WeatherStrip onLocationChanged={farmLoc.reload} />
