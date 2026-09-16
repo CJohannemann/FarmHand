@@ -114,10 +114,14 @@ button.icon.searchbtn { font-size: 1.3rem; padding: 0.1rem 0.15rem; line-height:
 /* One card per species on the Stock screen. Two columns rather than the
    four .tiles uses: these carry a name and a count, not a single word, and
    a species like "Honeybee" wraps badly in a quarter-width box. */
+/* The top margin is doing real work: this grid sits directly under
+   Inventory's "+ Add something", and with nothing between them the first
+   row of cards read as part of the button. */
 .speciescards {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 0.6rem;
+  margin-top: 1.25rem;
 }
 
 .speciescard {
