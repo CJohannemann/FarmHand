@@ -26,6 +26,7 @@ import { EditLog } from './EditLog'
 import { TaskList, type BirthRow } from './TaskList'
 import { ChoreSheet } from './ChoreSheet'
 import { Calendar } from './Calendar'
+import { Search } from './Search'
 import { WeatherPlace, WeatherStrip } from './Weather'
 
 export function Today({ onGoToStock, onGoToAnimal }: {
@@ -41,6 +42,8 @@ export function Today({ onGoToStock, onGoToAnimal }: {
   // The month calendar, rendered in this screen's place rather than as a
   // tab of its own — the same shape Stock uses to open an animal's profile.
   const [calendar, setCalendar] = useState(false)
+  // Search, rendered in this screen's place the same way.
+  const [searching, setSearching] = useState(false)
   // Today and yesterday only. This is the Today screen — a list still
   // showing last month's feeding because nothing has happened since is
   // answering a question nobody asked here. The whole history is one tap
@@ -104,6 +107,10 @@ export function Today({ onGoToStock, onGoToAnimal }: {
       ? `${birthsComing} due to give birth` : '',
   ].filter(Boolean).join(' · ')
 
+  if (searching) {
+    return <Search onBack={() => setSearching(false)} onOpenAsset={onGoToAnimal} />
+  }
+
   if (calendar) {
     return (
       <Calendar onBack={() => { setCalendar(false); tasks.reload() }}
@@ -118,6 +125,20 @@ export function Today({ onGoToStock, onGoToAnimal }: {
         {new Date().toLocaleDateString(undefined,
           { weekday: 'long', month: 'long', day: 'numeric' })}
       </p>
+      {/* First thing on the screen, above the weather: the one control
+          that does not care which tab a thing lives on. */}
+      <ul className="assetlist" style={{ marginBottom: '0.75rem' }}>
+        <li>
+          <button className="assetrow" onClick={() => setSearching(true)}>
+            <span className="asset-name">🔍 Search</span>
+            <span className="asset-meta">
+              Animals, stores, records
+              <span className="chev">›</span>
+            </span>
+          </button>
+        </li>
+      </ul>
+
       <WeatherPlace placeName={farmLoc.data?.placeName ?? null} />
 
       <WeatherStrip onLocationChanged={farmLoc.reload} />

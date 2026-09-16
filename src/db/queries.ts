@@ -496,6 +496,52 @@ export async function loggedEvents(from: Date, to: Date): Promise<LogWithDetail[
   return rows
 }
 
+export interface SearchableLog {
+  id: string
+  type: string
+  timestamp: string
+  name: string | null
+  /**
+   * Carried purely so tapping a result can open EditLog with the real
+   * note in the box. It reads exactly five fields — id, name, notes,
+   * timestamp, type — and saves whatever is in them, so handing it a row
+   * with notes faked to null would quietly erase the note on save.
+   */
+  notes: string | null
+  /** What it was about, so a record is findable by its animal's name. */
+  subjects: string | null
+}
+
+/**
+ * Just enough of every record for the search box to match against.
+ *
+ * Deliberately not recentLogs(): that carries four correlated subqueries
+ * per row to build the quantity summary, the input list and the service
+ * cost, none of which search looks at. This is the name, the subject and
+ * the date.
+ *
+ * Capped rather than unbounded. Search scores in memory, so a farm ten
+ * years deep in daily feedings should not have to hand its entire history
+ * over to answer one keystroke — and a match ranked five thousand rows
+ * down was never going to be read anyway.
+ */
+export async function searchableLogs(limit = 4000): Promise<SearchableLog[]> {
+  const pg = await db()
+  const { rows } = await pg.query<SearchableLog>(
+    `select l.id, l.type, l.timestamp, l.name, l.notes,
+            (select group_concat(a.name, ', ' order by a.name)
+               from log_asset la join asset a on a.id = la.asset_id
+              where la.log_id = l.id and la.role = 'subject') as subjects
+       from log l
+      where l.deleted_at is null and l.status <> 'planned'
+        and l.farm_id = (select id from active_farm)
+      order by l.timestamp desc
+      limit $1`,
+    [limit],
+  )
+  return rows
+}
+
 /**
  * Every year Records actually has something in, newest first — same
  * substr-of-timestamp grouping as receiptYears(), for the reason recentLogs()

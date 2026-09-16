@@ -135,6 +135,14 @@ h1 { margin: 0 0 0.15rem; font-size: 1.6rem; letter-spacing: -0.02em; }
 
 .muted { color: var(--muted); }
 
+/* Read by a screen reader, not shown. For a field whose purpose is already
+   obvious on screen — the search box under a heading saying Search — where
+   a visible label would just say it twice. */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
 .empty {
   padding: 1.5rem 1rem;
   border: 1px dashed var(--line);
