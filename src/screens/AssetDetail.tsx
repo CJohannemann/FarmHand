@@ -24,7 +24,7 @@ import { useMembersMap } from '../lib/members'
 import { useFarmTimezone } from '../lib/weather'
 import { AssetSelect, OTHER } from './AssetSelect'
 import { ParentField } from './ParentField'
-import { logDate, logTime } from './LogList'
+import { logDate, logDateTime, logTime } from './LogList'
 import { Sheet } from './Sheet'
 import { EditAsset } from './EditAsset'
 import { EditLog } from './EditLog'
@@ -426,7 +426,7 @@ export function AssetDetail({
               )}
               {e.edited_by && e.edited_at && membersById[e.edited_by] && (
                 <div className="log-sub">
-                  Edited by {membersById[e.edited_by]} · {logTime(e.edited_at, timeZone)}
+                  Edited by {membersById[e.edited_by]} · {logDateTime(e.edited_at, timeZone)}
                 </div>
               )}
               <time className="log-time">{logDate(e.timestamp, timeZone)}</time>

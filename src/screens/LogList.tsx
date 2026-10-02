@@ -41,6 +41,14 @@ export function logTime(timestamp: string, timeZone: string): string {
     .toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZone })
 }
 
+/** Date and time together, for an edit's byline: an edit can land days after
+ * the record it changes, so the time alone would read as the record's own day. */
+export function logDateTime(timestamp: string, timeZone: string): string {
+  return new Date(timestamp).toLocaleString(undefined, {
+    month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone,
+  })
+}
+
 /** What a row calls itself — the name given, or the type's own word. */
 export function logLabel(type: string): string {
   return LABELS[type] ?? type
@@ -140,7 +148,7 @@ export function LogList({
         )}
         {membersById && l.edited_by && l.edited_at && membersById[l.edited_by] && (
           <div className="log-sub">
-            Edited by {membersById[l.edited_by]} · {logTime(l.edited_at, timeZone)}
+            Edited by {membersById[l.edited_by]} · {logDateTime(l.edited_at, timeZone)}
           </div>
         )}
         {/* The day's heading already says when, when there is one. */}
