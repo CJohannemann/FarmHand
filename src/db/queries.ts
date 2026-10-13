@@ -1,6 +1,8 @@
 import { db } from './client'
 import { renamedMemberName } from '../lib/grouping'
 import { measureForUnit } from '../lib/units'
+import type { CostAnimal, CostLogRow, CostLot } from '../lib/saleCost'
+import { SALE_COST_ANIMALS_SQL, SALE_COST_LOGS_SQL, SALE_COST_LOTS_SQL } from './saleCostSql'
 import type {
   Asset, AssetRole, AssetType, Contact, LogWithDetail, Measure, QuantityInput,
 } from './types'
@@ -1112,6 +1114,43 @@ export async function assetCosts(assetId: string): Promise<CostSummary> {
     outputAmount,
     unit,
     costPerUnit: outputAmount > 0 ? (purchaseCost + inputCost) / outputAmount : null,
+  }
+}
+
+// ------------------------------------------------------------ what to charge
+
+export interface SaleCostInputs {
+  animals: CostAnimal[]
+  rows: CostLogRow[]
+  lots: CostLot[]
+}
+
+/** The raw material for saleCosts() — see lib/saleCost.ts. */
+export async function saleCostInputs(species: string): Promise<SaleCostInputs> {
+  const pg = await db()
+  const animals = await pg.query<{
+    id: string; name: string; parent_id: string | null; arrived: string; left_at: string | null
+  }>(SALE_COST_ANIMALS_SQL, [species])
+  const rows = await pg.query<{
+    log_id: string; type: CostLogRow['type']; timestamp: string; asset_id: string
+    role: string; amount: number | null; price: number | null
+  }>(SALE_COST_LOGS_SQL, [species])
+  const lots = await pg.query<{
+    id: string; name: string; material: string | null; category: string | null
+    purchased_at: string; price: number | null; bought: number | null
+  }>(SALE_COST_LOTS_SQL, [species])
+  return {
+    animals: animals.rows.map((r) => ({
+      id: r.id, name: r.name, parentId: r.parent_id, arrived: r.arrived, left: r.left_at,
+    })),
+    rows: rows.rows.map((r) => ({
+      logId: r.log_id, type: r.type, timestamp: r.timestamp, assetId: r.asset_id,
+      role: r.role, amount: r.amount, price: r.price,
+    })),
+    lots: lots.rows.map((r) => ({
+      id: r.id, name: r.name, material: r.material, category: r.category,
+      purchasedAt: r.purchased_at, price: r.price, bought: r.bought,
+    })),
   }
 }
 

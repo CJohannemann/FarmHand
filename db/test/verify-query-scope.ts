@@ -15,8 +15,10 @@
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 
-const src = fs.readFileSync(
-  fileURLToPath(new URL('../../src/db/queries.ts', import.meta.url)), 'utf8')
+// saleCostSql.ts holds statements queries.ts runs, split out only so a test
+// can import them — they are held to the same rule.
+const src = ['queries.ts', 'saleCostSql.ts'].map((f) => fs.readFileSync(
+  fileURLToPath(new URL('../../src/db/' + f, import.meta.url)), 'utf8')).join('\n')
 
 let fails = 0
 const check = (label: string, ok: boolean, detail = '') => {

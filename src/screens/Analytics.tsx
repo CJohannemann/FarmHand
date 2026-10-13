@@ -12,14 +12,17 @@ import { Records } from './Records'
 import { Buyers } from './Buyers'
 import { Receipts } from './Receipts'
 import { PastStock } from './PastStock'
+import { SaleCost } from './SaleCost'
 
-type View = 'costs' | 'records' | 'receipts' | 'stock' | 'buyers'
+type View = 'costs' | 'records' | 'pricing' | 'receipts' | 'stock' | 'buyers'
 
 const VIEWS: { id: View; label: string; title: string; tagline: string }[] = [
   { id: 'costs', label: 'Costs', title: 'Analytics',
     tagline: 'What your farm has cost you, by period.' },
   { id: 'records', label: 'Records', title: 'Records',
     tagline: 'Everything, newest first. Tap one to fix it.' },
+  { id: 'pricing', label: 'What to charge', title: 'What to charge',
+    tagline: 'What the animals you are selling cost you to raise.' },
   { id: 'receipts', label: 'Receipts', title: 'Receipts',
     tagline: 'Filed by tax year. Export a year when it is time to do the books.' },
   { id: 'stock', label: 'Past stock', title: 'Past stock',
@@ -52,6 +55,7 @@ export function Analytics() {
       </div>
 
       {view === 'records' ? <Records />
+        : view === 'pricing' ? <SaleCost />
         : view === 'receipts' ? <Receipts />
         : view === 'stock' ? <PastStock />
         : view === 'buyers' ? <Buyers />
