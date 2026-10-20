@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import {
   formatPlaceName, getClimate, getForecast, getFarmLocation,
-  reverseGeocodePlaceName, searchPlace, setFarmLocation,
+  reverseGeocodePlaceName, searchPlace, setFarmLocation, useFarmTimezone,
   type Place,
 } from '../lib/weather'
-import type { Warning } from '../lib/weatherRules'
+import { staleCurrentAt, type Warning } from '../lib/weatherRules'
 import { weatherIcon, colorForTemp } from '../lib/weatherIcons'
 import { Sheet } from './Sheet'
 
@@ -37,6 +37,21 @@ export function WeatherStrip({ onLocationChanged }: { onLocationChanged?: () => 
   const [open, setOpen] = useState(false)
   const loc = useAsync(() => getFarmLocation(), [])
   const fc = useAsync(() => getForecast(), [loc.data?.latitude])
+  const timeZone = useFarmTimezone()
+  const { reload } = fc
+
+  // The strip lives on Today, which a phone keeps open for hours: left in
+  // the background at lunch, it used to come back at dusk still showing
+  // lunchtime's temperature as now. Re-asked on coming back to the app and
+  // every quarter hour while it is on screen; getForecast() only goes to
+  // the network once its cached copy is past its TTL, so this costs nothing
+  // between those.
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') reload() }
+    document.addEventListener('visibilitychange', onVisible)
+    const timer = setInterval(onVisible, 15 * 60 * 1000)
+    return () => { document.removeEventListener('visibilitychange', onVisible); clearInterval(timer) }
+  }, [reload])
 
   if (loc.loading) return null
 
@@ -54,6 +69,9 @@ export function WeatherStrip({ onLocationChanged }: { onLocationChanged?: () => 
 
   const f = fc.data
   const soon = (f?.warnings ?? []).slice(0, 1)
+  // Still shown when a refresh could not get through — an old number beats
+  // a dash with no signal — but with the time it was taken.
+  const staleAt = f?.currentF != null ? staleCurrentAt(f, Date.now()) : null
 
   return (
     <>
@@ -63,6 +81,11 @@ export function WeatherStrip({ onLocationChanged }: { onLocationChanged?: () => 
         <span className="wx-now">
           {f?.currentF != null ? `${Math.round(f.currentF)}°` : '—'}
         </span>
+        {staleAt && (
+          <span className="wx-age">
+            at {staleAt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZone })}
+          </span>
+        )}
         <span className="wx-headline">
           {soon.length
             ? soon[0].headline

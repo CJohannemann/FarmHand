@@ -48,14 +48,17 @@ const NET_TIMEOUT_MS = 10_000
  * afternoon that has since dropped to 38° is worse than no number at all,
  * because the caller has a live fallback to reach for instead.
  */
-const OBS_MAX_AGE_MS = 2 * 60 * 60 * 1000
+const OBS_MAX_AGE_MS = 90 * 60 * 1000
 /** Ten years of daily readings is a far bigger response, and cached for half a year. */
 const ARCHIVE_TIMEOUT_MS = 30_000
 
 const timed = (url: string, signal: AbortSignal = AbortSignal.timeout(NET_TIMEOUT_MS)) =>
   fetch(url, { signal })
 
-const FORECAST_TTL_MS = 60 * 60 * 1000        // an hour
+// Short because the forecast carries the current temperature, the biggest
+// number on Today: at an hour, plus a station reading that can itself be an
+// hour old, "now" could be most of an afternoon behind.
+const FORECAST_TTL_MS = 15 * 60 * 1000        // a quarter hour
 const CLIMATE_TTL_MS = 180 * 24 * 60 * 60 * 1000  // half a year; it barely moves
 
 export interface FarmLocation {
@@ -83,6 +86,9 @@ export interface Forecast {
   fetchedAt: string
   currentF: number | null
   currentCode: number | null
+  /** When the current reading was taken — the station's own observation
+   * time for NWS. Missing on forecasts cached before it was kept. */
+  currentAt?: string | null
   days: DayForecast[]
   warnings: Warning[]
   /** Which provider actually answered — shown on the sheet so "why does this differ from X" has an answer. */
@@ -93,6 +99,8 @@ export interface Forecast {
 interface CurrentConditions {
   tempF: number
   code?: number
+  /** When it was observed. */
+  at: string
 }
 
 export interface Climate {
@@ -304,6 +312,7 @@ async function fetchOpenMeteoForecast(loc: FarmLocation): Promise<Forecast | nul
       fetchedAt: new Date().toISOString(),
       currentF: j.current?.temperature_2m ?? null,
       currentCode: j.current?.weather_code ?? null,
+      currentAt: new Date().toISOString(),
       days,
       warnings: farmWarnings(days),
       source: 'open-meteo',
@@ -373,6 +382,7 @@ async function fetchNwsForecast(loc: FarmLocation): Promise<Forecast | null> {
       fetchedAt: new Date().toISOString(),
       currentF: current?.tempF ?? null,
       currentCode: current?.code ?? null,
+      currentAt: current?.at ?? null,
       days,
       warnings: farmWarnings(days),
       source: 'nws',
@@ -408,7 +418,7 @@ async function fetchNwsCurrentConditions(
     if (c == null || !Number.isFinite(c)) return null
     const age = Date.now() - new Date(obs.timestamp).getTime()
     if (!Number.isFinite(age) || age > OBS_MAX_AGE_MS) return null
-    return { tempF: c * 9 / 5 + 32, code: nwsCodeFromText(obs.textDescription) }
+    return { tempF: c * 9 / 5 + 32, code: nwsCodeFromText(obs.textDescription), at: obs.timestamp }
   } catch {
     return null
   }
@@ -427,7 +437,7 @@ async function fetchOpenMeteoCurrent(loc: FarmLocation): Promise<CurrentConditio
     const cur = (await res.json()).current
     const f = cur?.temperature_2m
     if (f == null || !Number.isFinite(f)) return null
-    return { tempF: f, code: cur.weather_code ?? undefined }
+    return { tempF: f, code: cur.weather_code ?? undefined, at: new Date().toISOString() }
   } catch {
     return null
   }

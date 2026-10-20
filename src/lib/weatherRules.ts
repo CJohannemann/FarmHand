@@ -174,3 +174,24 @@ export function frostDates(
     seasonDays: spring !== null && fall !== null ? fall - spring : null,
   }
 }
+
+/**
+ * How long a current temperature may be shown as just "now". Past this the
+ * strip still shows it — an old reading beats a dash in a barn with no
+ * signal — but says when it was taken, so 68° from lunchtime is not read as
+ * the temperature at dusk.
+ */
+export const CURRENT_FRESH_MS = 90 * 60 * 1000
+
+/**
+ * When a current reading is too old to pass as now, the time it was taken;
+ * otherwise null. Falls back to when the forecast was fetched for one cached
+ * before the reading's own time was kept.
+ */
+export function staleCurrentAt(
+  f: { fetchedAt: string; currentAt?: string | null }, now: number,
+): Date | null {
+  const at = new Date(f.currentAt ?? f.fetchedAt)
+  if (!Number.isFinite(at.getTime())) return null
+  return now - at.getTime() > CURRENT_FRESH_MS ? at : null
+}

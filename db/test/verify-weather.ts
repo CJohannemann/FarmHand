@@ -5,6 +5,7 @@
 //   npm run verify:weather
 import {
   farmWarnings, frostDates, hardinessZone, type DayForecast,
+  staleCurrentAt,
 } from '../../src/lib/weatherRules.ts'
 
 let fails = 0
@@ -79,6 +80,18 @@ check('season is about six months',
 const none = frostDates([{ date: '2025-06-01', minF: 70 }])
 check('a frost-free climate reports nothing rather than lying',
   none.lastSpring === null && none.seasonDays === null)
+
+console.log('\nAn old current temperature says when it was taken')
+const NOW = Date.parse('2026-10-19T18:00:00.000Z')
+check('a reading from 20 minutes ago is just "now"',
+  staleCurrentAt({ fetchedAt: '2026-10-19T17:45:00.000Z', currentAt: '2026-10-19T17:40:00.000Z' }, NOW) === null)
+const lunch = staleCurrentAt({ fetchedAt: '2026-10-19T17:50:00.000Z', currentAt: '2026-10-19T12:00:00.000Z' }, NOW)
+check('a station reading from lunchtime is flagged, even if fetched just now',
+  lunch?.toISOString() === '2026-10-19T12:00:00.000Z', String(lunch))
+check('a forecast cached before readings were timed falls back to its fetch time',
+  staleCurrentAt({ fetchedAt: '2026-10-19T09:00:00.000Z' }, NOW)?.toISOString() === '2026-10-19T09:00:00.000Z')
+check('an unreadable time is not flagged as stale',
+  staleCurrentAt({ fetchedAt: 'nonsense', currentAt: null }, NOW) === null)
 
 console.log(fails === 0 ? '\nAll checks passed.\n' : `\n${fails} FAILED\n`)
 process.exit(fails ? 1 : 0)

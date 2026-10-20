@@ -679,6 +679,7 @@ button.monthgrid-day {
 
 .wx-now-icon { font-size: 1.4rem; line-height: 1; }
 .wx-now { font-size: 1.3rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.wx-age { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
 .wx-headline { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Its own line above the strip, not a caption inside it — sized to actually
