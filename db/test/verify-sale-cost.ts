@@ -19,7 +19,7 @@ import { fileURLToPath } from 'url'
 import {
   SALE_COST_ANIMALS_SQL, SALE_COST_LOGS_SQL, SALE_COST_LOTS_SQL,
 } from '../../src/db/saleCostSql.ts'
-import { saleCosts, sharersFor, type CostAnimal } from '../../src/lib/saleCost.ts'
+import { saleCosts, sharersFor, weightSalePrice, type CostAnimal } from '../../src/lib/saleCost.ts'
 
 const R = fileURLToPath(new URL('../', import.meta.url))
 const db = new DatabaseSync(':memory:')
@@ -275,6 +275,37 @@ const herd: CostAnimal[] = [
 check('on hand that day', sharersFor(herd, '2026-01-15T00:00:00.000Z').map((a) => a.id).join() === 'x')
 check('a gap between batches goes to the next batch',
   sharersFor(herd, '2026-02-15T00:00:00.000Z').map((a) => a.id).join() === 'y')
+
+console.log('\nTwo of a pen of four sold; the pen is still fed as one')
+// A separate species keeps this pen's numbers apart from the pigs above.
+const pen = asset('group', 'Pen', { species: 'Hog' }, '2026-08-01T00:00:00.000Z')
+const hogs = [1, 2, 3, 4].map((i) =>
+  asset('animal', `Pen ${i}`, { species: 'Hog' }, '2026-08-01T00:00:00.000Z', { parent: pen }))
+// Before the sale: all four eat, $40 of a 40 lb $40 bag → $10 each.
+const before = buy('Hog feed', 'Feed', 40, '2026-08-02T00:00:00.000Z', { category: 'Hog', amount: 40 })
+feed([pen], before, '2026-08-03T00:00:00.000Z', 40)
+// Two go to the butcher, sold by hanging weight with no price yet.
+for (const h of hogs.slice(0, 2)) {
+  run(`update asset set status = 'archived', terminal_event = 'sold' where id = ?`, [h])
+  log('sale', '2026-10-20T00:00:00.000Z', [{ id: h }])
+}
+// After it: the same pen fed, $20 of a 20 lb $20 bag — the two left eat it.
+const after = buy('Hog feed', 'Feed', 20, '2026-10-21T00:00:00.000Z', { category: 'Hog', amount: 20 })
+feed([pen], after, '2026-10-22T00:00:00.000Z', 20)
+const hog = costsFor('Hog').result
+const fed = (i: number) => hog.byAnimal.get(hogs[i])!.feedLogged
+check('the two sold pigs carry only the feed from before they left',
+  near(fed(0), 10) && near(fed(1), 10), `${fed(0)}, ${fed(1)}`)
+check('the two still here split the feeding after the sale',
+  near(fed(2), 20) && near(fed(3), 20), `${fed(2)}, ${fed(3)}`)
+
+console.log('\nWhat a hanging-weight sale comes to')
+check('rate times weight', weightSalePrice({ ratePerLb: 4.5, processingFee: 0 }, 180) === 810)
+check('plus a processing fee the farm collects',
+  weightSalePrice({ ratePerLb: 4.5, processingFee: 95 }, 180) === 905)
+check('rounded to the cent',
+  weightSalePrice({ ratePerLb: 3.33, processingFee: 0 }, 101.5) === 338, // 337.995
+  String(weightSalePrice({ ratePerLb: 3.33, processingFee: 0 }, 101.5)))
 
 console.log(fails === 0 ? '\nAll checks passed.\n' : `\n${fails} FAILED\n`)
 process.exit(fails ? 1 : 0)

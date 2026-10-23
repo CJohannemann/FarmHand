@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useAsync } from '../lib/useAsync'
-import { listAssets, saleCostInputs, weightHistory } from '../db/queries'
+import { listAssets, pendingWeightSales, saleCostInputs, weightHistory } from '../db/queries'
 import { saleCosts, type AnimalCost } from '../lib/saleCost'
 import { pluralSpecies } from '../lib/husbandry'
 import {
@@ -64,13 +64,16 @@ export function SaleCost() {
 function SpeciesCost({ species }: { species: string }) {
   const { data, loading } = useAsync(async () => {
     const inputs = await saleCostInputs(species)
-    return { inputs, result: saleCosts(species, inputs.animals, inputs.rows, inputs.lots) }
+    // Sold by hanging weight and gone to the butcher, but not priced yet —
+    // the moment this screen is most needed for that animal.
+    const awaiting = new Set((await pendingWeightSales()).flatMap((w) => w.assetIds))
+    return { inputs, awaiting, result: saleCosts(species, inputs.animals, inputs.rows, inputs.lots) }
   }, [species])
   const [selected, setSelected] = useState<string[]>([])
   const [markup, setMarkup] = useState('')
 
   const here = (data?.inputs.animals ?? [])
-    .filter((a) => a.left == null)
+    .filter((a) => a.left == null || data?.awaiting.has(a.id))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
   const chosen = here.filter((a) => selected.includes(a.id))
   const toggle = (id: string) =>
@@ -92,7 +95,7 @@ function SpeciesCost({ species }: { species: string }) {
           {here.map((a) => (
             <button key={a.id} className={selected.includes(a.id) ? 'chip on' : 'chip'}
               onClick={() => toggle(a.id)}>
-              {a.name}
+              {a.name}{a.left != null ? ' · sold' : ''}
             </button>
           ))}
         </div>

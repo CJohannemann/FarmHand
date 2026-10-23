@@ -8,6 +8,9 @@ import {
   productionHistory, weightHistory, type AssetEvent,
 } from '../db/queries'
 import type { Asset } from '../db/types'
+import {
+  AnimalSaleFields, animalSaleInput, animalSaleReady, EMPTY_ANIMAL_SALE, type AnimalSaleDraft,
+} from './AnimalSaleFields'
 import { BuyerSelect, EMPTY_BUYER_DRAFT, resolveBuyer, type BuyerDraft } from './BuyerSelect'
 import { HARVESTS, producibleMaterial, type HarvestSpec } from '../lib/tiles'
 import { rollingDaily } from '../lib/production'
@@ -708,7 +711,7 @@ function CloseOutForm({ asset, producible, onDone, onClose }: {
   const [amount, setAmount] = useState('')
   // Selling was the half of the ledger the app never recorded: it could say
   // what a pig cost and nothing about what it fetched.
-  const [price, setPrice] = useState('')
+  const [sale, setSale] = useState<AnimalSaleDraft>(EMPTY_ANIMAL_SALE)
   const [buyerId, setBuyerId] = useState('')
   const [buyerDraft, setBuyerDraft] = useState<BuyerDraft>(EMPTY_BUYER_DRAFT)
   const { data: materials } = useAsync(() => listTerms('material'), [])
@@ -724,7 +727,7 @@ function CloseOutForm({ asset, producible, onDone, onClose }: {
     } else if (reason === 'sold') {
       await sellAsset({
         assetId: asset.id,
-        price: hasNumericValue(price) ? Number(price) : undefined,
+        ...animalSaleInput(sale),
         buyer: await resolveBuyer(contacts ?? [], buyerId, buyerDraft),
       })
     } else {
@@ -748,18 +751,7 @@ function CloseOutForm({ asset, producible, onDone, onClose }: {
 
       {reason === 'sold' && (
         <>
-          <label className="field">
-            <span>What did you get for it? ($)</span>
-            <input type="number" inputMode="decimal" min="0" value={price}
-              onChange={onNumericChange(setPrice)} onWheel={ignoreScrollOnNumberInput}
-              onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="450" />
-            {/* Optional on purpose: an animal that left is a true record
-                whether or not the cheque has been worked out yet, and
-                demanding a number here just gets a made-up one. */}
-            <small className="hint">
-              Leave blank if you don't know yet — you can add it later.
-            </small>
-          </label>
+          <AnimalSaleFields draft={sale} onDraft={setSale} />
           <BuyerSelect contacts={contacts ?? []} buyerId={buyerId} onBuyerId={setBuyerId}
             draft={buyerDraft} onDraft={setBuyerDraft} />
         </>
@@ -813,7 +805,8 @@ function CloseOutForm({ asset, producible, onDone, onClose }: {
       )}
 
       <button className="primary"
-        disabled={busy || (reason === 'processed' && (!name.trim() || !(Number(amount) > 0)))}
+        disabled={busy || (reason === 'processed' && (!name.trim() || !(Number(amount) > 0)))
+          || (reason === 'sold' && !animalSaleReady(sale))}
         onClick={run}>
         {busy ? 'Saving…' : 'Save'}
       </button>

@@ -128,11 +128,21 @@ export function saleCosts(
    * fed or bought as one spreads evenly over its members; an asset of some
    * other species stands for nobody here, but still takes its share of the
    * log so these animals are not charged for what it ate.
+   *
+   * Given `at`, only the members still on the farm then: two pigs out of a
+   * pen of four sold on Friday ate none of Saturday's feed, though the pen
+   * is still fed as one. If nobody looks to be here — dates entered out of
+   * order — the whole group, rather than charging the feed to no one.
    */
-  const expand = (id: string): [string, number][] => {
+  const animalById = new Map(animals.map((a) => [a.id, a]))
+  const expand = (id: string, at?: string): [string, number][] => {
     if (byAnimal.has(id)) return [[id, 1]]
-    const m = members.get(id)
-    return m ? m.map((x) => [x, 1 / m.length]) : []
+    const all = members.get(id)
+    if (!all) return []
+    const here = at == null ? all
+      : all.filter((x) => onHandAt([animalById.get(x)!], ms(at)).length > 0)
+    const m = here.length > 0 ? here : all
+    return m.map((x) => [x, 1 / m.length])
   }
 
   const logs = new Map<string, CostLogRow[]>()
@@ -174,7 +184,7 @@ export function saleCosts(
       else d.totalAmount += input.amount
       d.totalWeight += 1
       for (const s of subjects) {
-        for (const [id, f] of expand(s.assetId)) {
+        for (const [id, f] of expand(s.assetId, input.timestamp)) {
           const share = f / subjects.length
           d.weight.set(id, (d.weight.get(id) ?? 0) + share)
           if (input.amount != null) d.amount.set(id, (d.amount.get(id) ?? 0) + input.amount * share)
@@ -226,4 +236,15 @@ export function saleCosts(
 
   for (const c of byAnimal.values()) c.total = c.bought + c.feedLogged + c.feedShared + c.other
   return { byAnimal, markedSpend, unassigned, markedCount }
+}
+
+/**
+ * What a sale by hanging weight comes to: the meat at the agreed rate per
+ * lb, plus any processing fee the farm collects on the butcher's behalf.
+ * Rounded to the cent, since this is the number written on the invoice.
+ */
+export function weightSalePrice(
+  sale: { ratePerLb: number; processingFee: number }, lb: number,
+): number {
+  return Math.round((sale.ratePerLb * lb + sale.processingFee) * 100) / 100
 }

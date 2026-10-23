@@ -4,8 +4,10 @@ import { useAsync } from '../lib/useAsync'
 import {
   CATEGORIZABLE_MATERIALS, createHarvest, createLog, createPurchase, createTerm, expectedBirths,
   listAssets, listContacts, listTerms, lotBalances, lotIsUsedUp, plannedLogs, recentLogs,
-  recordDisposition, setLotCategory, type LotBalance,
+  completeWeightSale, pendingWeightSales, recordDisposition, sellAsset, setLotCategory,
+  type LotBalance, type WeightSale,
 } from '../db/queries'
+import { weightSalePrice } from '../lib/saleCost'
 import type { Asset, AssetType, LogWithDetail } from '../db/types'
 import type { PreparedImage } from '../lib/image'
 import { useMembersMap } from '../lib/members'
@@ -20,6 +22,9 @@ import { groupUnits } from '../lib/units'
 import { getFarmLocation } from '../lib/weather'
 import { Sheet } from './Sheet'
 import { AssetSelect, OTHER } from './AssetSelect'
+import {
+  AnimalSaleFields, animalSaleInput, animalSaleReady, EMPTY_ANIMAL_SALE, type AnimalSaleDraft,
+} from './AnimalSaleFields'
 import { BuyerSelect, EMPTY_BUYER_DRAFT, resolveBuyer, type BuyerDraft } from './BuyerSelect'
 import { LogList } from './LogList'
 import { EditLog } from './EditLog'
@@ -61,6 +66,11 @@ export function Today({ onGoToStock, onGoToAnimal }: {
   // Nothing to keep in step, and nothing left behind.
   const births = useAsync(() => expectedBirths(), [])
   const assets = useAsync(() => listAssets(), [])
+  // Animals sold by hanging weight whose weight is not back yet. Easy to
+  // forget otherwise: the animal has left, nothing on the farm is waiting
+  // on it, and the sale sits in Records with no price.
+  const weightSales = useAsync(() => pendingWeightSales(), [])
+  const [weighing, setWeighing] = useState<WeightSale | null>(null)
   // Held here rather than inside WeatherPlace so that saving a location in
   // the strip's picker can refresh the place name above it — see
   // WeatherPlace's own comment for why its private copy never could.
@@ -72,7 +82,7 @@ export function Today({ onGoToStock, onGoToAnimal }: {
 
   const done = () => {
     setOpen(null); setChore(null)
-    recent.reload(); tasks.reload(); assets.reload(); births.reload()
+    recent.reload(); tasks.reload(); assets.reload(); births.reload(); weightSales.reload()
   }
 
   const dueRows: BirthRow[] = (births.data ?? [])
@@ -168,6 +178,25 @@ export function Today({ onGoToStock, onGoToAnimal }: {
         sheet, and two ways to do one thing a thumb's width apart reads as
         two different things.
       */}
+      {(weightSales.data ?? []).length > 0 && (
+        <>
+          <h2 className="section">Waiting on butcher weight</h2>
+          <ul className="assetlist">
+            {weightSales.data!.map((w) => (
+              <li key={w.logId}>
+                <button className="assetrow" onClick={() => setWeighing(w)}>
+                  <span className="asset-name">{w.names.join(', ')}</span>
+                  <span className="asset-meta">
+                    {[w.buyer, `${formatMoney(w.ratePerLb)}/lb`].filter(Boolean).join(' · ')}
+                    <span className="chev">›</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
       <h2 className="section">Farm chores</h2>
       <TaskList
         tasks={tasks.data ?? []}
@@ -210,6 +239,10 @@ export function Today({ onGoToStock, onGoToAnimal }: {
 
       {harvest && (
         <ProduceForm spec={harvest} onDone={done} onClose={() => setOpen(null)} />
+      )}
+      {weighing && (
+        <WeightSaleSheet sale={weighing} onClose={() => setWeighing(null)}
+          onDone={() => { setWeighing(null); done() }} />
       )}
       {open === 'feed'   && <FeedForm   onDone={done} onClose={() => setOpen(null)} />}
       {open === 'sell'   && <SellForm   onDone={done} onClose={() => setOpen(null)} />}
@@ -302,15 +335,80 @@ function ProduceForm({ spec, onDone, onClose }: FormProps & { spec: HarvestSpec 
  * a purchased lot (a farm reselling part of a hay load) is still possible,
  * just from that lot's own sheet on Inventory rather than this shortcut.
  */
+/**
+ * The butcher's weight is back: enter it, see what the sale comes to, save.
+ * The weight and the price both land on the original sale, so it reads in
+ * Records as a finished sale and drops off Today's list.
+ */
+function WeightSaleSheet({ sale, onDone, onClose }: FormProps & { sale: WeightSale }) {
+  const [lb, setLb] = useState('')
+  const n = Number(lb)
+  const total = n > 0 ? weightSalePrice(sale, n) : null
+  const { run, busy, error } = useSave(async () => {
+    await completeWeightSale(sale, n)
+    onDone()
+  })
+  return (
+    <Sheet title={`${sale.names.join(', ')} — hanging weight`} onClose={onClose}>
+      <p className="hint">
+        Sold {new Date(sale.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+        {sale.buyer ? ` to ${sale.buyer}` : ''} at {formatMoney(sale.ratePerLb)}/lb
+        {sale.processingFee > 0 ? `, plus ${formatMoney(sale.processingFee)} processing` : ''}.
+      </p>
+      <label className="field">
+        <span>Hanging weight (lb)</span>
+        <input type="number" inputMode="decimal" min="0" autoFocus value={lb}
+          onChange={onNumericChange(setLb)} onWheel={ignoreScrollOnNumberInput}
+          onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="180" />
+      </label>
+      {total != null && (
+        <div className="costbox">
+          <div className="costrow">
+            <span>{formatQty(n)} lb × {formatMoney(sale.ratePerLb)}</span>
+            <span>{formatMoney(sale.ratePerLb * n)}</span>
+          </div>
+          {sale.processingFee > 0 && (
+            <div className="costrow">
+              <span>Processing</span><span>{formatMoney(sale.processingFee)}</span>
+            </div>
+          )}
+          <div className="costrow strong">
+            <span>They owe you</span><span>{formatMoney(total)}</span>
+          </div>
+        </div>
+      )}
+      <button className="primary" disabled={busy || !(n > 0)} onClick={run}>
+        {busy ? 'Saving…' : 'Save'}
+      </button>
+      {error && <p className="error">{error}</p>}
+    </Sheet>
+  )
+}
+
+/** Prefixes an animal's id in the Sell picker, which also lists lots. */
+const ANIMAL_PREFIX = 'animal:'
+
+/**
+ * Selling anything: produce out of Stores, or an animal. An animal used to
+ * be sellable only from Close out on its own page, so the one button on
+ * this screen labelled Sell offered eggs and hay and never the pig being
+ * sold — which read as the app having no way to sell an animal at all.
+ * Picking an animal here records the same sale Close out does.
+ */
 function SellForm({ onDone, onClose }: FormProps) {
-  const [lot, setLot] = useState('')
+  const [picked, setPicked] = useState('')
   const [amount, setAmount] = useState('')
   const [price, setPrice] = useState('')
+  const [sale, setSale] = useState<AnimalSaleDraft>(EMPTY_ANIMAL_SALE)
   const [notes, setNotes] = useState('')
   const [buyerId, setBuyerId] = useState('')
   const [buyerDraft, setBuyerDraft] = useState<BuyerDraft>(EMPTY_BUYER_DRAFT)
   const { data: lots } = useAsync(() => lotBalances(), [])
+  const { data: assets } = useAsync(() => listAssets(['animal', 'group']), [])
   const { data: contacts } = useAsync(() => listContacts(), [])
+
+  const animalId = picked.startsWith(ANIMAL_PREFIX) ? picked.slice(ANIMAL_PREFIX.length) : null
+  const lot = animalId ? '' : picked
 
   // Same rule as the feed picker: what is actually still there, plus
   // whatever is already selected so a lot cannot vanish mid-edit.
@@ -324,67 +422,106 @@ function SellForm({ onDone, onClose }: FormProps) {
   // as zero would block a sale that is perfectly real.
   const over = !!selected && selected.came_in > 0 && n > selected.remaining + 0.001
 
-  // One lot in stores is not a choice worth making someone make — same
+  // Every animal still here, group members included — two pigs out of a
+  // pen of four are sold one at a time, to different buyers.
+  const animals = (assets ?? []).filter((a) => a.status === 'active' && !a.attributes?.external)
+  const bySpecies = new Map<string, Asset[]>()
+  for (const a of animals) {
+    const sp = String(a.attributes?.species ?? '').trim() || 'Other'
+    const list = bySpecies.get(sp)
+    if (list) list.push(a); else bySpecies.set(sp, [a])
+  }
+  const speciesGroups = [...bySpecies].sort(([a], [b]) => a.localeCompare(b))
+
+  // One thing to sell is not a choice worth making someone make — same
   // reasoning as the "Where from?" picker on an egg collection.
   useEffect(() => {
-    if (!lot && sellable.length === 1) setLot(sellable[0].id)
-  }, [lot, sellable.length])
+    if (!picked && sellable.length === 1 && animals.length === 0) setPicked(sellable[0].id)
+  }, [picked, sellable.length, animals.length])
 
   const save = async () => {
-    await recordDisposition({
-      lotId: lot,
-      kind: 'sold',
-      amount: n,
-      unit,
-      value: Number(price) > 0 ? Number(price) : undefined,
-      buyer: await resolveBuyer(contacts ?? [], buyerId, buyerDraft),
-      notes: notes.trim() || undefined,
-    })
+    const buyer = await resolveBuyer(contacts ?? [], buyerId, buyerDraft)
+    if (animalId) {
+      await sellAsset({
+        assetId: animalId, ...animalSaleInput(sale), buyer, notes: notes.trim() || undefined,
+      })
+    } else {
+      await recordDisposition({
+        lotId: lot,
+        kind: 'sold',
+        amount: n,
+        unit,
+        value: Number(price) > 0 ? Number(price) : undefined,
+        buyer,
+        notes: notes.trim() || undefined,
+      })
+    }
     onDone()
   }
   const { run, busy, error } = useSave(save)
+  const ready = animalId ? animalSaleReady(sale) : !!lot && n > 0
 
   return (
     <Sheet title="Sold" onClose={onClose}>
       <label className="field">
         <span>Sold what?</span>
-        <select value={lot} onChange={(e) => setLot(e.target.value)}>
+        <select value={picked} onChange={(e) => setPicked(e.target.value)}>
           <option value="">— pick one —</option>
-          {sellable.map((l) => (
-            <option key={l.id} value={l.id}>{lotLabel(l)}</option>
+          {speciesGroups.map(([sp, list]) => (
+            <optgroup key={sp} label={sp === 'Other' ? 'Animals' : pluralSpecies(sp)}>
+              {list.map((a) => (
+                <option key={a.id} value={ANIMAL_PREFIX + a.id}>
+                  {/* Selling a group sells every animal in it; said out
+                      loud, since it sits a row away from one of them. */}
+                  {a.type === 'group' ? `${a.name} — the whole group` : a.name}
+                </option>
+              ))}
+            </optgroup>
           ))}
+          {sellable.length > 0 && (
+            <optgroup label="From stores">
+              {sellable.map((l) => (
+                <option key={l.id} value={l.id}>{lotLabel(l)}</option>
+              ))}
+            </optgroup>
+          )}
         </select>
-        {sellable.length === 0 && (
+        {sellable.length === 0 && animals.length === 0 && (
           <small className="hint">
-            Nothing the farm produced yet — collecting eggs, milk, honey or
-            produce puts it here. To sell something you bought in, open that
-            lot under Inventory {'>'} Stores.
+            Nothing to sell yet — collecting eggs, milk, honey or produce puts it
+            here, and so does adding animals under Inventory.
           </small>
         )}
       </label>
 
-      <div className="pair">
-        <label className="field">
-          <span>How much{selected ? ` (${unit})` : ''}</span>
-          <input type="number" inputMode="decimal" min="0" autoFocus value={amount}
-            onChange={onNumericChange(setAmount)} onWheel={ignoreScrollOnNumberInput}
-            onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="24" />
-        </label>
-        <label className="field">
-          <span>For ($)</span>
-          <input type="number" inputMode="decimal" min="0" value={price}
-            onChange={onNumericChange(setPrice)} onWheel={ignoreScrollOnNumberInput}
-            onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="8" />
-        </label>
-      </div>
+      {animalId ? (
+        <AnimalSaleFields draft={sale} onDraft={setSale} />
+      ) : (
+        <>
+          <div className="pair">
+            <label className="field">
+              <span>How much{selected ? ` (${unit})` : ''}</span>
+              <input type="number" inputMode="decimal" min="0" value={amount}
+                onChange={onNumericChange(setAmount)} onWheel={ignoreScrollOnNumberInput}
+                onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="24" />
+            </label>
+            <label className="field">
+              <span>For ($)</span>
+              <input type="number" inputMode="decimal" min="0" value={price}
+                onChange={onNumericChange(setPrice)} onWheel={ignoreScrollOnNumberInput}
+                onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="8" />
+            </label>
+          </div>
 
-      {selected && selected.came_in > 0 && (
-        <p className={over ? 'hint warn' : 'hint'}>
-          {over
-            ? `Only ${formatQty(selected.remaining)} ${unit} left — saving this `
-              + 'anyway takes the balance below zero.'
-            : `${formatQty(selected.remaining)} ${unit} on hand.`}
-        </p>
+          {selected && selected.came_in > 0 && (
+            <p className={over ? 'hint warn' : 'hint'}>
+              {over
+                ? `Only ${formatQty(selected.remaining)} ${unit} left — saving this `
+                  + 'anyway takes the balance below zero.'
+                : `${formatQty(selected.remaining)} ${unit} on hand.`}
+            </p>
+          )}
+        </>
       )}
 
       <BuyerSelect contacts={contacts ?? []} buyerId={buyerId} onBuyerId={setBuyerId}
@@ -393,18 +530,13 @@ function SellForm({ onDone, onClose }: FormProps) {
       <label className="field">
         <span>Note (optional)</span>
         <input value={notes} onChange={(e) => setNotes(e.target.value)}
-          placeholder="Half off for cash" />
+          placeholder={animalId ? 'Half hog' : 'Half off for cash'} />
       </label>
 
-      <button className="primary" disabled={busy || !lot || !(n > 0)} onClick={run}>
+      <button className="primary" disabled={busy || !ready} onClick={run}>
         {busy ? 'Saving…' : 'Save'}
       </button>
       {error && <p className="error">{error}</p>}
-      <p className="hint">
-        Selling an animal is a different thing — it closes the animal out and
-        settles what it cost. That one lives on the animal's own page, under
-        Close out.
-      </p>
     </Sheet>
   )
 }

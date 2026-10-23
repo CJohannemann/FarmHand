@@ -176,7 +176,9 @@ export function tilesFor(assets: AssetLike[]): TileSpec[] {
   if (plantings) tiles.push(HARVESTS.pick)
   if (honeyWorthy) tiles.push(HARVESTS.honey)
   if (livestock) tiles.push(FEED)
-  if (stores) tiles.push(SELL)
+  // Animals are sold from here too, so a farm with only livestock and an
+  // empty Stores still gets the button — that farm has something to sell.
+  if (stores || livestock) tiles.push(SELL)
 
   // Buying, noting and planning suit every farm, including an empty one.
   tiles.push(BUY, NOTE, PLAN)

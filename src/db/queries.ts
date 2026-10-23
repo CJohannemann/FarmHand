@@ -1,7 +1,7 @@
 import { db } from './client'
 import { renamedMemberName } from '../lib/grouping'
 import { measureForUnit } from '../lib/units'
-import type { CostAnimal, CostLogRow, CostLot } from '../lib/saleCost'
+import { weightSalePrice, type CostAnimal, type CostLogRow, type CostLot } from '../lib/saleCost'
 import { SALE_COST_ANIMALS_SQL, SALE_COST_LOGS_SQL, SALE_COST_LOTS_SQL } from './saleCostSql'
 import type {
   Asset, AssetRole, AssetType, Contact, LogWithDetail, Measure, QuantityInput,
@@ -2124,14 +2124,25 @@ export async function sellAsset(input: {
   price?: number
   buyer?: string
   notes?: string
+  /**
+   * Sold by the pound of hanging weight, at this rate — the usual way a
+   * whole or half hog is sold. The weight comes back from the butcher days
+   * later, so the sale is recorded now with no price, and finished with
+   * completeWeightSale() once the weight is in. The animal still leaves the
+   * farm today: it is not being fed while the butcher has it.
+   */
+  hangingRate?: number
+  /** A processing fee the buyer pays the farm on top of the meat. */
+  processingFee?: number
 }): Promise<void> {
   const asset = await getAsset(input.assetId)
+  const byWeight = input.hangingRate != null && input.hangingRate > 0
   await createLog({
     type: 'sale',
     name: `Sold ${asset?.name ?? 'stock'}`,
     notes: input.notes,
     assets: [{ id: input.assetId, role: 'subject' }],
-    quantities: input.price != null && input.price >= 0
+    quantities: !byWeight && input.price != null && input.price >= 0
       ? [{ measure: 'price', value: input.price, unit: 'USD' }]
       : [],
     // On the log rather than the price quantity's label, which is where
@@ -2139,9 +2150,83 @@ export async function sellAsset(input: {
     // a sale recorded before the cheque is worked out lost the buyer
     // entirely. Same slot recordDisposition uses, so both ways of selling
     // read back through one field (see LogWithDetail.buyer).
-    attributes: input.buyer ? { buyer: input.buyer } : undefined,
+    attributes: {
+      ...(input.buyer ? { buyer: input.buyer } : {}),
+      ...(byWeight ? {
+        pricing: 'hanging_weight',
+        rate_per_lb: input.hangingRate,
+        ...(input.processingFee && input.processingFee > 0
+          ? { processing_fee: input.processingFee } : {}),
+      } : {}),
+    },
   })
   await archiveAsset(input.assetId, 'sold')
+}
+
+export interface WeightSale {
+  logId: string
+  timestamp: string
+  /** What was sold — usually one animal, a group if the whole lot went. */
+  names: string[]
+  assetIds: string[]
+  buyer: string | null
+  ratePerLb: number
+  processingFee: number
+}
+
+/**
+ * Animals sold by hanging weight whose weight has not come back yet — the
+ * reminder on Today. Pending until the sale has a price: entering the
+ * weight writes one, and so does typing a price straight in under Records,
+ * either of which takes it off the list.
+ */
+export async function pendingWeightSales(): Promise<WeightSale[]> {
+  const pg = await db()
+  const { rows } = await pg.query<{
+    id: string; timestamp: string; buyer: string | null
+    rate: number | string | null; fee: number | string | null; name: string; asset_id: string
+  }>(
+    `select l.id, l.timestamp,
+            l.attributes->>'buyer' as buyer,
+            l.attributes->>'rate_per_lb' as rate,
+            l.attributes->>'processing_fee' as fee,
+            a.name, a.id as asset_id
+       from log l
+       join log_asset la on la.log_id = l.id and la.role = 'subject'
+       join asset a on a.id = la.asset_id
+      where l.farm_id = (select id from active_farm)
+        and l.type = 'sale' and l.deleted_at is null
+        and l.attributes->>'pricing' = 'hanging_weight'
+        and not exists (
+          select 1 from quantity q
+           where q.log_id = l.id and q.measure = 'price' and q.deleted_at is null)
+      order by l.timestamp asc, a.name`,
+  )
+  const byLog = new Map<string, WeightSale>()
+  for (const r of rows) {
+    const sale = byLog.get(r.id)
+    if (sale) { sale.names.push(r.name); sale.assetIds.push(r.asset_id); continue }
+    byLog.set(r.id, {
+      logId: r.id,
+      timestamp: r.timestamp,
+      names: [r.name],
+      assetIds: [r.asset_id],
+      buyer: r.buyer,
+      ratePerLb: Number(r.rate) || 0,
+      processingFee: Number(r.fee) || 0,
+    })
+  }
+  return [...byLog.values()]
+}
+
+/**
+ * Finishes a hanging-weight sale: the weight the butcher reported, and the
+ * price it works out to. The weight is kept on the sale (labelled
+ * "hanging") so the record still says how the price was reached.
+ */
+export async function completeWeightSale(sale: WeightSale, hangingLb: number): Promise<void> {
+  await setQuantity(sale.logId, 'weight', hangingLb, 'lb', 'hanging')
+  await setQuantity(sale.logId, 'price', weightSalePrice(sale, hangingLb), 'USD')
 }
 
 // ------------------------------------------------------------ past stock

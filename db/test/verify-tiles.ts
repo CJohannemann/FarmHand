@@ -90,7 +90,8 @@ check('offers feed', chris.includes('feed'))
 check('no honey', !chris.includes('honey'))
 check('no picking', !chris.includes('pick'))
 check('no milk on a beef farm', !chris.includes('milk'))
-check('five tiles', chris.length === 5, `${chris.length}`)
+check('offers sell — the pigs and steers are for sale', chris.includes('sell'))
+check('six tiles, two clean rows of three', chris.length === 6, `${chris.length}`)
 
 console.log('\nA farm that does everything')
 // The dairy purpose is what earns the milk tile — "everything" has to say so
@@ -98,7 +99,7 @@ console.log('\nA farm that does everything')
 const everything = kinds([
   one('Cattle', 'dairy'), group('Chicken'), group('Honeybee'), planting(),
 ])
-check('all eight, filling the grid but for one gap', everything.length === 8,
+check('all nine, filling the grid', everything.length === 9,
   everything.join(','))
 check('no duplicates', new Set(everything).size === everything.length)
 
@@ -151,8 +152,12 @@ check('a farm with something in Stores can sell it',
   kinds([lot()]).includes('sell'))
 check('a bought lot counts too — a farm can resell a load of hay',
   kinds([lot('purchased')]).includes('sell'))
-check('a farm with nothing in Stores gets no Sell button',
-  !kinds([group('Chicken')]).includes('sell'))
+check('a farm with animals can sell them, even with nothing in Stores',
+  kinds([group('Pig')]).includes('sell'))
+check('nor does a sold-off herd keep the button',
+  !kinds([group('Pig', 'archived')]).includes('sell'))
+check('a farm with only plantings and nothing in Stores gets no Sell button',
+  !kinds([planting()]).includes('sell'), kinds([planting()]).join(','))
 // A service lot is a vet's office-call fee wearing a lot's clothes: spent
 // the instant it is recorded, never stock, and kept out of Stores itself.
 check('a service lot is not stock and does not offer Sell',
