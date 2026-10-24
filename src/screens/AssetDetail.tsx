@@ -11,7 +11,6 @@ import type { Asset } from '../db/types'
 import {
   AnimalSaleFields, animalSaleInput, animalSaleReady, EMPTY_ANIMAL_SALE, type AnimalSaleDraft,
 } from './AnimalSaleFields'
-import { BuyerSelect, EMPTY_BUYER_DRAFT, resolveBuyer, type BuyerDraft } from './BuyerSelect'
 import { HARVESTS, producibleMaterial, type HarvestSpec } from '../lib/tiles'
 import { rollingDaily } from '../lib/production'
 import { groupUnits, measureForUnit } from '../lib/units'
@@ -712,8 +711,6 @@ function CloseOutForm({ asset, producible, onDone, onClose }: {
   // Selling was the half of the ledger the app never recorded: it could say
   // what a pig cost and nothing about what it fetched.
   const [sale, setSale] = useState<AnimalSaleDraft>(EMPTY_ANIMAL_SALE)
-  const [buyerId, setBuyerId] = useState('')
-  const [buyerDraft, setBuyerDraft] = useState<BuyerDraft>(EMPTY_BUYER_DRAFT)
   const { data: materials } = useAsync(() => listTerms('material'), [])
   const { data: units } = useAsync(() => listTerms('unit'), [])
   const { data: contacts } = useAsync(() => listContacts(), [])
@@ -725,11 +722,7 @@ function CloseOutForm({ asset, producible, onDone, onClose }: {
         material, amount: Number(amount), unit, endsSource: true,
       })
     } else if (reason === 'sold') {
-      await sellAsset({
-        assetId: asset.id,
-        ...animalSaleInput(sale),
-        buyer: await resolveBuyer(contacts ?? [], buyerId, buyerDraft),
-      })
+      await sellAsset({ assetId: asset.id, ...await animalSaleInput(sale, contacts ?? []) })
     } else {
       await archiveAsset(asset.id, reason)
     }
@@ -751,9 +744,7 @@ function CloseOutForm({ asset, producible, onDone, onClose }: {
 
       {reason === 'sold' && (
         <>
-          <AnimalSaleFields draft={sale} onDraft={setSale} />
-          <BuyerSelect contacts={contacts ?? []} buyerId={buyerId} onBuyerId={setBuyerId}
-            draft={buyerDraft} onDraft={setBuyerDraft} />
+          <AnimalSaleFields draft={sale} onDraft={setSale} contacts={contacts ?? []} />
         </>
       )}
 

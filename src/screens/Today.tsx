@@ -5,9 +5,9 @@ import {
   CATEGORIZABLE_MATERIALS, createHarvest, createLog, createPurchase, createTerm, expectedBirths,
   listAssets, listContacts, listTerms, lotBalances, lotIsUsedUp, plannedLogs, recentLogs,
   completeWeightSale, pendingWeightSales, recordDisposition, sellAsset, setLotCategory,
-  type LotBalance, type WeightSale,
+  type LotBalance, type WeightSale, type WeightSalePart,
 } from '../db/queries'
-import { weightSalePrice } from '../lib/saleCost'
+import { shareLabel, weightSalePrice } from '../lib/saleCost'
 import type { Asset, AssetType, LogWithDetail } from '../db/types'
 import type { PreparedImage } from '../lib/image'
 import { useMembersMap } from '../lib/members'
@@ -183,11 +183,11 @@ export function Today({ onGoToStock, onGoToAnimal }: {
           <h2 className="section">Waiting on butcher weight</h2>
           <ul className="assetlist">
             {weightSales.data!.map((w) => (
-              <li key={w.logId}>
+              <li key={w.key}>
                 <button className="assetrow" onClick={() => setWeighing(w)}>
                   <span className="asset-name">{w.names.join(', ')}</span>
                   <span className="asset-meta">
-                    {[w.buyer, `${formatMoney(w.ratePerLb)}/lb`].filter(Boolean).join(' · ')}
+                    {[partsSummary(w), `${formatMoney(w.ratePerLb)}/lb`].filter(Boolean).join(' · ')}
                     <span className="chev">›</span>
                   </span>
                 </button>
@@ -343,46 +343,58 @@ function ProduceForm({ spec, onDone, onClose }: FormProps & { spec: HarvestSpec 
 function WeightSaleSheet({ sale, onDone, onClose }: FormProps & { sale: WeightSale }) {
   const [lb, setLb] = useState('')
   const n = Number(lb)
-  const total = n > 0 ? weightSalePrice(sale, n) : null
   const { run, busy, error } = useSave(async () => {
     await completeWeightSale(sale, n)
     onDone()
   })
+  const split = sale.parts.length > 1 || sale.parts.some((p) => p.share < 0.999)
+  const owed = (p: WeightSalePart) => weightSalePrice(
+    { ratePerLb: sale.ratePerLb, processingFee: p.processingFee, share: p.share }, n)
   return (
     <Sheet title={`${sale.names.join(', ')} — hanging weight`} onClose={onClose}>
       <p className="hint">
         Sold {new Date(sale.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-        {sale.buyer ? ` to ${sale.buyer}` : ''} at {formatMoney(sale.ratePerLb)}/lb
-        {sale.processingFee > 0 ? `, plus ${formatMoney(sale.processingFee)} processing` : ''}.
+        {' '}at {formatMoney(sale.ratePerLb)}/lb{partsSummary(sale) ? ` — ${partsSummary(sale)}` : ''}.
       </p>
       <label className="field">
-        <span>Hanging weight (lb)</span>
+        <span>Hanging weight of the whole carcass (lb)</span>
         <input type="number" inputMode="decimal" min="0" autoFocus value={lb}
           onChange={onNumericChange(setLb)} onWheel={ignoreScrollOnNumberInput}
           onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="180" />
       </label>
-      {total != null && (
-        <div className="costbox">
+      {n > 0 && sale.parts.map((p) => (
+        <div className="costbox" key={p.logId} style={{ marginBottom: '0.75rem' }}>
           <div className="costrow">
-            <span>{formatQty(n)} lb × {formatMoney(sale.ratePerLb)}</span>
-            <span>{formatMoney(sale.ratePerLb * n)}</span>
+            <span>
+              {split ? `${shareLabel(p.share)} · ` : ''}{formatQty(n * p.share)} lb × {formatMoney(sale.ratePerLb)}
+            </span>
+            <span>{formatMoney(sale.ratePerLb * n * p.share)}</span>
           </div>
-          {sale.processingFee > 0 && (
+          {p.processingFee > 0 && (
             <div className="costrow">
-              <span>Processing</span><span>{formatMoney(sale.processingFee)}</span>
+              <span>Processing</span><span>{formatMoney(p.processingFee)}</span>
             </div>
           )}
           <div className="costrow strong">
-            <span>They owe you</span><span>{formatMoney(total)}</span>
+            <span>{p.buyer ? `${p.buyer} owes you` : 'They owe you'}</span>
+            <span>{formatMoney(owed(p))}</span>
           </div>
         </div>
-      )}
+      ))}
       <button className="primary" disabled={busy || !(n > 0)} onClick={run}>
         {busy ? 'Saving…' : 'Save'}
       </button>
       {error && <p className="error">{error}</p>}
     </Sheet>
   )
+}
+
+/** "Smith ½, Jones ½" — who is waiting on this carcass, and for how much of it. */
+function partsSummary(sale: WeightSale): string {
+  const whole = sale.parts.length === 1 && sale.parts[0].share > 0.999
+  return sale.parts
+    .map((p) => [p.buyer, whole ? '' : shareLabel(p.share)].filter(Boolean).join(' '))
+    .filter(Boolean).join(', ')
 }
 
 /** Prefixes an animal's id in the Sell picker, which also lists lots. */
@@ -440,12 +452,13 @@ function SellForm({ onDone, onClose }: FormProps) {
   }, [picked, sellable.length, animals.length])
 
   const save = async () => {
-    const buyer = await resolveBuyer(contacts ?? [], buyerId, buyerDraft)
     if (animalId) {
       await sellAsset({
-        assetId: animalId, ...animalSaleInput(sale), buyer, notes: notes.trim() || undefined,
+        assetId: animalId, ...await animalSaleInput(sale, contacts ?? []),
+        notes: notes.trim() || undefined,
       })
     } else {
+      const buyer = await resolveBuyer(contacts ?? [], buyerId, buyerDraft)
       await recordDisposition({
         lotId: lot,
         kind: 'sold',
@@ -495,7 +508,7 @@ function SellForm({ onDone, onClose }: FormProps) {
       </label>
 
       {animalId ? (
-        <AnimalSaleFields draft={sale} onDraft={setSale} />
+        <AnimalSaleFields draft={sale} onDraft={setSale} contacts={contacts ?? []} />
       ) : (
         <>
           <div className="pair">
@@ -524,13 +537,17 @@ function SellForm({ onDone, onClose }: FormProps) {
         </>
       )}
 
-      <BuyerSelect contacts={contacts ?? []} buyerId={buyerId} onBuyerId={setBuyerId}
-        draft={buyerDraft} onDraft={setBuyerDraft} />
+      {/* An animal's buyers are part of its sale fields above — there can
+          be more than one of them. */}
+      {!animalId && (
+        <BuyerSelect contacts={contacts ?? []} buyerId={buyerId} onBuyerId={setBuyerId}
+          draft={buyerDraft} onDraft={setBuyerDraft} />
+      )}
 
       <label className="field">
         <span>Note (optional)</span>
         <input value={notes} onChange={(e) => setNotes(e.target.value)}
-          placeholder={animalId ? 'Half hog' : 'Half off for cash'} />
+          placeholder={animalId ? 'Picked up Saturday' : 'Half off for cash'} />
       </label>
 
       <button className="primary" disabled={busy || !ready} onClick={run}>

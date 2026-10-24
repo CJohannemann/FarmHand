@@ -19,7 +19,7 @@ import { fileURLToPath } from 'url'
 import {
   SALE_COST_ANIMALS_SQL, SALE_COST_LOGS_SQL, SALE_COST_LOTS_SQL,
 } from '../../src/db/saleCostSql.ts'
-import { saleCosts, sharersFor, weightSalePrice, type CostAnimal } from '../../src/lib/saleCost.ts'
+import { saleCosts, shareLabel, sharersFor, weightSalePrice, type CostAnimal } from '../../src/lib/saleCost.ts'
 
 const R = fileURLToPath(new URL('../', import.meta.url))
 const db = new DatabaseSync(':memory:')
@@ -306,6 +306,18 @@ check('plus a processing fee the farm collects',
 check('rounded to the cent',
   weightSalePrice({ ratePerLb: 3.33, processingFee: 0 }, 101.5) === 338, // 337.995
   String(weightSalePrice({ ratePerLb: 3.33, processingFee: 0 }, 101.5)))
+
+console.log('\nHalf a hog each')
+// One 180 lb carcass at $4.50, split between two families: each pays for
+// their half of the weight, plus their own processing fee if the farm
+// collects it.
+const halfHog = (fee: number) => weightSalePrice({ ratePerLb: 4.5, processingFee: fee, share: 0.5 }, 180)
+check('a half is half the carcass at the rate', halfHog(0) === 405, String(halfHog(0)))
+check('the fee is that buyer\'s whole fee, not halved', halfHog(60) === 465, String(halfHog(60)))
+check('the two halves add up to the whole hog', halfHog(0) * 2 === weightSalePrice({ ratePerLb: 4.5, processingFee: 0 }, 180))
+check('a quarter', weightSalePrice({ ratePerLb: 6, processingFee: 0, share: 0.25 }, 400) === 600)
+check('shares read as fractions', shareLabel(0.5) === '½' && shareLabel(1 / 3) === '⅓' && shareLabel(0.75) === '¾')
+check('and anything unusual as a percentage', shareLabel(0.2) === '20%', shareLabel(0.2))
 
 console.log(fails === 0 ? '\nAll checks passed.\n' : `\n${fails} FAILED\n`)
 process.exit(fails ? 1 : 0)

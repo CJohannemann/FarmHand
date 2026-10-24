@@ -239,12 +239,25 @@ export function saleCosts(
 }
 
 /**
- * What a sale by hanging weight comes to: the meat at the agreed rate per
- * lb, plus any processing fee the farm collects on the butcher's behalf.
- * Rounded to the cent, since this is the number written on the invoice.
+ * What a sale by hanging weight comes to: the buyer's share of the carcass
+ * at the agreed rate per lb, plus any processing fee the farm collects on
+ * the butcher's behalf. Rounded to the cent, since this is the number
+ * written on the invoice.
  */
 export function weightSalePrice(
-  sale: { ratePerLb: number; processingFee: number }, lb: number,
+  sale: { ratePerLb: number; processingFee: number; share?: number }, lb: number,
 ): number {
-  return Math.round((sale.ratePerLb * lb + sale.processingFee) * 100) / 100
+  return Math.round((sale.ratePerLb * lb * (sale.share ?? 1) + sale.processingFee) * 100) / 100
+}
+
+/** The shares an animal is commonly split into — a half hog, a quarter of beef. */
+export const SHARE_OPTIONS = [1, 1 / 2, 1 / 4, 3 / 4, 1 / 3, 2 / 3]
+
+/** "½", "¼" — how a share reads on a sale. Anything else as a percentage. */
+export function shareLabel(share: number): string {
+  const known: [number, string][] = [
+    [1, 'Whole'], [1 / 2, '½'], [1 / 4, '¼'], [3 / 4, '¾'], [1 / 3, '⅓'], [2 / 3, '⅔'],
+  ]
+  const hit = known.find(([v]) => Math.abs(v - share) < 0.001)
+  return hit ? hit[1] : `${Math.round(share * 100)}%`
 }

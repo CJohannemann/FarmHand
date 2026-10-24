@@ -1,7 +1,7 @@
 import { db } from './client'
 import { renamedMemberName } from '../lib/grouping'
 import { measureForUnit } from '../lib/units'
-import { weightSalePrice, type CostAnimal, type CostLogRow, type CostLot } from '../lib/saleCost'
+import { shareLabel, weightSalePrice, type CostAnimal, type CostLogRow, type CostLot } from '../lib/saleCost'
 import { SALE_COST_ANIMALS_SQL, SALE_COST_LOGS_SQL, SALE_COST_LOTS_SQL } from './saleCostSql'
 import type {
   Asset, AssetRole, AssetType, Contact, LogWithDetail, Measure, QuantityInput,
@@ -2119,10 +2119,19 @@ export async function deleteReceipt(id: string): Promise<void> {
  * a truthful record of it leaving; refusing to archive without a number
  * would just push people to type a fake one.
  */
+/** One buyer's part of an animal's sale — the whole of it, or a half hog. */
+export interface SalePart {
+  buyer?: string
+  /** How much of the animal this buyer took: 1, or ½ for a half hog. */
+  share: number
+  /** A set price for this part. Ignored when sold by hanging weight. */
+  price?: number
+  /** A processing fee this buyer pays the farm on top of the meat. */
+  processingFee?: number
+}
+
 export async function sellAsset(input: {
   assetId: string
-  price?: number
-  buyer?: string
   notes?: string
   /**
    * Sold by the pound of hanging weight, at this rate — the usual way a
@@ -2132,62 +2141,93 @@ export async function sellAsset(input: {
    * farm today: it is not being fed while the butcher has it.
    */
   hangingRate?: number
-  /** A processing fee the buyer pays the farm on top of the meat. */
+  /**
+   * Who bought it. One part for an animal sold whole; two halves for a hog
+   * split between two families. Each part is its own sale log, so each
+   * buyer is credited with their own money in Buyers and Money in, tied
+   * together by a shared split_id so Today asks for the weight once.
+   */
+  parts?: SalePart[]
+  /** Shorthand for a single buyer taking the whole animal. */
+  buyer?: string
+  price?: number
   processingFee?: number
 }): Promise<void> {
   const asset = await getAsset(input.assetId)
   const byWeight = input.hangingRate != null && input.hangingRate > 0
-  await createLog({
-    type: 'sale',
-    name: `Sold ${asset?.name ?? 'stock'}`,
-    notes: input.notes,
-    assets: [{ id: input.assetId, role: 'subject' }],
-    quantities: !byWeight && input.price != null && input.price >= 0
-      ? [{ measure: 'price', value: input.price, unit: 'USD' }]
-      : [],
-    // On the log rather than the price quantity's label, which is where
-    // this used to ride: with no price there is no quantity row at all, so
-    // a sale recorded before the cheque is worked out lost the buyer
-    // entirely. Same slot recordDisposition uses, so both ways of selling
-    // read back through one field (see LogWithDetail.buyer).
-    attributes: {
-      ...(input.buyer ? { buyer: input.buyer } : {}),
-      ...(byWeight ? {
-        pricing: 'hanging_weight',
-        rate_per_lb: input.hangingRate,
-        ...(input.processingFee && input.processingFee > 0
-          ? { processing_fee: input.processingFee } : {}),
-      } : {}),
-    },
-  })
+  const parts: SalePart[] = input.parts?.length ? input.parts
+    : [{ buyer: input.buyer, share: 1, price: input.price, processingFee: input.processingFee }]
+  const splitId = parts.length > 1 ? crypto.randomUUID() : null
+  const name = asset?.name ?? 'stock'
+
+  for (const part of parts) {
+    const whole = Math.abs(part.share - 1) < 0.001
+    await createLog({
+      type: 'sale',
+      name: whole ? `Sold ${name}` : `Sold ${shareLabel(part.share)} ${name}`,
+      notes: input.notes,
+      assets: [{ id: input.assetId, role: 'subject' }],
+      quantities: !byWeight && part.price != null && part.price >= 0
+        ? [{ measure: 'price', value: part.price, unit: 'USD' }]
+        : [],
+      // On the log rather than the price quantity's label, which is where
+      // this used to ride: with no price there is no quantity row at all, so
+      // a sale recorded before the cheque is worked out lost the buyer
+      // entirely. Same slot recordDisposition uses, so both ways of selling
+      // read back through one field (see LogWithDetail.buyer).
+      attributes: {
+        ...(part.buyer ? { buyer: part.buyer } : {}),
+        ...(whole ? {} : { share: part.share }),
+        ...(splitId ? { split_id: splitId } : {}),
+        ...(byWeight ? {
+          pricing: 'hanging_weight',
+          rate_per_lb: input.hangingRate,
+          ...(part.processingFee && part.processingFee > 0
+            ? { processing_fee: part.processingFee } : {}),
+        } : {}),
+      },
+    })
+  }
   await archiveAsset(input.assetId, 'sold')
 }
 
-export interface WeightSale {
+export interface WeightSalePart {
   logId: string
+  buyer: string | null
+  share: number
+  processingFee: number
+}
+
+/** An animal sold by hanging weight, to one buyer or split between several. */
+export interface WeightSale {
+  /** The split it belongs to, or its one log's id when sold whole. */
+  key: string
   timestamp: string
   /** What was sold — usually one animal, a group if the whole lot went. */
   names: string[]
   assetIds: string[]
-  buyer: string | null
   ratePerLb: number
-  processingFee: number
+  /** One per buyer still waiting on a price. */
+  parts: WeightSalePart[]
 }
 
 /**
  * Animals sold by hanging weight whose weight has not come back yet — the
- * reminder on Today. Pending until the sale has a price: entering the
+ * reminder on Today. A part is pending until it has a price: entering the
  * weight writes one, and so does typing a price straight in under Records,
- * either of which takes it off the list.
+ * either of which takes that part off the list.
  */
 export async function pendingWeightSales(): Promise<WeightSale[]> {
   const pg = await db()
   const { rows } = await pg.query<{
-    id: string; timestamp: string; buyer: string | null
-    rate: number | string | null; fee: number | string | null; name: string; asset_id: string
+    id: string; timestamp: string; buyer: string | null; split_id: string | null
+    share: number | string | null; rate: number | string | null; fee: number | string | null
+    name: string; asset_id: string
   }>(
     `select l.id, l.timestamp,
             l.attributes->>'buyer' as buyer,
+            l.attributes->>'split_id' as split_id,
+            l.attributes->>'share' as share,
             l.attributes->>'rate_per_lb' as rate,
             l.attributes->>'processing_fee' as fee,
             a.name, a.id as asset_id
@@ -2202,31 +2242,39 @@ export async function pendingWeightSales(): Promise<WeightSale[]> {
            where q.log_id = l.id and q.measure = 'price' and q.deleted_at is null)
       order by l.timestamp asc, a.name`,
   )
-  const byLog = new Map<string, WeightSale>()
+  const byKey = new Map<string, WeightSale>()
   for (const r of rows) {
-    const sale = byLog.get(r.id)
-    if (sale) { sale.names.push(r.name); sale.assetIds.push(r.asset_id); continue }
-    byLog.set(r.id, {
-      logId: r.id,
-      timestamp: r.timestamp,
-      names: [r.name],
-      assetIds: [r.asset_id],
-      buyer: r.buyer,
-      ratePerLb: Number(r.rate) || 0,
-      processingFee: Number(r.fee) || 0,
-    })
+    const key = r.split_id ?? r.id
+    let sale = byKey.get(key)
+    if (!sale) {
+      sale = { key, timestamp: r.timestamp, names: [], assetIds: [],
+        ratePerLb: Number(r.rate) || 0, parts: [] }
+      byKey.set(key, sale)
+    }
+    if (!sale.assetIds.includes(r.asset_id)) { sale.assetIds.push(r.asset_id); sale.names.push(r.name) }
+    if (!sale.parts.some((p) => p.logId === r.id)) {
+      sale.parts.push({
+        logId: r.id, buyer: r.buyer,
+        share: Number(r.share) || 1, processingFee: Number(r.fee) || 0,
+      })
+    }
   }
-  return [...byLog.values()]
+  return [...byKey.values()]
 }
 
 /**
- * Finishes a hanging-weight sale: the weight the butcher reported, and the
- * price it works out to. The weight is kept on the sale (labelled
- * "hanging") so the record still says how the price was reached.
+ * Finishes a hanging-weight sale: the carcass weight the butcher reported,
+ * shared out between the buyers. Each part gets its own share of the weight
+ * (labelled "hanging") and the price that share comes to, so each record
+ * still says how its price was reached.
  */
 export async function completeWeightSale(sale: WeightSale, hangingLb: number): Promise<void> {
-  await setQuantity(sale.logId, 'weight', hangingLb, 'lb', 'hanging')
-  await setQuantity(sale.logId, 'price', weightSalePrice(sale, hangingLb), 'USD')
+  for (const part of sale.parts) {
+    await setQuantity(part.logId, 'weight', hangingLb * part.share, 'lb', 'hanging')
+    await setQuantity(part.logId, 'price', weightSalePrice(
+      { ratePerLb: sale.ratePerLb, processingFee: part.processingFee, share: part.share }, hangingLb,
+    ), 'USD')
+  }
 }
 
 // ------------------------------------------------------------ past stock
