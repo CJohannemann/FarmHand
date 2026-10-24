@@ -53,9 +53,8 @@ export async function animalSaleInput(d: AnimalSaleDraft, contacts: Contact[]): 
     parts.push({
       buyer: await resolveBuyer(contacts, p.buyerId, p.buyerDraft),
       share: Number(p.share),
-      ...(d.mode === 'weight'
-        ? { processingFee: hasNumericValue(p.fee) ? Number(p.fee) : undefined }
-        : { price: hasNumericValue(p.price) ? Number(p.price) : undefined }),
+      processingFee: hasNumericValue(p.fee) ? Number(p.fee) : undefined,
+      ...(d.mode === 'price' ? { price: hasNumericValue(p.price) ? Number(p.price) : undefined } : {}),
     })
   }
   return d.mode === 'weight'
@@ -160,14 +159,18 @@ export function AnimalSaleFields({ draft, onDraft, contacts }: {
                 </select>
               </label>
             )}
-            {draft.mode === 'price' ? (
+            {draft.mode === 'price' && (
               <label className="field">
                 <span>{split ? 'Price ($)' : 'What did you get for it? ($)'}</span>
                 <input type="number" inputMode="decimal" min="0" value={p.price}
                   onChange={onNumericChange((v) => setPart(i, { price: v }))} {...numberProps}
                   placeholder={split ? '225' : '450'} />
               </label>
-            ) : (
+            )}
+            {/* Per buyer, either way it is priced: one half cut and wrapped
+                with sausage made costs far more to process than one the
+                buyer butchers himself. */}
+            {(split || draft.mode === 'weight') && (
               <label className="field">
                 <span>Processing fee ($, optional)</span>
                 <input type="number" inputMode="decimal" min="0" value={p.fee}
@@ -176,6 +179,14 @@ export function AnimalSaleFields({ draft, onDraft, contacts }: {
               </label>
             )}
           </div>
+          {!split && draft.mode === 'price' && (
+            <label className="field">
+              <span>Processing fee ($, optional)</span>
+              <input type="number" inputMode="decimal" min="0" value={p.fee}
+                onChange={onNumericChange((v) => setPart(i, { fee: v }))} {...numberProps}
+                placeholder="0" />
+            </label>
+          )}
         </div>
       ))}
 

@@ -2182,8 +2182,11 @@ export async function sellAsset(input: {
             ratePerLb: input.hangingRate!, processingFee: part.processingFee ?? 0, share: part.share,
           }, input.hangingLb!) },
         ] : [])
+        // The price is what the buyer owes in all: the meat plus any
+        // processing fee they pay the farm, which is also kept on its own
+        // below so the record still says how much of it was the fee.
         : part.price != null && part.price >= 0
-          ? [{ measure: 'price', value: part.price, unit: 'USD' }]
+          ? [{ measure: 'price', value: part.price + (part.processingFee ?? 0), unit: 'USD' }]
           : [],
       // On the log rather than the price quantity's label, which is where
       // this used to ride: with no price there is no quantity row at all, so
@@ -2194,12 +2197,9 @@ export async function sellAsset(input: {
         ...(part.buyer ? { buyer: part.buyer } : {}),
         ...(whole ? {} : { share: part.share }),
         ...(splitId ? { split_id: splitId } : {}),
-        ...(byWeight ? {
-          pricing: 'hanging_weight',
-          rate_per_lb: input.hangingRate,
-          ...(part.processingFee && part.processingFee > 0
-            ? { processing_fee: part.processingFee } : {}),
-        } : {}),
+        ...(byWeight ? { pricing: 'hanging_weight', rate_per_lb: input.hangingRate } : {}),
+        ...(part.processingFee && part.processingFee > 0
+          ? { processing_fee: part.processingFee } : {}),
       },
     })
   }
@@ -2281,6 +2281,8 @@ export interface SaleTerms {
   processingFee: number
   /** The whole carcass's hanging weight, if it has been entered. */
   hangingLb: number | null
+  /** What this buyer owes in all, fee included, if it has a price yet. */
+  price: number | null
   /** The other buyers' sale logs, when the animal was split. */
   siblingIds: string[]
 }
@@ -2290,7 +2292,7 @@ export async function saleTermsFor(logId: string): Promise<SaleTerms | null> {
   const { rows } = await pg.query<{
     type: string; share: string | number | null; pricing: string | null
     rate: string | number | null; fee: string | number | null; split_id: string | null
-    part_lb: number | null
+    part_lb: number | null; price: number | null
   }>(
     `select l.type,
             l.attributes->>'share' as share,
@@ -2300,7 +2302,10 @@ export async function saleTermsFor(logId: string): Promise<SaleTerms | null> {
             l.attributes->>'split_id' as split_id,
             (select q.value from quantity q
               where q.log_id = l.id and q.measure = 'weight' and q.label = 'hanging'
-                and q.deleted_at is null limit 1) as part_lb
+                and q.deleted_at is null limit 1) as part_lb,
+            (select q.value from quantity q
+              where q.log_id = l.id and q.measure = 'price'
+                and q.deleted_at is null limit 1) as price
        from log l where l.id = $1`,
     [logId],
   )
@@ -2324,6 +2329,7 @@ export async function saleTermsFor(logId: string): Promise<SaleTerms | null> {
     ratePerLb: Number(r.rate) > 0 ? Number(r.rate) : null,
     processingFee: Number(r.fee) || 0,
     hangingLb: r.part_lb != null ? r.part_lb / share : null,
+    price: r.price,
     siblingIds,
   }
 }
@@ -2376,6 +2382,22 @@ export async function setSaleByWeight(logId: string, input: {
     await setQuantity(id, 'price', weightSalePrice(
       { ratePerLb: rate, processingFee: fee, share: t.share }, input.hangingLb), 'USD')
   }
+}
+
+/**
+ * Sets a sale's agreed price and the processing fee its buyer pays the farm
+ * on top, after the fact. Turns a by-weight sale back into a set price if it
+ * was one. The stored price is the total owed, as everywhere else.
+ */
+export async function setSalePrice(logId: string, input: {
+  price: number; processingFee: number
+}): Promise<void> {
+  await mergeLogAttributes(logId, {
+    pricing: undefined,
+    rate_per_lb: undefined,
+    processing_fee: input.processingFee > 0 ? input.processingFee : undefined,
+  })
+  await setQuantity(logId, 'price', input.price + input.processingFee, 'USD')
 }
 
 export interface WeightSalePart {

@@ -3,6 +3,7 @@ import { useAsync } from '../lib/useAsync'
 import {
   addReceipt, CATEGORIZABLE_MATERIALS, deleteLog, listTerms, purchaseLotFor, quantitiesFor,
   receiptsForLog, saleTermsFor, serviceCostFor, setLotCategory, setQuantity, setSaleByWeight,
+  setSalePrice,
   stampEdited, updateAsset, updateLog,
 } from '../db/queries'
 import { shareLabel, weightSalePrice } from '../lib/saleCost'
@@ -57,9 +58,13 @@ export function EditLog({
   const [rate, setRate] = useState('')
   const [hang, setHang] = useState('')
   const [fee, setFee] = useState('')
+  // The agreed price for the meat alone — the stored price is the total
+  // owed, fee included, so the fee comes back off it for editing.
+  const [meat, setMeat] = useState('')
   useEffect(() => {
     const t = terms.data
     if (!t) return
+    setMeat(t.price != null ? String(Math.round((t.price - t.processingFee) * 100) / 100) : '')
     setByWeight(t.byWeight)
     setRate(t.ratePerLb != null ? String(t.ratePerLb) : '')
     setHang(t.hangingLb != null ? String(Math.round(t.hangingLb * 100) / 100) : '')
@@ -67,6 +72,10 @@ export function EditLog({
   }, [terms.data])
   const share = terms.data?.share ?? 1
   const weightPriced = log.type === 'sale' && byWeight
+  // Every sale is priced through the two modes below once its terms have
+  // loaded — the raw price row and the one-off "Sold for" field would only
+  // be a second, disagreeing way to type the same number.
+  const salePriced = log.type === 'sale' && !!terms.data
   const preview = weightPriced && Number(rate) > 0 && Number(hang) > 0
     ? weightSalePrice({ ratePerLb: Number(rate), processingFee: Number(fee) || 0, share }, Number(hang))
     : null
@@ -142,7 +151,7 @@ export function EditLog({
     for (const [id, raw] of Object.entries(edited)) {
       const q = (qtys.data ?? []).find((x) => x.id === id)
       // Worked out from the weight below instead, when priced by weight.
-      if (q && weightPriced && isWeightPricedQty(q)) continue
+      if (q && salePriced && isWeightPricedQty(q)) continue
       if (q && hasNumericValue(raw) && Number(raw) !== q.value) {
         await setQuantity(log.id, q.measure as Measure, Number(raw))
         changed = true
@@ -158,6 +167,16 @@ export function EditLog({
           processingFee: Number(fee) || 0,
           hangingLb: Number(hang) > 0 ? Number(hang) : undefined,
         })
+        changed = true
+      }
+    } else if (salePriced && !byWeight) {
+      const t = terms.data!
+      const newFee = Number(fee) || 0
+      const wasMeat = t.price != null ? t.price - t.processingFee : null
+      const changedTerms = t.byWeight || Math.abs(newFee - t.processingFee) > 0.001
+        || (hasNumericValue(meat) && (wasMeat == null || Math.abs(Number(meat) - wasMeat) > 0.001))
+      if (hasNumericValue(meat) && changedTerms) {
+        await setSalePrice(log.id, { price: Number(meat), processingFee: newFee })
         changed = true
       }
     } else if (canAddPrice && !hasPrice && hasNumericValue(newPrice)) {
@@ -259,6 +278,29 @@ export function EditLog({
               By hanging weight
             </button>
           </div>
+          {!byWeight && (
+            <div className="pair">
+              <label className="field">
+                <span>Price ($)</span>
+                <input type="number" inputMode="decimal" min="0" value={meat}
+                  onChange={(e) => setMeat(sanitizeNumeric(e.target.value))}
+                  onWheel={ignoreScrollOnNumberInput}
+                  onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="450" />
+              </label>
+              <label className="field">
+                <span>Processing fee ($)</span>
+                <input type="number" inputMode="decimal" min="0" value={fee}
+                  onChange={(e) => setFee(sanitizeNumeric(e.target.value))}
+                  onWheel={ignoreScrollOnNumberInput}
+                  onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="0" />
+              </label>
+            </div>
+          )}
+          {!byWeight && hasNumericValue(meat) && Number(fee) > 0 && (
+            <p className="hint">
+              They owe you {formatMoney(Number(meat) + Number(fee))} in all.
+            </p>
+          )}
           {byWeight && (
             <>
               <div className="pair">
@@ -298,7 +340,7 @@ export function EditLog({
         </>
       )}
 
-      {(qtys.data ?? []).filter((q) => !(weightPriced && isWeightPricedQty(q))).map((q) => (
+      {(qtys.data ?? []).filter((q) => !(salePriced && isWeightPricedQty(q))).map((q) => (
         <label className="field" key={q.id}>
           <span>{q.label ?? q.measure} ({q.unit})</span>
           <input
@@ -312,7 +354,7 @@ export function EditLog({
         </label>
       ))}
 
-      {canAddPrice && !hasPrice && !weightPriced && (
+      {canAddPrice && !hasPrice && !salePriced && (
         <label className="field">
           <span>{log.type === 'sale' ? 'Sold for ($)' : 'Paid ($)'}</span>
           <input
