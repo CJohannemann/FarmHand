@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import {
   addReceipt, CATEGORIZABLE_MATERIALS, deleteLog, listTerms, purchaseLotFor, quantitiesFor,
-  receiptsForLog, serviceCostFor, setLotCategory, setQuantity, stampEdited,
-  updateAsset, updateLog,
+  receiptsForLog, saleTermsFor, serviceCostFor, setLotCategory, setQuantity, setSaleByWeight,
+  stampEdited, updateAsset, updateLog,
 } from '../db/queries'
+import { shareLabel, weightSalePrice } from '../lib/saleCost'
 import type { LogWithDetail, Measure } from '../db/types'
 import type { PreparedImage } from '../lib/image'
 import {
-  hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, sanitizeNumeric,
+  formatMoney, hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, sanitizeNumeric,
 } from '../lib/numeric'
 import { ReceiptCapture } from './ReceiptCapture'
 import { Sheet } from './Sheet'
@@ -43,6 +44,32 @@ export function EditLog({
   const canAddPrice = log.type === 'sale' || log.type === 'purchase'
   const hasPrice = (qtys.data ?? []).some((q) => q.measure === 'price')
   const [newPrice, setNewPrice] = useState('')
+
+  // A sale priced by the pound of hanging weight — set up here after the
+  // fact for a pig closed out with a blank price, or corrected when the
+  // rate or the butcher's weight was typed wrong. Whichever way it was sold
+  // is where this opens.
+  const terms = useAsync(
+    () => (log.type === 'sale' ? saleTermsFor(log.id) : Promise.resolve(null)),
+    [log.id, log.type],
+  )
+  const [byWeight, setByWeight] = useState(false)
+  const [rate, setRate] = useState('')
+  const [hang, setHang] = useState('')
+  const [fee, setFee] = useState('')
+  useEffect(() => {
+    const t = terms.data
+    if (!t) return
+    setByWeight(t.byWeight)
+    setRate(t.ratePerLb != null ? String(t.ratePerLb) : '')
+    setHang(t.hangingLb != null ? String(Math.round(t.hangingLb * 100) / 100) : '')
+    setFee(t.processingFee > 0 ? String(t.processingFee) : '')
+  }, [terms.data])
+  const share = terms.data?.share ?? 1
+  const weightPriced = log.type === 'sale' && byWeight
+  const preview = weightPriced && Number(rate) > 0 && Number(hang) > 0
+    ? weightSalePrice({ ratePerLb: Number(rate), processingFee: Number(fee) || 0, share }, Number(hang))
+    : null
 
   // A purchase that bought Feed or Hay gets the same "For" field BuyForm
   // offers when the purchase is first recorded — the category didn't exist
@@ -114,12 +141,26 @@ export function EditLog({
     })
     for (const [id, raw] of Object.entries(edited)) {
       const q = (qtys.data ?? []).find((x) => x.id === id)
+      // Worked out from the weight below instead, when priced by weight.
+      if (q && weightPriced && isWeightPricedQty(q)) continue
       if (q && hasNumericValue(raw) && Number(raw) !== q.value) {
         await setQuantity(log.id, q.measure as Measure, Number(raw))
         changed = true
       }
     }
-    if (canAddPrice && !hasPrice && hasNumericValue(newPrice)) {
+    if (weightPriced && Number(rate) > 0) {
+      const t = terms.data
+      const before = [t?.byWeight, t?.ratePerLb, t?.processingFee, t?.hangingLb]
+      const after = [true, Number(rate), Number(fee) || 0, Number(hang) > 0 ? Number(hang) : null]
+      if (before.some((v, i) => Math.abs(Number(v ?? -1) - Number(after[i] ?? -1)) > 0.001)) {
+        await setSaleByWeight(log.id, {
+          ratePerLb: Number(rate),
+          processingFee: Number(fee) || 0,
+          hangingLb: Number(hang) > 0 ? Number(hang) : undefined,
+        })
+        changed = true
+      }
+    } else if (canAddPrice && !hasPrice && hasNumericValue(newPrice)) {
       await setQuantity(log.id, 'price', Number(newPrice), 'USD')
       changed = true
     }
@@ -206,7 +247,58 @@ export function EditLog({
         </label>
       )}
 
-      {(qtys.data ?? []).map((q) => (
+      {log.type === 'sale' && terms.data && (
+        <>
+          <div className="chipwrap" style={{ marginBottom: '0.75rem' }}>
+            <button type="button" className={!byWeight ? 'chip on' : 'chip'}
+              onClick={() => setByWeight(false)}>
+              Set price
+            </button>
+            <button type="button" className={byWeight ? 'chip on' : 'chip'}
+              onClick={() => setByWeight(true)}>
+              By hanging weight
+            </button>
+          </div>
+          {byWeight && (
+            <>
+              <div className="pair">
+                <label className="field">
+                  <span>Price per lb ($)</span>
+                  <input type="number" inputMode="decimal" min="0" value={rate}
+                    onChange={(e) => setRate(sanitizeNumeric(e.target.value))}
+                    onWheel={ignoreScrollOnNumberInput}
+                    onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="4.50" />
+                </label>
+                <label className="field">
+                  <span>Hanging weight (lb)</span>
+                  <input type="number" inputMode="decimal" min="0" value={hang}
+                    onChange={(e) => setHang(sanitizeNumeric(e.target.value))}
+                    onWheel={ignoreScrollOnNumberInput}
+                    onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="180" />
+                </label>
+              </div>
+              <label className="field">
+                <span>Processing fee ($, optional)</span>
+                <input type="number" inputMode="decimal" min="0" value={fee}
+                  onChange={(e) => setFee(sanitizeNumeric(e.target.value))}
+                  onWheel={ignoreScrollOnNumberInput}
+                  onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="0" />
+              </label>
+              <p className="hint">
+                {share < 0.999
+                  ? `This buyer took ${shareLabel(share)} — enter the whole carcass's weight. `
+                  : ''}
+                {preview != null ? `Comes to ${formatMoney(preview)}. ` : ''}
+                {(terms.data.siblingIds.length > 0 && Number(hang) > 0)
+                  ? 'The weight prices the other buyers\' parts of this animal too. ' : ''}
+                Only add a processing fee if the buyer pays it to you.
+              </p>
+            </>
+          )}
+        </>
+      )}
+
+      {(qtys.data ?? []).filter((q) => !(weightPriced && isWeightPricedQty(q))).map((q) => (
         <label className="field" key={q.id}>
           <span>{q.label ?? q.measure} ({q.unit})</span>
           <input
@@ -220,7 +312,7 @@ export function EditLog({
         </label>
       ))}
 
-      {canAddPrice && !hasPrice && (
+      {canAddPrice && !hasPrice && !weightPriced && (
         <label className="field">
           <span>{log.type === 'sale' ? 'Sold for ($)' : 'Paid ($)'}</span>
           <input
@@ -257,4 +349,11 @@ export function EditLog({
       )}
     </Sheet>
   )
+}
+
+/** A sale's price and hanging weight, which a by-weight sale works out from
+ * the rate instead of having them typed — editing both ways at once would
+ * leave the two disagreeing. */
+function isWeightPricedQty(q: { measure: string; label: string | null }): boolean {
+  return q.measure === 'price' || (q.measure === 'weight' && q.label === 'hanging')
 }

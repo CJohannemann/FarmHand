@@ -2272,6 +2272,112 @@ export async function raisedCost(asset: Asset): Promise<AnimalCost | null> {
   return ids.some((id) => byAnimal.has(id)) ? sum : null
 }
 
+/** How one sale log was priced, for editing it after the fact. */
+export interface SaleTerms {
+  byWeight: boolean
+  /** This buyer's part of the animal — ½ for a half hog. */
+  share: number
+  ratePerLb: number | null
+  processingFee: number
+  /** The whole carcass's hanging weight, if it has been entered. */
+  hangingLb: number | null
+  /** The other buyers' sale logs, when the animal was split. */
+  siblingIds: string[]
+}
+
+export async function saleTermsFor(logId: string): Promise<SaleTerms | null> {
+  const pg = await db()
+  const { rows } = await pg.query<{
+    type: string; share: string | number | null; pricing: string | null
+    rate: string | number | null; fee: string | number | null; split_id: string | null
+    part_lb: number | null
+  }>(
+    `select l.type,
+            l.attributes->>'share' as share,
+            l.attributes->>'pricing' as pricing,
+            l.attributes->>'rate_per_lb' as rate,
+            l.attributes->>'processing_fee' as fee,
+            l.attributes->>'split_id' as split_id,
+            (select q.value from quantity q
+              where q.log_id = l.id and q.measure = 'weight' and q.label = 'hanging'
+                and q.deleted_at is null limit 1) as part_lb
+       from log l where l.id = $1`,
+    [logId],
+  )
+  const r = rows[0]
+  if (!r || r.type !== 'sale') return null
+  const share = Number(r.share) || 1
+  let siblingIds: string[] = []
+  if (r.split_id) {
+    const sib = await pg.query<{ id: string }>(
+      `select id from log
+        where farm_id = (select id from active_farm)
+          and type = 'sale' and deleted_at is null
+          and attributes->>'split_id' = $1 and id <> $2`,
+      [r.split_id, logId],
+    )
+    siblingIds = sib.rows.map((x) => x.id)
+  }
+  return {
+    byWeight: r.pricing === 'hanging_weight',
+    share,
+    ratePerLb: Number(r.rate) > 0 ? Number(r.rate) : null,
+    processingFee: Number(r.fee) || 0,
+    hangingLb: r.part_lb != null ? r.part_lb / share : null,
+    siblingIds,
+  }
+}
+
+/** Merges into a log's attributes rather than replacing them — a sale's
+ * buyer, share and split_id ride there too. */
+async function mergeLogAttributes(logId: string, patch: Record<string, unknown>) {
+  const pg = await db()
+  const { rows } = await pg.query<{ attributes: Record<string, unknown> | string | null }>(
+    `select attributes from log where id = $1`, [logId],
+  )
+  const raw = rows[0]?.attributes
+  const current = typeof raw === 'string' ? JSON.parse(raw || '{}') : (raw ?? {})
+  await pg.query(
+    `update log set attributes = $2, updated_at = $3 where id = $1`,
+    [logId, JSON.stringify({ ...current, ...patch }), new Date().toISOString()],
+  )
+}
+
+/**
+ * Turns a sale into (or corrects) a sale by hanging weight, after the fact:
+ * the pig closed out with a blank price before by-weight existed, or a
+ * rate typed wrong. With the weight, the price is worked out and written.
+ *
+ * The weight is the whole carcass's, so it prices every buyer's part of a
+ * split animal at once, each at its own rate, fee and share — entering it
+ * on Smith's half should not leave Jones's half waiting on a number the
+ * farm already has. A part with no rate of its own takes this one's.
+ */
+export async function setSaleByWeight(logId: string, input: {
+  ratePerLb: number; processingFee: number; hangingLb?: number
+}): Promise<void> {
+  await mergeLogAttributes(logId, {
+    pricing: 'hanging_weight',
+    rate_per_lb: input.ratePerLb,
+    processing_fee: input.processingFee > 0 ? input.processingFee : undefined,
+  })
+  if (!(input.hangingLb && input.hangingLb > 0)) return
+  const terms = await saleTermsFor(logId)
+  if (!terms) return
+  for (const id of [logId, ...terms.siblingIds]) {
+    const t = id === logId ? terms : await saleTermsFor(id)
+    if (!t) continue
+    const rate = t.ratePerLb ?? input.ratePerLb
+    if (id !== logId && !t.byWeight) {
+      await mergeLogAttributes(id, { pricing: 'hanging_weight', rate_per_lb: rate })
+    }
+    const fee = id === logId ? input.processingFee : t.processingFee
+    await setQuantity(id, 'weight', input.hangingLb * t.share, 'lb', 'hanging')
+    await setQuantity(id, 'price', weightSalePrice(
+      { ratePerLb: rate, processingFee: fee, share: t.share }, input.hangingLb), 'USD')
+  }
+}
+
 export interface WeightSalePart {
   logId: string
   buyer: string | null
