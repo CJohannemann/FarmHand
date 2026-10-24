@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
-  archiveAsset, assetCosts, childAssets, createAsset, createHarvest, createLog,
+  archiveAsset, assetCosts, childAssets, raisedCost, saleSummary, type SaleSummary, createAsset, createHarvest, createLog,
   createPurchase, findOrCreateExternalParent, getAsset, lastServiceHours, listContacts,
   listTerms, logsForAsset, lotBalances, offspringOf, sellAsset, updateAsset,
   productionHistory, weightHistory, type AssetEvent,
@@ -23,6 +23,7 @@ import {
   ignoreScrollOnNumberInput, onNumericChange, withThousands,
 } from '../lib/numeric'
 import { useMembersMap } from '../lib/members'
+import type { AnimalCost } from '../lib/saleCost'
 import { useFarmTimezone } from '../lib/weather'
 import { AssetSelect, OTHER } from './AssetSelect'
 import { ParentField } from './ParentField'
@@ -76,6 +77,17 @@ export function AssetDetail({
   const membersById = useMembersMap()
   const timeZone = useFarmTimezone()
   const costs = useAsync(() => assetCosts(asset.id), [asset.id])
+  // The profit on an animal that has sold: what it brought in against what
+  // it cost to raise, the full figure What to charge uses — including its
+  // share of feed nobody logged, which assetCosts() above cannot see.
+  const sale = useAsync(
+    async () => {
+      if (asset.type !== 'animal' && asset.type !== 'group') return null
+      const summary = await saleSummary(asset.id)
+      return summary.sold ? { summary, raised: await raisedCost(asset) } : null
+    },
+    [asset.id],
+  )
   const weights = useAsync(() => weightHistory(asset.id), [asset.id])
   // Reuses `material` above — null for a beef steer, and then nothing here
   // is loaded or drawn.
@@ -131,7 +143,7 @@ export function AssetDetail({
 
   const refresh = () => {
     setSheet(null)
-    events.reload(); costs.reload(); weights.reload(); members.reload()
+    events.reload(); costs.reload(); weights.reload(); members.reload(); sale.reload()
     sireAsset.reload(); damAsset.reload(); offspring.reload()
     onChanged()
   }
@@ -150,8 +162,9 @@ export function AssetDetail({
   // the farm, cost nothing) is a real recorded fact, not the absence of
   // one, and a plain amount check can't tell those apart.
   const hasPurchase = (events.data ?? []).some((e) => e.type === 'purchase')
-  const showCosts = !!c && (hasPurchase || c.inputCost > 0 || c.outputs.length > 0
-    || c.saleIncome > 0)
+  // A sale alone no longer opens this panel — the Sale section above has
+  // what it sold for against the full cost to raise.
+  const showCosts = !!c && (hasPurchase || c.inputCost > 0 || c.outputs.length > 0)
   const showBloodline = asset.type === 'animal' && (
     sireId || damId || !!asset.attributes?.sireName || !!asset.attributes?.damName
   )
@@ -319,6 +332,8 @@ export function AssetDetail({
         </>
       )}
 
+      {sale.data && <SaleProfit {...sale.data} />}
+
       {showCosts && (
         <>
           <h2 className="section">Cost</h2>
@@ -338,16 +353,6 @@ export function AssetDetail({
               <Row strong
                 label={`Cost per ${c!.unit && c!.unit !== 'each' ? c!.unit : 'unit'}`}
                 value={formatMoney(c!.costPerUnit)} />
-            )}
-            {/* Only once it has actually sold. The margin is the whole point
-                of recording the price — "what did this pig cost" was
-                answerable before, "did we make anything on it" was not. */}
-            {c!.saleIncome > 0 && (
-              <>
-                <Row label="Sold for" value={formatMoney(c!.saleIncome)} />
-                <Row strong label="Margin"
-                  value={formatMoney(c!.saleIncome - c!.purchaseCost - c!.inputCost)} />
-              </>
             )}
           </div>
           {c!.costPerUnit == null && (c!.purchaseCost > 0 || c!.inputCost > 0) && (
@@ -488,6 +493,50 @@ export function AssetDetail({
         />
       )}
     </div>
+  )
+}
+
+/**
+ * Did we make anything on it? What it sold for — every buyer's part, a hog
+ * sold as two halves included — against what it cost to raise. Per lb of
+ * hanging weight too, once the butcher's weight is in, since that is the
+ * unit the next one will be priced in.
+ */
+function SaleProfit({ summary, raised }: {
+  summary: SaleSummary; raised: AnimalCost | null
+}) {
+  const profit = raised ? summary.income - raised.total : null
+  const lb = summary.hangingLb
+  return (
+    <>
+      <h2 className="section">Sale</h2>
+      <div className="costbox">
+        <Row label="Sold for" value={summary.income > 0 ? formatMoney(summary.income) : '—'} />
+        {raised && <Row label="Cost to raise" value={formatMoney(raised.total)} />}
+        {profit != null && summary.income > 0 && (
+          <Row strong label={profit >= 0 ? 'Profit' : 'Loss'}
+            value={formatMoney(Math.abs(profit))} />
+        )}
+        {lb > 0 && <Row label="Hanging weight" value={`${formatQty(lb)} lb`} />}
+        {lb > 0 && raised && <Row label="Cost per hanging lb" value={formatMoney(raised.total / lb)} />}
+        {lb > 0 && profit != null && (
+          <Row label={`${profit >= 0 ? 'Profit' : 'Loss'} per hanging lb`}
+            value={formatMoney(Math.abs(profit) / lb)} />
+        )}
+      </div>
+      {summary.pending && (
+        <p className="hint">
+          Part of this sale has no price yet — enter the hanging weight from
+          Today, or the price under Records, to see the full profit.
+        </p>
+      )}
+      {raised && (
+        <p className="hint">
+          Cost to raise includes its share of feed marked for its species, as
+          on What to charge. Equipment isn’t counted.
+        </p>
+      )}
+    </>
   )
 }
 

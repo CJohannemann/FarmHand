@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useAsync } from '../lib/useAsync'
-import { listAssets, pendingWeightSales, saleCostInputs, weightHistory } from '../db/queries'
+import {
+  listAssets, pendingWeightSales, saleCostInputs, saleSummary, weightHistory,
+} from '../db/queries'
 import { saleCosts, type AnimalCost } from '../lib/saleCost'
 import { pluralSpecies } from '../lib/husbandry'
 import {
-  formatMoney, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
+  formatMoney, formatQty, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
 } from '../lib/numeric'
 
 /**
@@ -73,7 +75,11 @@ function SpeciesCost({ species }: { species: string }) {
   const [markup, setMarkup] = useState('')
 
   const here = (data?.inputs.animals ?? [])
-    .filter((a) => a.left == null || data?.awaiting.has(a.id))
+    // Still here, waiting on a butcher's weight, or sold in the last two
+    // months — long enough to see what the last ones made when pricing
+    // the next.
+    .filter((a) => a.left == null || data?.awaiting.has(a.id)
+      || Date.now() - new Date(a.left).getTime() < 60 * 24 * 60 * 60 * 1000)
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
   const chosen = here.filter((a) => selected.includes(a.id))
   const toggle = (id: string) =>
@@ -167,8 +173,10 @@ function AnimalPrice({ id, name, cost, markup }: {
   id: string; name: string; cost: AnimalCost; markup: number
 }) {
   const { data: weights } = useAsync(() => weightHistory(id), [id])
+  const { data: sale } = useAsync(() => saleSummary(id), [id])
   const latest = weights && weights.length > 0 ? weights[weights.length - 1] : null
   const price = cost.total * (1 + markup / 100)
+  const profit = sale && sale.income > 0 ? sale.income - cost.total : null
   return (
     <>
       <h2 className="section">{name}</h2>
@@ -182,8 +190,17 @@ function AnimalPrice({ id, name, cost, markup }: {
           <Row label={`Per ${latest.unit} (at ${latest.value} ${latest.unit})`}
             value={formatMoney(cost.total / latest.value)} />
         )}
-        {markup > 0 && (
+        {markup > 0 && !sale?.sold && (
           <Row strong label={`Price at ${markup}% markup`} value={formatMoney(price)} />
+        )}
+        {/* Once it has sold, what it actually fetched replaces the guess. */}
+        {sale && sale.income > 0 && <Row label="Sold for" value={formatMoney(sale.income)} />}
+        {profit != null && (
+          <Row strong label={profit >= 0 ? 'Profit' : 'Loss'} value={formatMoney(Math.abs(profit))} />
+        )}
+        {sale && sale.hangingLb > 0 && (
+          <Row label={`Cost per hanging lb (${formatQty(sale.hangingLb)} lb)`}
+            value={formatMoney(cost.total / sale.hangingLb)} />
         )}
       </div>
     </>

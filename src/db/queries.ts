@@ -1,7 +1,7 @@
 import { db } from './client'
 import { renamedMemberName } from '../lib/grouping'
 import { measureForUnit } from '../lib/units'
-import { shareLabel, weightSalePrice, type CostAnimal, type CostLogRow, type CostLot } from '../lib/saleCost'
+import { saleCosts, shareLabel, weightSalePrice, type AnimalCost, type CostAnimal, type CostLogRow, type CostLot } from '../lib/saleCost'
 import { SALE_COST_ANIMALS_SQL, SALE_COST_LOGS_SQL, SALE_COST_LOTS_SQL } from './saleCostSql'
 import type {
   Asset, AssetRole, AssetType, Contact, LogWithDetail, Measure, QuantityInput,
@@ -2142,6 +2142,13 @@ export async function sellAsset(input: {
    */
   hangingRate?: number
   /**
+   * The carcass's hanging weight, when it is already known at the time of
+   * the sale — the butcher's sheet came back before the sale was entered.
+   * The sale is then finished on the spot, priced from it, rather than
+   * waiting on Today's reminder.
+   */
+  hangingLb?: number
+  /**
    * Who bought it. One part for an animal sold whole; two halves for a hog
    * split between two families. Each part is its own sale log, so each
    * buyer is credited with their own money in Buyers and Money in, tied
@@ -2158,6 +2165,7 @@ export async function sellAsset(input: {
   const parts: SalePart[] = input.parts?.length ? input.parts
     : [{ buyer: input.buyer, share: 1, price: input.price, processingFee: input.processingFee }]
   const splitId = parts.length > 1 ? crypto.randomUUID() : null
+  const weighed = byWeight && input.hangingLb != null && input.hangingLb > 0
   const name = asset?.name ?? 'stock'
 
   for (const part of parts) {
@@ -2167,9 +2175,16 @@ export async function sellAsset(input: {
       name: whole ? `Sold ${name}` : `Sold ${shareLabel(part.share)} ${name}`,
       notes: input.notes,
       assets: [{ id: input.assetId, role: 'subject' }],
-      quantities: !byWeight && part.price != null && part.price >= 0
-        ? [{ measure: 'price', value: part.price, unit: 'USD' }]
-        : [],
+      quantities: byWeight
+        ? (weighed ? [
+          { measure: 'weight', value: input.hangingLb! * part.share, unit: 'lb', label: 'hanging' },
+          { measure: 'price', unit: 'USD', value: weightSalePrice({
+            ratePerLb: input.hangingRate!, processingFee: part.processingFee ?? 0, share: part.share,
+          }, input.hangingLb!) },
+        ] : [])
+        : part.price != null && part.price >= 0
+          ? [{ measure: 'price', value: part.price, unit: 'USD' }]
+          : [],
       // On the log rather than the price quantity's label, which is where
       // this used to ride: with no price there is no quantity row at all, so
       // a sale recorded before the cheque is worked out lost the buyer
@@ -2189,6 +2204,72 @@ export async function sellAsset(input: {
     })
   }
   await archiveAsset(input.assetId, 'sold')
+}
+
+export interface SaleSummary {
+  /** Everything the sale brought in, across every buyer's part. */
+  income: number
+  /** Hanging weight sold, summed over the parts — the whole carcass. */
+  hangingLb: number
+  /** Some part is still waiting on its price (a weight not yet back). */
+  pending: boolean
+  sold: boolean
+}
+
+/**
+ * What an animal's sale came to, for the profit beside its cost. Summed over
+ * every sale log on it: a hog sold as two halves is two logs.
+ */
+export async function saleSummary(assetId: string): Promise<SaleSummary> {
+  const pg = await db()
+  const { rows } = await pg.query<{
+    income: number | null; hanging: number | null; pending: number; n: number
+  }>(
+    `select
+       (select sum(q.value) from quantity q
+         where q.log_id = l.id and q.measure = 'price' and q.deleted_at is null) as income,
+       (select sum(q.value) from quantity q
+         where q.log_id = l.id and q.measure = 'weight' and q.label = 'hanging'
+           and q.deleted_at is null) as hanging,
+       case when exists (select 1 from quantity q
+         where q.log_id = l.id and q.measure = 'price' and q.deleted_at is null)
+         then 0 else 1 end as pending,
+       1 as n
+       from log_asset la
+       join log l on l.id = la.log_id and l.type = 'sale' and l.deleted_at is null
+      where la.asset_id = $1 and la.role = 'subject'`,
+    [assetId],
+  )
+  return {
+    income: rows.reduce((t, r) => t + (Number(r.income) || 0), 0),
+    hangingLb: rows.reduce((t, r) => t + (Number(r.hanging) || 0), 0),
+    pending: rows.some((r) => Number(r.pending) === 1),
+    sold: rows.length > 0,
+  }
+}
+
+/**
+ * What an animal (or a whole group, summed over its members) cost to
+ * raise, the same figure What to charge shows: its purchase, the feed
+ * logged to it, its share of feed marked for its species, and vet and
+ * other inputs. Null for anything with no species to work it out by.
+ */
+export async function raisedCost(asset: Asset): Promise<AnimalCost | null> {
+  const species = String(asset.attributes?.species ?? '').trim()
+  if (!species) return null
+  const inputs = await saleCostInputs(species)
+  const { byAnimal } = saleCosts(species, inputs.animals, inputs.rows, inputs.lots)
+  const ids = asset.type === 'group'
+    ? inputs.animals.filter((a) => a.parentId === asset.id).map((a) => a.id)
+    : [asset.id]
+  const sum: AnimalCost = { bought: 0, feedLogged: 0, feedShared: 0, other: 0, total: 0 }
+  for (const id of ids) {
+    const c = byAnimal.get(id)
+    if (!c) continue
+    sum.bought += c.bought; sum.feedLogged += c.feedLogged
+    sum.feedShared += c.feedShared; sum.other += c.other; sum.total += c.total
+  }
+  return ids.some((id) => byAnimal.has(id)) ? sum : null
 }
 
 export interface WeightSalePart {

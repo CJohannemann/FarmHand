@@ -2,10 +2,10 @@ import type { Dispatch, SetStateAction } from 'react'
 import type { Contact } from '../db/types'
 import type { SalePart } from '../db/queries'
 import {
-  formatMoney, hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput,
+  formatMoney, formatQty, hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput,
   onNumericChange,
 } from '../lib/numeric'
-import { SHARE_OPTIONS, shareLabel } from '../lib/saleCost'
+import { SHARE_OPTIONS, shareLabel, weightSalePrice } from '../lib/saleCost'
 import { BuyerSelect, EMPTY_BUYER_DRAFT, resolveBuyer, type BuyerDraft } from './BuyerSelect'
 
 /**
@@ -32,19 +32,21 @@ export interface SalePartDraft {
 export interface AnimalSaleDraft {
   mode: 'price' | 'weight'
   rate: string
+  /** The carcass's hanging weight, if the butcher has already sent it. */
+  hang: string
   parts: SalePartDraft[]
 }
 
 const part = (share: number): SalePartDraft =>
   ({ buyerId: '', buyerDraft: EMPTY_BUYER_DRAFT, share: String(share), price: '', fee: '' })
 
-export const EMPTY_ANIMAL_SALE: AnimalSaleDraft = { mode: 'price', rate: '', parts: [part(1)] }
+export const EMPTY_ANIMAL_SALE: AnimalSaleDraft = { mode: 'price', rate: '', hang: '', parts: [part(1)] }
 
 const totalShare = (d: AnimalSaleDraft) => d.parts.reduce((t, p) => t + Number(p.share), 0)
 
 /** What sellAsset() takes from the draft, buyers typed fresh saved first. */
 export async function animalSaleInput(d: AnimalSaleDraft, contacts: Contact[]): Promise<{
-  hangingRate?: number; parts: SalePart[]
+  hangingRate?: number; hangingLb?: number; parts: SalePart[]
 }> {
   const parts: SalePart[] = []
   for (const p of d.parts) {
@@ -56,7 +58,9 @@ export async function animalSaleInput(d: AnimalSaleDraft, contacts: Contact[]): 
         : { price: hasNumericValue(p.price) ? Number(p.price) : undefined }),
     })
   }
-  return { hangingRate: d.mode === 'weight' ? Number(d.rate) : undefined, parts }
+  return d.mode === 'weight'
+    ? { hangingRate: Number(d.rate), hangingLb: Number(d.hang) > 0 ? Number(d.hang) : undefined, parts }
+    : { parts }
 }
 
 /**
@@ -94,6 +98,7 @@ export function AnimalSaleFields({ draft, onDraft, contacts }: {
   const split = draft.parts.length > 1
   const total = totalShare(draft)
   const rate = Number(draft.rate)
+  const hang = Number(draft.hang)
 
   return (
     <>
@@ -109,12 +114,22 @@ export function AnimalSaleFields({ draft, onDraft, contacts }: {
       </div>
 
       {draft.mode === 'weight' && (
-        <label className="field">
-          <span>Price per lb ($)</span>
-          <input type="number" inputMode="decimal" min="0" value={draft.rate}
-            onChange={onNumericChange((v) => set({ rate: v }))} {...numberProps}
-            placeholder="4.50" />
-        </label>
+        <div className="pair">
+          <label className="field">
+            <span>Price per lb ($)</span>
+            <input type="number" inputMode="decimal" min="0" value={draft.rate}
+              onChange={onNumericChange((v) => set({ rate: v }))} {...numberProps}
+              placeholder="4.50" />
+          </label>
+          {/* Optional: often the butcher's sheet is not back yet, and Today
+              asks for it later. Known now, the sale is finished now. */}
+          <label className="field">
+            <span>Hanging weight (lb)</span>
+            <input type="number" inputMode="decimal" min="0" value={draft.hang}
+              onChange={onNumericChange((v) => set({ hang: v }))} {...numberProps}
+              placeholder="If you have it" />
+          </label>
+        </div>
       )}
 
       {draft.parts.map((p, i) => (
@@ -164,6 +179,23 @@ export function AnimalSaleFields({ draft, onDraft, contacts }: {
         </div>
       ))}
 
+      {draft.mode === 'weight' && rate > 0 && hang > 0 && (
+        <div className="costbox" style={{ marginBottom: '0.75rem' }}>
+          {draft.parts.map((p, i) => (
+            <div className="costrow" key={i}>
+              <span>
+                {split ? `Buyer ${i + 1} · ${shareLabel(Number(p.share))} · ` : ''}
+                {formatQty(hang * Number(p.share))} lb
+                {Number(p.fee) > 0 ? ` + ${formatMoney(Number(p.fee))} fee` : ''}
+              </span>
+              <span>{formatMoney(weightSalePrice({
+                ratePerLb: rate, processingFee: Number(p.fee) || 0, share: Number(p.share),
+              }, hang))}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <button type="button" className="linkish" style={{ marginBottom: '0.75rem' }}
         onClick={addBuyer}>
         + Split with another buyer
@@ -189,10 +221,10 @@ export function AnimalSaleFields({ draft, onDraft, contacts }: {
         </small>
       ) : (
         <small className="hint">
-          It leaves the farm now and stops being fed. Today will remind you to
-          enter the hanging weight when the butcher sends it, and works out what
-          {split ? ' each buyer owes' : ' it comes to'}
-          {rate > 0 ? ` — a 200 lb carcass at this rate is ${formatMoney(rate * 200)}` : ''}.
+          {hang > 0
+            ? 'Saved with its price worked out from the weight. '
+            : `It leaves the farm now and stops being fed. No weight yet? Leave it
+              blank — Today will remind you to enter it when the butcher sends it. `}
           Only add a processing fee if the buyer pays it to you, not the butcher.
         </small>
       )}
