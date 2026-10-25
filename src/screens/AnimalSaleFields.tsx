@@ -53,7 +53,7 @@ export async function animalSaleInput(d: AnimalSaleDraft, contacts: Contact[]): 
     parts.push({
       buyer: await resolveBuyer(contacts, p.buyerId, p.buyerDraft),
       share: Number(p.share),
-      processingFee: hasNumericValue(p.fee) ? Number(p.fee) : undefined,
+      butcherCost: hasNumericValue(p.fee) ? Number(p.fee) : undefined,
       ...(d.mode === 'price' ? { price: hasNumericValue(p.price) ? Number(p.price) : undefined } : {}),
     })
   }
@@ -172,7 +172,7 @@ export function AnimalSaleFields({ draft, onDraft, contacts }: {
                 buyer butchers himself. */}
             {(split || draft.mode === 'weight') && (
               <label className="field">
-                <span>Processing fee ($, optional)</span>
+                <span>Butcher cost ($, they pay)</span>
                 <input type="number" inputMode="decimal" min="0" value={p.fee}
                   onChange={onNumericChange((v) => setPart(i, { fee: v }))} {...numberProps}
                   placeholder="0" />
@@ -181,7 +181,7 @@ export function AnimalSaleFields({ draft, onDraft, contacts }: {
           </div>
           {!split && draft.mode === 'price' && (
             <label className="field">
-              <span>Processing fee ($, optional)</span>
+              <span>Butcher cost ($, they pay)</span>
               <input type="number" inputMode="decimal" min="0" value={p.fee}
                 onChange={onNumericChange((v) => setPart(i, { fee: v }))} {...numberProps}
                 placeholder="0" />
@@ -197,11 +197,11 @@ export function AnimalSaleFields({ draft, onDraft, contacts }: {
               <span>
                 {split ? `Buyer ${i + 1} · ${shareLabel(Number(p.share))} · ` : ''}
                 {formatQty(hang * Number(p.share))} lb
-                {Number(p.fee) > 0 ? ` + ${formatMoney(Number(p.fee))} fee` : ''}
+                {Number(p.fee) > 0
+                  ? ` · ${formatMoney(weightSalePrice({ ratePerLb: rate, share: Number(p.share) }, hang)
+                    + Number(p.fee))} with butcher` : ''}
               </span>
-              <span>{formatMoney(weightSalePrice({
-                ratePerLb: rate, processingFee: Number(p.fee) || 0, share: Number(p.share),
-              }, hang))}</span>
+              <span>{formatMoney(weightSalePrice({ ratePerLb: rate, share: Number(p.share) }, hang))}</span>
             </div>
           ))}
         </div>
@@ -236,9 +236,16 @@ export function AnimalSaleFields({ draft, onDraft, contacts }: {
             ? 'Saved with its price worked out from the weight. '
             : `It leaves the farm now and stops being fed. No weight yet? Leave it
               blank — Today will remind you to enter it when the butcher sends it. `}
-          Only add a processing fee if the buyer pays it to you, not the butcher.
         </small>
       )}
+      {/* Said either way: the field reads like money the farm takes in, and
+          it is the opposite — kept only so the next customer can be told
+          what a half hog came to all in. */}
+      <small className="hint">
+        Butcher cost is what the buyer pays the butcher. It isn't your income
+        and isn't counted in your profit — it's kept so you can tell the next
+        customer what it costs them all in.
+      </small>
     </>
   )
 }

@@ -3,6 +3,7 @@ import * as SQLite from 'wa-sqlite'
 import { IDBBatchAtomicVFS } from 'wa-sqlite/src/examples/IDBBatchAtomicVFS.js'
 import schemaSql from '../../db/schema.local.sql?raw'
 import { seedLocalVocabulary, topUpLocalVocabulary } from '../../db/seedLocal.ts'
+import { BUTCHER_COST_MIGRATION_SQL } from './dataFixes'
 
 // The actual SQLite-in-WASM engine lives here, off the UI thread — a query
 // never blocks rendering. The main thread only ever holds a small postMessage
@@ -34,7 +35,7 @@ let db: number
  * and all — so migrate() below also needs an explicit, guarded `alter table`
  * for that case (see the edited_by/edited_at addition for the pattern).
  */
-const SCHEMA_VERSION = '6'
+const SCHEMA_VERSION = '7'
 const SCHEMA_VERSION_KEY = 'localSchema'
 
 async function open(): Promise<void> {
@@ -72,6 +73,10 @@ async function migrate(fresh: boolean): Promise<void> {
   // table` just now.
   await addColumnIfMissing('log', 'edited_by', 'text')
   await addColumnIfMissing('log', 'edited_at', 'text')
+  // Version 7: a sale's old "processing fee" becomes its butcher cost —
+  // see BUTCHER_COST_MIGRATION_SQL. Before anything syncs on this boot,
+  // so the corrected price is what goes up.
+  for (const sql of BUTCHER_COST_MIGRATION_SQL) await runRaw(sql)
   if (fresh) {
     const now = new Date().toISOString()
     const farmId = crypto.randomUUID()

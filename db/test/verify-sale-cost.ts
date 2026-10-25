@@ -19,6 +19,7 @@ import { fileURLToPath } from 'url'
 import {
   SALE_COST_ANIMALS_SQL, SALE_COST_LOGS_SQL, SALE_COST_LOTS_SQL,
 } from '../../src/db/saleCostSql.ts'
+import { BUTCHER_COST_MIGRATION_SQL } from '../../src/db/dataFixes.ts'
 import { saleCosts, shareLabel, sharersFor, weightSalePrice, type CostAnimal } from '../../src/lib/saleCost.ts'
 
 const R = fileURLToPath(new URL('../', import.meta.url))
@@ -300,22 +301,51 @@ check('the two still here split the feeding after the sale',
   near(fed(2), 20) && near(fed(3), 20), `${fed(2)}, ${fed(3)}`)
 
 console.log('\nWhat a hanging-weight sale comes to')
-check('rate times weight', weightSalePrice({ ratePerLb: 4.5, processingFee: 0 }, 180) === 810)
-check('plus a processing fee the farm collects',
-  weightSalePrice({ ratePerLb: 4.5, processingFee: 95 }, 180) === 905)
+check('rate times weight', weightSalePrice({ ratePerLb: 4.5 }, 180) === 810)
 check('rounded to the cent',
-  weightSalePrice({ ratePerLb: 3.33, processingFee: 0 }, 101.5) === 338, // 337.995
-  String(weightSalePrice({ ratePerLb: 3.33, processingFee: 0 }, 101.5)))
+  weightSalePrice({ ratePerLb: 3.33 }, 101.5) === 338, // 337.995
+  String(weightSalePrice({ ratePerLb: 3.33 }, 101.5)))
 
 console.log('\nHalf a hog each')
-// One 180 lb carcass at $4.50, split between two families: each pays for
-// their half of the weight, plus their own processing fee if the farm
-// collects it.
-const halfHog = (fee: number) => weightSalePrice({ ratePerLb: 4.5, processingFee: fee, share: 0.5 }, 180)
-check('a half is half the carcass at the rate', halfHog(0) === 405, String(halfHog(0)))
-check('the fee is that buyer\'s whole fee, not halved', halfHog(60) === 465, String(halfHog(60)))
-check('the two halves add up to the whole hog', halfHog(0) * 2 === weightSalePrice({ ratePerLb: 4.5, processingFee: 0 }, 180))
-check('a quarter', weightSalePrice({ ratePerLb: 6, processingFee: 0, share: 0.25 }, 400) === 600)
+// One 180 lb carcass at $4.50, split between two families: each pays the
+// farm for their half of the weight. What they pay their butcher is theirs.
+const halfHog = weightSalePrice({ ratePerLb: 4.5, share: 0.5 }, 180)
+check('a half is half the carcass at the rate', halfHog === 405, String(halfHog))
+check('the two halves add up to the whole hog', halfHog * 2 === weightSalePrice({ ratePerLb: 4.5 }, 180))
+check('a quarter', weightSalePrice({ ratePerLb: 6, share: 0.25 }, 400) === 600)
+
+console.log('\nA sale saved with the old processing fee becomes a butcher cost')
+// Saved while the fee was money the farm took in: $405 of meat plus a $60
+// fee stored as one $465 price. The butcher is paid by the buyer, so the
+// farm made $405 — the migration takes the fee back out and keeps it as
+// butcher_cost, for quoting the next customer.
+const oldPig = asset('animal', 'Old half', { species: 'Pig' }, '2026-10-01T00:00:00.000Z',
+  { status: 'archived' })
+const feeSale = uuid()
+run(`insert into log (id, farm_id, type, timestamp, status, name, attributes, created_at, updated_at)
+     values (?,?,'sale',?,'done','Sold ½ Old half',?,?,?)`,
+  [feeSale, farm, '2026-10-24T00:00:00.000Z',
+    JSON.stringify({ buyer: 'Jones', share: 0.5, processing_fee: 60 }), T0, T0])
+run(`insert into log_asset (log_id, asset_id, role) values (?,?,'subject')`, [feeSale, oldPig])
+run(`insert into quantity (id, farm_id, log_id, measure, value, unit, created_at, updated_at)
+     values (?,?,?,'price',465,'USD',?,?)`, [uuid(), farm, feeSale, T0, T0])
+// A sale without a fee, which must come through untouched.
+const plainSale = log('sale', '2026-10-24T00:00:00.000Z', [{ id: oldPig }], [usd(405)])
+const priceOf = (id: string) => (db.prepare(
+  `select value from quantity where log_id = ? and measure = 'price'`).get(id) as { value: number }).value
+const attrsOf = (id: string) => JSON.parse((db.prepare(
+  `select attributes from log where id = ?`).get(id) as { attributes: string }).attributes)
+for (let pass = 0; pass < 2; pass++) {
+  for (const sql of BUTCHER_COST_MIGRATION_SQL) db.exec(sql)
+}
+check('the fee comes back out of the price, once even if run twice',
+  priceOf(feeSale) === 405, String(priceOf(feeSale)))
+check('and is kept as the butcher cost', attrsOf(feeSale).butcher_cost === 60,
+  JSON.stringify(attrsOf(feeSale)))
+check('the old field is gone', attrsOf(feeSale).processing_fee === undefined)
+check('the buyer and share ride through', attrsOf(feeSale).buyer === 'Jones' && attrsOf(feeSale).share === 0.5)
+check('a sale with no fee is untouched', priceOf(plainSale) === 405)
+
 check('shares read as fractions', shareLabel(0.5) === '½' && shareLabel(1 / 3) === '⅓' && shareLabel(0.75) === '¾')
 check('and anything unusual as a percentage', shareLabel(0.2) === '20%', shareLabel(0.2))
 

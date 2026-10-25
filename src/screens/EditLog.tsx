@@ -58,17 +58,17 @@ export function EditLog({
   const [rate, setRate] = useState('')
   const [hang, setHang] = useState('')
   const [fee, setFee] = useState('')
-  // The agreed price for the meat alone — the stored price is the total
-  // owed, fee included, so the fee comes back off it for editing.
+  // What the buyer owes the farm. The butcher's bill sits beside it, never
+  // in it: the buyer pays the butcher, so it is no part of the farm's money.
   const [meat, setMeat] = useState('')
   useEffect(() => {
     const t = terms.data
     if (!t) return
-    setMeat(t.price != null ? String(Math.round((t.price - t.processingFee) * 100) / 100) : '')
+    setMeat(t.price != null ? String(t.price) : '')
     setByWeight(t.byWeight)
     setRate(t.ratePerLb != null ? String(t.ratePerLb) : '')
     setHang(t.hangingLb != null ? String(Math.round(t.hangingLb * 100) / 100) : '')
-    setFee(t.processingFee > 0 ? String(t.processingFee) : '')
+    setFee(t.butcherCost > 0 ? String(t.butcherCost) : '')
   }, [terms.data])
   const share = terms.data?.share ?? 1
   const weightPriced = log.type === 'sale' && byWeight
@@ -77,7 +77,7 @@ export function EditLog({
   // be a second, disagreeing way to type the same number.
   const salePriced = log.type === 'sale' && !!terms.data
   const preview = weightPriced && Number(rate) > 0 && Number(hang) > 0
-    ? weightSalePrice({ ratePerLb: Number(rate), processingFee: Number(fee) || 0, share }, Number(hang))
+    ? weightSalePrice({ ratePerLb: Number(rate), share }, Number(hang))
     : null
 
   // A purchase that bought Feed or Hay gets the same "For" field BuyForm
@@ -159,12 +159,12 @@ export function EditLog({
     }
     if (weightPriced && Number(rate) > 0) {
       const t = terms.data
-      const before = [t?.byWeight, t?.ratePerLb, t?.processingFee, t?.hangingLb]
+      const before = [t?.byWeight, t?.ratePerLb, t?.butcherCost, t?.hangingLb]
       const after = [true, Number(rate), Number(fee) || 0, Number(hang) > 0 ? Number(hang) : null]
       if (before.some((v, i) => Math.abs(Number(v ?? -1) - Number(after[i] ?? -1)) > 0.001)) {
         await setSaleByWeight(log.id, {
           ratePerLb: Number(rate),
-          processingFee: Number(fee) || 0,
+          butcherCost: Number(fee) || 0,
           hangingLb: Number(hang) > 0 ? Number(hang) : undefined,
         })
         changed = true
@@ -172,11 +172,11 @@ export function EditLog({
     } else if (salePriced && !byWeight) {
       const t = terms.data!
       const newFee = Number(fee) || 0
-      const wasMeat = t.price != null ? t.price - t.processingFee : null
-      const changedTerms = t.byWeight || Math.abs(newFee - t.processingFee) > 0.001
+      const wasMeat = t.price
+      const changedTerms = t.byWeight || Math.abs(newFee - t.butcherCost) > 0.001
         || (hasNumericValue(meat) && (wasMeat == null || Math.abs(Number(meat) - wasMeat) > 0.001))
       if (hasNumericValue(meat) && changedTerms) {
-        await setSalePrice(log.id, { price: Number(meat), processingFee: newFee })
+        await setSalePrice(log.id, { price: Number(meat), butcherCost: newFee })
         changed = true
       }
     } else if (canAddPrice && !hasPrice && hasNumericValue(newPrice)) {
@@ -288,7 +288,7 @@ export function EditLog({
                   onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="450" />
               </label>
               <label className="field">
-                <span>Processing fee ($)</span>
+                <span>Butcher cost ($, they pay)</span>
                 <input type="number" inputMode="decimal" min="0" value={fee}
                   onChange={(e) => setFee(sanitizeNumeric(e.target.value))}
                   onWheel={ignoreScrollOnNumberInput}
@@ -298,7 +298,8 @@ export function EditLog({
           )}
           {!byWeight && hasNumericValue(meat) && Number(fee) > 0 && (
             <p className="hint">
-              They owe you {formatMoney(Number(meat) + Number(fee))} in all.
+              All in for them, with the butcher: {formatMoney(Number(meat) + Number(fee))}.
+              Only the {formatMoney(Number(meat))} counts as your income.
             </p>
           )}
           {byWeight && (
@@ -320,7 +321,7 @@ export function EditLog({
                 </label>
               </div>
               <label className="field">
-                <span>Processing fee ($, optional)</span>
+                <span>Butcher cost ($, they pay)</span>
                 <input type="number" inputMode="decimal" min="0" value={fee}
                   onChange={(e) => setFee(sanitizeNumeric(e.target.value))}
                   onWheel={ignoreScrollOnNumberInput}
@@ -330,10 +331,11 @@ export function EditLog({
                 {share < 0.999
                   ? `This buyer took ${shareLabel(share)} — enter the whole carcass's weight. `
                   : ''}
-                {preview != null ? `Comes to ${formatMoney(preview)}. ` : ''}
+                {preview != null ? `They owe you ${formatMoney(preview)}${Number(fee) > 0
+                  ? `; ${formatMoney(preview + Number(fee))} all in with the butcher` : ''}. ` : ''}
                 {(terms.data.siblingIds.length > 0 && Number(hang) > 0)
                   ? 'The weight prices the other buyers\' parts of this animal too. ' : ''}
-                Only add a processing fee if the buyer pays it to you.
+                Butcher cost isn't counted as your income — it's kept for quoting the next customer.
               </p>
             </>
           )}

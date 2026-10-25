@@ -348,8 +348,7 @@ function WeightSaleSheet({ sale, onDone, onClose }: FormProps & { sale: WeightSa
     onDone()
   })
   const split = sale.parts.length > 1 || sale.parts.some((p) => p.share < 0.999)
-  const owed = (p: WeightSalePart) => weightSalePrice(
-    { ratePerLb: sale.ratePerLb, processingFee: p.processingFee, share: p.share }, n)
+  const owed = (p: WeightSalePart) => weightSalePrice({ ratePerLb: sale.ratePerLb, share: p.share }, n)
   return (
     <Sheet title={`${sale.names.join(', ')} — hanging weight`} onClose={onClose}>
       <p className="hint">
@@ -370,15 +369,23 @@ function WeightSaleSheet({ sale, onDone, onClose }: FormProps & { sale: WeightSa
             </span>
             <span>{formatMoney(sale.ratePerLb * n * p.share)}</span>
           </div>
-          {p.processingFee > 0 && (
-            <div className="costrow">
-              <span>Processing</span><span>{formatMoney(p.processingFee)}</span>
-            </div>
-          )}
           <div className="costrow strong">
             <span>{p.buyer ? `${p.buyer} owes you` : 'They owe you'}</span>
             <span>{formatMoney(owed(p))}</span>
           </div>
+          {/* The butcher is paid by the buyer, not through the farm — shown
+              only so the all-in figure is there to quote next time. */}
+          {p.butcherCost > 0 && (
+            <>
+              <div className="costrow">
+                <span>Butcher (they pay)</span><span>{formatMoney(p.butcherCost)}</span>
+              </div>
+              <div className="costrow">
+                <span>All in for them · {formatMoney((owed(p) + p.butcherCost) / (n * p.share))}/lb</span>
+                <span>{formatMoney(owed(p) + p.butcherCost)}</span>
+              </div>
+            </>
+          )}
         </div>
       ))}
       <button className="primary" disabled={busy || !(n > 0)} onClick={run}>

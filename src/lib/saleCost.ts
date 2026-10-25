@@ -240,14 +240,17 @@ export function saleCosts(
 
 /**
  * What a sale by hanging weight comes to: the buyer's share of the carcass
- * at the agreed rate per lb, plus any processing fee the farm collects on
- * the butcher's behalf. Rounded to the cent, since this is the number
+ * at the agreed rate per lb. Rounded to the cent, since this is the number
  * written on the invoice.
+ *
+ * The butcher's bill is not in it. The buyer pays the butcher, not the
+ * farm, so it is no part of what the farm earned — it is kept beside the
+ * sale only so the next customer can be told what a half hog cost all in.
  */
 export function weightSalePrice(
-  sale: { ratePerLb: number; processingFee: number; share?: number }, lb: number,
+  sale: { ratePerLb: number; share?: number }, lb: number,
 ): number {
-  return Math.round((sale.ratePerLb * lb * (sale.share ?? 1) + sale.processingFee) * 100) / 100
+  return Math.round(sale.ratePerLb * lb * (sale.share ?? 1) * 100) / 100
 }
 
 /** The shares an animal is commonly split into — a half hog, a quarter of beef. */

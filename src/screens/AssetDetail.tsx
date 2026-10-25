@@ -23,7 +23,7 @@ import {
   ignoreScrollOnNumberInput, onNumericChange, withThousands,
 } from '../lib/numeric'
 import { useMembersMap } from '../lib/members'
-import type { AnimalCost } from '../lib/saleCost'
+import { shareLabel, type AnimalCost } from '../lib/saleCost'
 import { useFarmTimezone } from '../lib/weather'
 import { AssetSelect, OTHER } from './AssetSelect'
 import { ParentField } from './ParentField'
@@ -524,6 +524,34 @@ function SaleProfit({ summary, raised }: {
             value={formatMoney(Math.abs(profit) / lb)} />
         )}
       </div>
+      {/* What each buyer actually paid, all in — the farm's price and the
+          butcher's bill together — which is what the next customer asking
+          "what does a half hog run?" wants to hear. */}
+      {summary.parts.some((p) => p.price != null && (p.butcherCost > 0 || p.hangingLb)) && (
+        <>
+          <h3 className="section">What it cost each buyer</h3>
+          <div className="costbox">
+            {summary.parts.map((p, i) => {
+              const allIn = (p.price ?? 0) + p.butcherCost
+              return (
+                <div className="costrow" key={i}>
+                  <span>
+                    {[p.buyer, p.share < 0.999 ? shareLabel(p.share) : null,
+                      p.hangingLb ? `${formatQty(p.hangingLb)} lb` : null].filter(Boolean).join(' · ')}
+                    <br />
+                    <small className="muted">
+                      {formatMoney(p.price ?? 0)} to you
+                      {p.butcherCost > 0 ? ` + ${formatMoney(p.butcherCost)} butcher` : ''}
+                      {p.hangingLb ? ` · ${formatMoney(allIn / p.hangingLb)}/lb all in` : ''}
+                    </small>
+                  </span>
+                  <span>{formatMoney(allIn)}</span>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
       {summary.pending && (
         <p className="hint">
           Part of this sale has no price yet — enter the hanging weight from
