@@ -25,7 +25,9 @@ export function SaleCost() {
     const seen = new Set<string>()
     for (const a of assets ?? []) {
       const s = String(a.attributes?.species ?? '').trim()
-      if (s && a.status === 'active' && !a.attributes?.external) seen.add(s)
+      // Sold ones count too: with the last pig gone, the screen still has
+      // to open on pigs to show what that batch sold for.
+      if (s && !a.attributes?.external) seen.add(s)
     }
     return [...seen].sort((a, b) => a.localeCompare(b))
   }, [assets])
@@ -194,7 +196,13 @@ function AnimalPrice({ id, name, cost, markup }: {
           <Row strong label={`Price at ${markup}% markup`} value={formatMoney(price)} />
         )}
         {/* Once it has sold, what it actually fetched replaces the guess. */}
-        {sale && sale.income > 0 && <Row label="Sold for" value={formatMoney(sale.income)} />}
+        {/* Sold but not priced yet — by hanging weight with the weight still
+            to come, or closed out with the price left blank. Said outright:
+            a box that simply stops at Cost to raise read as the sale missing. */}
+        {sale?.sold && (
+          <Row label={sale.pending && sale.income > 0 ? 'Sold for (so far)' : 'Sold for'}
+            value={sale.income > 0 ? formatMoney(sale.income) : 'No price yet'} />
+        )}
         {profit != null && (
           <Row strong label={profit >= 0 ? 'Profit' : 'Loss'} value={formatMoney(Math.abs(profit))} />
         )}
@@ -203,6 +211,13 @@ function AnimalPrice({ id, name, cost, markup }: {
             value={formatMoney(cost.total / sale.hangingLb)} />
         )}
       </div>
+      {sale?.pending && (
+        <p className="hint">
+          {sale.income > 0 ? 'Part of this sale has' : 'This sale has'} no price yet. Sold by
+          hanging weight? Enter the weight under Waiting on butcher weight on Today. Otherwise,
+          open the sale in Records and add the price.
+        </p>
+      )}
     </>
   )
 }
