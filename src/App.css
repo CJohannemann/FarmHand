@@ -733,6 +733,19 @@ button.monthgrid-day {
 
 h3.section { margin-top: 1.5rem; }
 
+/* A day in a dated log list (Records). */
+.logday { margin-top: 1.25rem; }
+.day-head {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem;
+  margin: 0 0 0.25rem; padding: 0.55rem 0.8rem;
+  background: var(--card); border: 1px solid var(--line);
+  border-left: 4px solid var(--accent); border-radius: 8px;
+  box-shadow: 0 -0.5rem 0 var(--bg); /* hides rows scrolling past above it */
+  font-size: 1rem; font-weight: 700; color: var(--fg);
+}
+.day-count { font-size: 0.8rem; font-weight: 500; color: var(--muted); white-space: nowrap; }
+
 /* ------------------------------------------------------------------ setup */
 
 .screen.setup { max-width: 26rem; padding-top: 3rem; }

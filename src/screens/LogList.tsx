@@ -80,7 +80,14 @@ function dayHeading(timestamp: string, timeZone: string): string {
   // where the viewer's device thinks it is right now.
   if (key === dayKeyOf(new Date(), timeZone)) return 'Today'
   if (key === dayKeyOf(new Date(Date.now() - 86_400_000), timeZone)) return 'Yesterday'
-  return logDate(timestamp, timeZone)
+  // The weekday too — "Sunday, Nov 2" is how a farmer remembers a day's
+  // work — and the year only once it is not this one.
+  const d = new Date(timestamp)
+  const thisYear = dayKeyOf(new Date(), timeZone).slice(0, 4) === key.slice(0, 4)
+  return d.toLocaleDateString(undefined, {
+    weekday: 'long', month: 'short', day: 'numeric', timeZone,
+    ...(thisYear ? {} : { year: 'numeric' }),
+  })
 }
 
 export function LogList({
@@ -180,10 +187,19 @@ export function LogList({
   return (
     <>
       {days.map((d) => (
-        <div key={d.key}>
-          <h2 className="section">{d.heading}</h2>
+        <section key={d.key} className="logday">
+          {/* A band rather than the small grey caps every other section
+              uses: as a section label it was easy to read straight past,
+              and a farmer opened records one by one to find their dates.
+              Sticky, so the day stays on screen while its rows scroll. */}
+          <h2 className="day-head">
+            <span>{d.heading}</span>
+            <span className="day-count">
+              {d.logs.length} {d.logs.length === 1 ? 'record' : 'records'}
+            </span>
+          </h2>
           <ul className="loglist">{d.logs.map(item)}</ul>
-        </div>
+        </section>
       ))}
     </>
   )
