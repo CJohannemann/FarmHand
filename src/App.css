@@ -211,6 +211,8 @@ button.icon.searchbtn { font-size: 1.3rem; padding: 0.1rem 0.15rem; line-height:
 
 /* Sized to its content rather than the .field select's full-width form
    styling — this sits beside/above a list as a filter, not inside a form. */
+.record-filters { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.year-picker.on { border-color: var(--accent); color: var(--accent); }
 .year-picker {
   display: block;
   width: auto;

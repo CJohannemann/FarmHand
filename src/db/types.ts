@@ -31,6 +31,8 @@ export interface LogRow {
 
 export interface LogWithDetail extends LogRow {
   subjects: string | null
+  /** The subjects' asset ids, comma-separated. Only recentLogs() fills it. */
+  subject_ids?: string | null
   /** What was drawn on to do it — a feeding's lot, a processing's inputs. */
   uses: string | null
   summary: string | null

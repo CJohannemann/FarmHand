@@ -414,6 +414,11 @@ export async function recentLogs(
             (select group_concat(a.name, ', ' order by a.name)
                from log_asset la join asset a on a.id = la.asset_id
               where la.log_id = l.id and la.role = 'subject') as subjects,
+            -- The same subjects by id, for Records' animal filter: names
+            -- are not unique, and "Pigs 1" is also a prefix of "Pigs 10".
+            (select group_concat(la.asset_id, ',')
+               from log_asset la
+              where la.log_id = l.id and la.role = 'subject') as subject_ids,
             -- A feeding's lot (or a processing's consumed lots) is an
             -- 'input', not a 'subject', so without this a "Fed" entry named
             -- only "Fed" over "Layers" never says which bag it came from —
