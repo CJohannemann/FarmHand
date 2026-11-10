@@ -883,6 +883,46 @@ button.farmname {
   margin: 0 0 0.75rem;
   border: 1px solid var(--line);
   border-radius: 4px;
+  cursor: zoom-in;
+}
+
+/* Full-screen photo (ImageViewer). Black whatever the theme: it is a
+   photo being looked at, not part of the page. */
+.imageviewer {
+  position: fixed; inset: 0; z-index: 1000;
+  background: #000;
+}
+.imageviewer-pane {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.imageviewer-pane img {
+  max-width: 100%; max-height: 100%;
+  object-fit: contain; cursor: zoom-in;
+}
+/* Zoomed: three screens wide, scrolled by dragging. Flex centring would
+   cut off the left and top edges of anything wider than the pane, so the
+   pane stops centring once the photo outgrows it. */
+.imageviewer-pane.zoomed {
+  display: block; overflow: auto; -webkit-overflow-scrolling: touch;
+}
+.imageviewer-pane.zoomed img {
+  max-width: none; max-height: none; width: 300%; cursor: zoom-out;
+}
+.imageviewer-close {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 0.75rem); right: 0.75rem;
+  width: 2.75rem; height: 2.75rem; border-radius: 50%;
+  border: 0; background: rgba(0, 0, 0, 0.6); color: #fff;
+  font-size: 1.3rem; line-height: 1;
+}
+.imageviewer-hint {
+  position: absolute; left: 50%; transform: translateX(-50%); margin: 0;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 0.75rem);
+  padding: 0.3rem 0.8rem; border-radius: 999px; white-space: nowrap;
+  background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 0.8rem;
+  pointer-events: none;
 }
 
 /* --------------------------------------------------------- danger zone */

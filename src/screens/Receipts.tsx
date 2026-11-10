@@ -3,6 +3,7 @@ import { useAsync } from '../lib/useAsync'
 import { receiptYears, receiptsForYear } from '../db/queries'
 import { downloadZip, exportYear, fetchReceiptData } from '../lib/receipts'
 import { dataUrl } from '../lib/image'
+import { ImageViewer } from './ImageViewer'
 
 /**
  * Receipts grouped by tax year, with a per-year export.
@@ -129,6 +130,7 @@ function ReceiptRow({ id, local, date, name, supplier, amount }: {
   const [image, setImage] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [fullScreen, setFullScreen] = useState(false)
 
   // Fetched only when asked for. The bytes are deliberately not synced in
   // bulk (see PUSH_ONLY_TABLES in lib/syncCore.ts), so tapping a receipt
@@ -152,7 +154,14 @@ function ReceiptRow({ id, local, date, name, supplier, amount }: {
       </button>
       {loading && <p className="muted">Fetching…</p>}
       {failed && <p className="error">That image isn't on this device, and couldn't be fetched.</p>}
-      {image && <img className="receipt-full" src={image} alt={`Receipt from ${date}`} />}
+      {/* Tap for full screen: in the list it is too small to read. */}
+      {image && (
+        <img className="receipt-full" src={image} alt={`Receipt from ${date}`}
+          onClick={() => setFullScreen(true)} />
+      )}
+      {image && fullScreen && (
+        <ImageViewer src={image} alt={`Receipt from ${date}`} onClose={() => setFullScreen(false)} />
+      )}
     </li>
   )
 }
