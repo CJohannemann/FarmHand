@@ -3,7 +3,7 @@ import { useAsync } from '../lib/useAsync'
 import {
   addReceipt, CATEGORIZABLE_MATERIALS, deleteLog, listTerms, purchaseLotFor, quantitiesFor,
   receiptsForLog, saleTermsFor, serviceCostFor, setLotCategory, setQuantity, setSaleByWeight,
-  setSalePrice,
+  setSalePrice, purchaseProjectFor, setPurchasesProject,
   stampEdited, updateAsset, updateLog,
 } from '../db/queries'
 import { shareLabel, weightSalePrice } from '../lib/saleCost'
@@ -14,6 +14,7 @@ import {
 } from '../lib/numeric'
 import { ReceiptCapture } from './ReceiptCapture'
 import { ImageViewer } from './ImageViewer'
+import { NEW_PROJECT, ProjectSelect, resolveProject } from './ProjectSelect'
 import { fetchReceiptData } from '../lib/receipts'
 import { dataUrl } from '../lib/image'
 import { Sheet } from './Sheet'
@@ -129,6 +130,16 @@ export function EditLog({
     [log.id, log.type],
   )
   const canAddReceipt = log.type === 'purchase' && (receipts.data?.length ?? 0) === 0
+
+  // Which project a purchase went towards — set here for one bought before
+  // the project existed, or to move it off the wrong one.
+  const projectOf = useAsync(
+    () => (log.type === 'purchase' ? purchaseProjectFor(log.id) : Promise.resolve(null)),
+    [log.id, log.type],
+  )
+  const [project, setProject] = useState('')
+  const [projectName, setProjectName] = useState('')
+  useEffect(() => { setProject(projectOf.data ?? '') }, [projectOf.data])
   const [newReceipt, setNewReceipt] = useState<PreparedImage | null>(null)
 
   const save = async () => {
@@ -202,6 +213,13 @@ export function EditLog({
     if (canAddReceipt && newReceipt) {
       await addReceipt(log.id, newReceipt)
       changed = true
+    }
+    if (log.type === 'purchase' && !projectOf.loading && project !== (projectOf.data ?? '')) {
+      const id = await resolveProject(project, projectName)
+      if (id !== (projectOf.data ?? null)) {
+        await setPurchasesProject([log.id], id)
+        changed = true
+      }
     }
     if (changed) await stampEdited(log.id)
     setBusy(false)
@@ -380,12 +398,18 @@ export function EditLog({
 
       {canAddReceipt && <ReceiptCapture onChange={setNewReceipt} />}
 
+      {log.type === 'purchase' && !projectOf.loading && (
+        <ProjectSelect value={project} onChange={setProject}
+          newName={projectName} onNewName={setProjectName} />
+      )}
+
       <label className="field">
         <span>Notes</span>
         <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </label>
 
-      <button className="primary" disabled={busy} onClick={save}>Save</button>
+      <button className="primary"
+        disabled={busy || (project === NEW_PROJECT && !projectName.trim())} onClick={save}>Save</button>
 
       {!confirming ? (
         <button className="danger" onClick={() => setConfirming(true)}>

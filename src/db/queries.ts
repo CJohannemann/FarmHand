@@ -630,6 +630,8 @@ export async function createPurchase(input: {
    * handed the lot id, not the log id, and the receipt belongs to the log.
    */
   receipt?: { data: string; mime: string; byteSize: number; width: number; height: number }
+  /** The project this was bought for — a barn, a fence line. See Projects. */
+  projectId?: string
 }): Promise<string> {
   const lotId = await createAsset({
     type: 'lot',
@@ -657,9 +659,166 @@ export async function createPurchase(input: {
     name: input.origin === 'service' ? `Paid for ${input.name}` : `Bought ${input.name}`,
     assets: [{ id: lotId, role: 'subject' }],
     quantities,
+    attributes: input.projectId ? { project_id: input.projectId } : undefined,
   })
   if (input.receipt) await addReceipt(logId, input.receipt)
   return lotId
+}
+
+// ---------------------------------------------------------------- projects
+
+/**
+ * A project: something built or done on the place that purchases go
+ * towards — a livestock barn, a fence line, a well — so "what did the barn
+ * cost?" is a total rather than an afternoon with a calculator.
+ *
+ * Stored as a `structure` asset, the type the schema already keeps for
+ * barns and buildings, with `project` set so it is never mistaken for one
+ * entered some other way. A purchase belongs to one through `project_id`
+ * on its log's attributes. Finished is the asset archived.
+ *
+ * Project spending is never charged to an animal's cost to raise (see
+ * lib/saleCost.ts): a barn outlasts any one batch. It is still money out,
+ * and still in Analytics' totals and the tax export like any purchase.
+ */
+export interface Project {
+  id: string
+  name: string
+  finished: boolean
+  total: number
+  purchases: number
+  first: string | null
+  last: string | null
+}
+
+export async function listProjects(): Promise<Project[]> {
+  const pg = await db()
+  const { rows } = await pg.query<{
+    id: string; name: string; status: string; total: number | null; n: number
+    first: string | null; last: string | null
+  }>(
+    `select a.id, a.name, a.status,
+            (select sum(q.value) from log l
+               join quantity q on q.log_id = l.id and q.measure = 'price'
+                    and q.deleted_at is null
+              where l.type = 'purchase' and l.deleted_at is null
+                and l.attributes->>'project_id' = a.id) as total,
+            (select count(*) from log l
+              where l.type = 'purchase' and l.deleted_at is null
+                and l.attributes->>'project_id' = a.id) as n,
+            (select min(l.timestamp) from log l
+              where l.type = 'purchase' and l.deleted_at is null
+                and l.attributes->>'project_id' = a.id) as first,
+            (select max(l.timestamp) from log l
+              where l.type = 'purchase' and l.deleted_at is null
+                and l.attributes->>'project_id' = a.id) as last
+       from asset a
+      where a.type = 'structure' and a.deleted_at is null
+        and a.farm_id = (select id from active_farm)
+        and a.attributes->>'project' is not null
+      order by a.status = 'archived', a.created_at desc`,
+  )
+  return rows.map((r) => ({
+    id: r.id, name: r.name, finished: r.status === 'archived',
+    total: Number(r.total) || 0, purchases: Number(r.n) || 0, first: r.first, last: r.last,
+  }))
+}
+
+export async function createProject(name: string): Promise<string> {
+  return createAsset({ type: 'structure', name: name.trim(), attributes: { project: true } })
+}
+
+export async function renameProject(id: string, name: string): Promise<void> {
+  await updateAsset(id, { name: name.trim() })
+}
+
+/** Finished projects drop out of the Buy sheet's list; reopening puts them back. */
+export async function setProjectFinished(id: string, finished: boolean): Promise<void> {
+  const pg = await db()
+  await pg.query(
+    `update asset set status = $2, updated_at = $3 where id = $1`,
+    [id, finished ? 'archived' : 'active', new Date().toISOString()],
+  )
+}
+
+/** One purchase, as a project lists it and as Add purchases offers it. */
+export interface ProjectPurchase {
+  logId: string
+  timestamp: string
+  name: string | null
+  notes: string | null
+  supplier: string | null
+  material: string | null
+  price: number | null
+  hasReceipt: boolean
+  projectId: string | null
+}
+
+/** A farm's purchases matching `where`, as projects list them. */
+const projectPurchasesSql = (where: string, tail = '') => `
+  select l.id as log_id, l.timestamp, l.name, l.notes,
+         l.attributes->>'project_id' as project_id,
+         (select a.attributes->>'supplier' from log_asset la join asset a on a.id = la.asset_id
+           where la.log_id = l.id and la.role = 'subject' limit 1) as supplier,
+         (select coalesce(a.attributes->>'material', a.attributes->>'kind', a.attributes->>'species')
+            from log_asset la join asset a on a.id = la.asset_id
+           where la.log_id = l.id and la.role = 'subject' limit 1) as material,
+         (select sum(q.value) from quantity q
+           where q.log_id = l.id and q.measure = 'price' and q.deleted_at is null) as price,
+         exists (select 1 from receipt r
+                  where r.log_id = l.id and r.deleted_at is null) as has_receipt
+    from log l
+   where l.farm_id = (select id from active_farm)
+     and l.type = 'purchase' and l.deleted_at is null
+     and ${where}
+   order by l.timestamp desc ${tail}`
+
+type ProjectPurchaseRow = {
+  log_id: string; timestamp: string; name: string | null; notes: string | null
+  project_id: string | null; supplier: string | null; material: string | null
+  price: number | null; has_receipt: number | boolean
+}
+const toProjectPurchase = (r: ProjectPurchaseRow): ProjectPurchase => ({
+  logId: r.log_id, timestamp: r.timestamp, name: r.name, notes: r.notes,
+  supplier: r.supplier, material: r.material,
+  price: r.price != null ? Number(r.price) : null,
+  hasReceipt: Number(r.has_receipt) > 0, projectId: r.project_id,
+})
+
+/** Every purchase on a project, newest first. */
+export async function projectPurchases(projectId: string): Promise<ProjectPurchase[]> {
+  const pg = await db()
+  const { rows } = await pg.query<ProjectPurchaseRow>(
+    projectPurchasesSql(`l.attributes->>'project_id' = $1`),
+    [projectId],
+  )
+  return rows.map(toProjectPurchase)
+}
+
+/**
+ * Purchases on no project yet, newest first — what Add purchases offers,
+ * so a barn already half bought can be put together after the fact.
+ */
+export async function unassignedPurchases(): Promise<ProjectPurchase[]> {
+  const pg = await db()
+  const { rows } = await pg.query<ProjectPurchaseRow>(
+    projectPurchasesSql(`l.attributes->>'project_id' is null`, 'limit 500'),
+  )
+  return rows.map(toProjectPurchase)
+}
+
+/** The project a purchase is on, if any. */
+export async function purchaseProjectFor(logId: string): Promise<string | null> {
+  const pg = await db()
+  const { rows } = await pg.query<{ project_id: string | null }>(
+    `select attributes->>'project_id' as project_id from log where id = $1`, [logId],
+  )
+  return rows[0]?.project_id ?? null
+}
+
+/** Puts purchases on a project, or takes them off one (null). */
+export async function setPurchasesProject(logIds: string[], projectId: string | null): Promise<void> {
+  for (const id of logIds) await mergeLogAttributes(id, { project_id: projectId ?? undefined })
 }
 
 export interface PurchaseLot {

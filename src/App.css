@@ -1080,3 +1080,18 @@ button.primary.danger:disabled { opacity: 0.4; }
    working rather than just asserted. */
 .netpanel-parts { margin-top: 0.5rem; color: var(--muted); font-size: 0.8rem; }
 .netpanel-parts strong { font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------- projects */
+
+.project-title { margin: 0.25rem 0 0.75rem; font-size: 1.35rem; }
+
+/* Add purchases: a tickable list. */
+.picklist { list-style: none; margin: 0 0 1rem; padding: 0; }
+.pickrow {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.65rem 0.25rem; border-bottom: 1px solid var(--line); cursor: pointer;
+}
+.pickrow.on { background: var(--card); }
+.pickrow input { width: 1.2rem; height: 1.2rem; flex: none; accent-color: var(--accent); }
+.pick-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.pick-amount { font-variant-numeric: tabular-nums; white-space: nowrap; }

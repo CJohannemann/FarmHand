@@ -12,6 +12,7 @@ import type { Asset, AssetType, LogWithDetail } from '../db/types'
 import type { PreparedImage } from '../lib/image'
 import { useMembersMap } from '../lib/members'
 import { ReceiptCapture } from './ReceiptCapture'
+import { NEW_PROJECT, ProjectSelect, resolveProject } from './ProjectSelect'
 import { HARVESTS, tilesFor, type HarvestSpec } from '../lib/tiles'
 import {
   formatMoney, formatQty, ignoreArrowKeysOnNumberInput,
@@ -941,6 +942,8 @@ function BuyForm({ onDone, onClose }: FormProps) {
   const [items, setItems] = useState<PurchaseLine[]>([])
   const [receipt, setReceipt] = useState<PreparedImage | null>(null)
   const [supplier, setSupplier] = useState('')
+  const [project, setProject] = useState('')
+  const [projectName, setProjectName] = useState('')
   const { data: materials } = useAsync(() => listTerms('material'), [])
   const { data: units } = useAsync(() => listTerms('unit'), [])
   const { data: species } = useAsync(() => listTerms('species'), [])
@@ -977,6 +980,7 @@ function BuyForm({ onDone, onClose }: FormProps) {
         await createTerm('material', it.material)
       }
     }
+    const projectId = await resolveProject(project, projectName)
     for (const it of all) {
       await createPurchase({
         material: it.material,
@@ -987,6 +991,7 @@ function BuyForm({ onDone, onClose }: FormProps) {
         supplier: supplier.trim() || undefined,
         category: it.category || undefined,
         receipt: receipt ?? undefined,
+        projectId: projectId ?? undefined,
         // Work on the place, not stock — keeps it out of Stores.
         origin: SERVICE_MATERIALS.includes(it.material) ? 'service' : undefined,
       })
@@ -1103,14 +1108,18 @@ function BuyForm({ onDone, onClose }: FormProps) {
         <input value={supplier} onChange={(e) => setSupplier(e.target.value)}
           placeholder="Co-op" />
       </label>
+      <ProjectSelect value={project} onChange={setProject}
+        newName={projectName} onNewName={setProjectName} />
       <ReceiptCapture onChange={setReceipt} />
       {items.length > 0 && (
         <p className="hint">
-          Supplier and receipt apply to all {total} items above.
+          Supplier, project and receipt apply to all {total} items above.
         </p>
       )}
 
-      <button className="primary" disabled={busy || total === 0} onClick={run}>
+      <button className="primary"
+        disabled={busy || total === 0 || (project === NEW_PROJECT && !projectName.trim())}
+        onClick={run}>
         {busy ? 'Saving…' : total > 1 ? `Save ${total} items` : 'Save'}
       </button>
       {error && <p className="error">{error}</p>}
