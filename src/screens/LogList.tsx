@@ -125,7 +125,13 @@ export function LogList({
     const body = (
       <>
         <div className="log-main">
-          <span className="log-type">{l.name ?? logLabel(l.type)}</span>
+          <span className="log-type">
+            {l.name ?? logLabel(l.type)}
+            {/* Tap the record to see it — the photo is on its edit sheet. */}
+            {Number(l.has_receipt) > 0 && (
+              <span className="log-receipt" role="img" aria-label="has a receipt"> 🧾</span>
+            )}
+          </span>
           {(l.summary || l.cost) && (
             <span className="log-qty">
               {withThousands([l.summary, l.cost].filter(Boolean).join(', '))}

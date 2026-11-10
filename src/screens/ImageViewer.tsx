@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
+import { createPortal } from 'react-dom'
 
 /**
  * A photo, full screen — for reading a receipt's small print on a phone,
@@ -46,13 +47,17 @@ export function ImageViewer({ src, alt, onClose }: {
     setZoomed((z) => !z)
   }
 
-  return (
+  // Rendered at the top of the page, not where it was opened: from inside a
+  // sheet it would otherwise sit under, or be clipped by, whatever that
+  // sheet is drawn in.
+  return createPortal(
     <div className="imageviewer" role="dialog" aria-label={alt}>
       <div ref={pane} className={zoomed ? 'imageviewer-pane zoomed' : 'imageviewer-pane'}>
         <img src={src} alt={alt} onClick={tap} />
       </div>
       <button className="imageviewer-close" aria-label="Close" onClick={onClose}>✕</button>
       <p className="imageviewer-hint">{zoomed ? 'Drag to look around · tap to fit' : 'Tap to zoom in'}</p>
-    </div>
+    </div>,
+    document.body,
   )
 }

@@ -13,6 +13,9 @@ import {
   formatMoney, hasNumericValue, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, sanitizeNumeric,
 } from '../lib/numeric'
 import { ReceiptCapture } from './ReceiptCapture'
+import { ImageViewer } from './ImageViewer'
+import { fetchReceiptData } from '../lib/receipts'
+import { dataUrl } from '../lib/image'
 import { Sheet } from './Sheet'
 
 const forInput = (iso: string) => {
@@ -369,6 +372,12 @@ export function EditLog({
         </label>
       )}
 
+      {/* The receipt itself, right on the record it paid for — rather than
+          a trip to Receipts to find it by date and supplier. */}
+      {(receipts.data ?? []).map((r) => (
+        <ReceiptOnRecord key={r.id} id={r.id} mime={r.mime} />
+      ))}
+
       {canAddReceipt && <ReceiptCapture onChange={setNewReceipt} />}
 
       <label className="field">
@@ -400,4 +409,33 @@ export function EditLog({
  * leave the two disagreeing. */
 function isWeightPricedQty(q: { measure: string; label: string | null }): boolean {
   return q.measure === 'price' || (q.measure === 'weight' && q.label === 'hanging')
+}
+
+/**
+ * A receipt attached to this record: a thumbnail, full screen on a tap.
+ * Loaded as the sheet opens — straight from this device when it took the
+ * photo, from the server when another device did.
+ */
+function ReceiptOnRecord({ id, mime }: { id: string; mime: string }) {
+  const { data, loading } = useAsync(() => fetchReceiptData(id), [id])
+  const [full, setFull] = useState(false)
+  const src = data ? dataUrl(mime || 'image/jpeg', data) : null
+  return (
+    <div className="field">
+      <span>Receipt</span>
+      {loading && !data && <p className="muted">Fetching…</p>}
+      {!loading && !data && (
+        <p className="hint">The photo isn't on this device and couldn't be fetched — try again with signal.</p>
+      )}
+      {src && (
+        <>
+          <button type="button" className="receipt-on-record" onClick={() => setFull(true)}>
+            <img src={src} alt="Receipt for this record" />
+            <small>Tap to read it full screen</small>
+          </button>
+          {full && <ImageViewer src={src} alt="Receipt" onClose={() => setFull(false)} />}
+        </>
+      )}
+    </div>
+  )
 }

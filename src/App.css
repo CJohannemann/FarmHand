@@ -316,6 +316,15 @@ button.icon.searchbtn { font-size: 1.3rem; padding: 0.1rem 0.15rem; line-height:
 
 .field textarea { resize: vertical; }
 
+/* iOS draws a date input at its own intrinsic width, wider than the sheet
+   on a phone — the When box on Edit record ran off the right edge — and
+   centres the date inside it. Same width and alignment as every other field. */
+.field input[type="date"] {
+  -webkit-appearance: none; appearance: none;
+  display: block; min-width: 0; min-height: 2.9rem;
+}
+.field input[type="date"]::-webkit-date-and-time-value { text-align: left; }
+
 /*
   No stepper arrows. They are a mis-tap waiting to happen on a phone held in
   one hand in a barn, they eat width the value needs, and nothing here is
@@ -884,6 +893,16 @@ button.farmname {
   border: 1px solid var(--line);
   border-radius: 4px;
   cursor: zoom-in;
+}
+
+/* A record's own receipt, in its edit sheet. */
+.receipt-on-record {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem;
+  padding: 0; border: 0; background: none; color: var(--muted); cursor: zoom-in;
+}
+.receipt-on-record img {
+  display: block; max-width: 100%; max-height: 12rem;
+  border: 1px solid var(--line); border-radius: 4px;
 }
 
 /* Full-screen photo (ImageViewer). Black whatever the theme: it is a

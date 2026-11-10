@@ -419,6 +419,9 @@ export async function recentLogs(
             (select group_concat(la.asset_id, ',')
                from log_asset la
               where la.log_id = l.id and la.role = 'subject') as subject_ids,
+            -- A photo is attached, for the receipt mark on the row.
+            exists (select 1 from receipt r
+                     where r.log_id = l.id and r.deleted_at is null) as has_receipt,
             -- A feeding's lot (or a processing's consumed lots) is an
             -- 'input', not a 'subject', so without this a "Fed" entry named
             -- only "Fed" over "Layers" never says which bag it came from —
