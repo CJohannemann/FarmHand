@@ -4,15 +4,14 @@ import { prepareImage, ImageError, dataUrl, type PreparedImage } from '../lib/im
 /**
  * Attach a photo of the receipt to what was just bought.
  *
- * Two buttons, two file inputs: Take photo (with `capture`, straight to
- * the rear camera) and Choose from library (without it). It used to be one
- * input with `capture` set, and on an iPhone that skips the usual "Photo
- * Library / Take Photo" menu and opens the camera outright — so a receipt
- * photographed earlier could not be attached at all. Reported exactly so,
- * by someone trying to add one from their library to a past purchase.
- *
- * On a desktop both open the ordinary file picker, and the drop zone takes
- * a dragged image.
+ * One tap target over one `<input type="file" accept="image/*">`, with no
+ * `capture` attribute. That matters: with `capture` set, an iPhone opens
+ * the camera outright and skips its own Photo Library / Take Photo menu,
+ * so a receipt already photographed could not be attached at all. Without
+ * it the phone offers both, in its own familiar menu — which looks better
+ * than two buttons of ours side by side doing the same job (tried, and
+ * called out as looking wrong). On a desktop it is the ordinary file
+ * picker, and the area also takes a dragged image.
  *
  * The image is downscaled here, before it is handed anywhere, so the caller
  * never sees a 5MB camera original. See lib/image.ts for why that cap is
@@ -23,8 +22,7 @@ export function ReceiptCapture({ onChange, disabled }: {
   onChange: (image: PreparedImage | null) => void
   disabled?: boolean
 }) {
-  const cameraRef = useRef<HTMLInputElement>(null)
-  const libraryRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
@@ -46,7 +44,7 @@ export function ReceiptCapture({ onChange, disabled }: {
       // Clearing the input matters: picking the same file twice in a row
       // fires no change event otherwise, so a retry after an error would
       // look like nothing happened.
-      for (const r of [cameraRef, libraryRef]) if (r.current) r.current.value = ''
+      if (inputRef.current) inputRef.current.value = ''
     }
   }
 
@@ -63,28 +61,24 @@ export function ReceiptCapture({ onChange, disabled }: {
           setDragging(false)
           take(e.dataTransfer.files?.[0])
         }}
+        role="button" tabIndex={0}
+        onClick={() => !busy && !disabled && inputRef.current?.click()}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') inputRef.current?.click() }}
       >
         {preview ? (
           <img src={preview} alt="The receipt you attached" className="receipt-thumb" />
         ) : busy ? (
           <p className="muted">Shrinking the photo…</p>
         ) : (
-          <div className="receipt-buttons">
-            <button type="button" disabled={disabled} onClick={() => cameraRef.current?.click()}>
-              📷 Take photo
-            </button>
-            <button type="button" disabled={disabled} onClick={() => libraryRef.current?.click()}>
-              🖼️ Choose from library
-            </button>
+          <div className="receipt-prompt">
+            <span className="receipt-prompt-icon" aria-hidden="true">🧾</span>
+            <span className="receipt-prompt-title">Add receipt photo</span>
+            <span className="receipt-prompt-sub">Take a picture or choose one you already have</span>
           </div>
         )}
       </div>
 
-      {/* `capture` sends this one straight to the rear camera on a phone. */}
-      <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden
-        disabled={disabled || busy} onChange={(e) => take(e.target.files?.[0])} />
-      {/* No `capture`: the phone's own picker, photo library included. */}
-      <input ref={libraryRef} type="file" accept="image/*" hidden
+      <input ref={inputRef} type="file" accept="image/*" hidden
         disabled={disabled || busy} onChange={(e) => take(e.target.files?.[0])} />
 
       {preview && !busy && (
