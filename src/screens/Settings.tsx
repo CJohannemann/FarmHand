@@ -8,6 +8,7 @@ import {
 import { ago, lastSyncedAt, pendingCount, syncClockTime, syncNow } from '../lib/sync'
 import { getThemePref, setThemePref, type ThemePref } from '../lib/theme'
 import { FarmName } from './Setup'
+import { TidyNames } from './TidyNames'
 import { localFarms, setActiveFarm } from '../db/queries'
 import { deleteAccount, exportEverything } from '../lib/account'
 import { downloadZip } from '../lib/receipts'
@@ -60,6 +61,8 @@ export function Settings() {
           onChanged={members.reload}
         />
       )}
+
+      <TidyNames />
 
       <YourDataPanel email={session?.user.email ?? null} />
 

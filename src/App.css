@@ -1102,3 +1102,11 @@ button.primary.danger:disabled { opacity: 0.4; }
   display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem;
   margin-top: 0.4rem; font-size: 0.85rem; color: var(--muted);
 }
+
+/* Settings > Tidy up names. */
+.tidy-pair {
+  display: flex; flex-direction: column; gap: 0.5rem;
+  padding: 0.75rem 0; border-bottom: 1px solid var(--line);
+}
+.tidy-pair .actions { margin: 0; }
+.tidy-pick { padding: 0.5rem 0; border-bottom: 1px solid var(--line); }
