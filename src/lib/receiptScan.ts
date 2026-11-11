@@ -123,7 +123,9 @@ export function receiptPrompt(ctx: ScanContext): string {
     '- store: the store or business name as a person would say it, without store numbers,',
     '  addresses or legal suffixes. If it is one of these stores the farm already uses,',
     `  return that name exactly: ${ctx.stores.length ? ctx.stores.map((s) => JSON.stringify(s)).join(', ') : '(none yet)'}.`,
-    '- date: the purchase date as YYYY-MM-DD, or null if it cannot be read.',
+    '- date: the date of the purchase printed on the receipt or order (sale, transaction,',
+    '  order or pickup date) as YYYY-MM-DD. US receipts print month first: 11/08/26 is',
+    '  2026-11-08. Not the date the photo or screenshot was taken. null only if no date shows.',
     '- total: the final amount paid, including tax, as a number. null if unreadable.',
     `- kind: which ONE of these best describes the purchase as a whole: ${ctx.kinds.map((k) => JSON.stringify(k)).join(', ')}.`,
     '  Lumber, hardware, wire, conduit, fasteners and fencing are "Building supplies" if that is listed.',
@@ -209,19 +211,42 @@ const oneOf = (v: unknown, list: string[]): string | null => {
   return t ? list.find((x) => x.toLowerCase() === t) ?? null : null
 }
 
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+
 /**
- * A YYYY-MM-DD that is a real day, not after today, and not absurdly old —
- * a misread year ("2062") is no date at all rather than a wrong one.
+ * The day `t` names, as [year, month, day], in whichever way it was
+ * written: 2026-11-08 (with or without a time after it), 2026/11/08,
+ * 11/08/2026 or 11/8/26 (month first, as American receipts print it),
+ * "Nov 8, 2026", "November 8 2026", "8 Nov 2026". Asked for YYYY-MM-DD,
+ * a model still sometimes copies the date as the receipt shows it.
  */
-const receiptDate = (v: unknown, today: string): string | null => {
-  const t = text(v, 20)
-  const m = t?.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!m) return null
-  const d = new Date(`${t}T12:00:00Z`)
-  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== t) return null
-  const now = new Date(`${today}T12:00:00Z`).getTime()
-  const age = now - d.getTime()
-  return age >= 0 && age < 3 * 365 * 86_400_000 ? t : null
+const dateParts = (t: string): [number, number, number] | null => {
+  let m = t.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:$|[T\s])/)
+  if (m) return [+m[1], +m[2], +m[3]]
+  m = t.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})(?:$|\s)/)
+  if (m) return [m[3].length === 2 ? 2000 + +m[3] : +m[3], +m[1], +m[2]]
+  const month = (w: string) => MONTHS.indexOf(w.slice(0, 3).toLowerCase()) + 1
+  m = t.match(/^([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})/)
+  if (m && month(m[1])) return [+m[3], month(m[1]), +m[2]]
+  m = t.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,9})\.?,?\s+(\d{4})/)
+  if (m && month(m[2])) return [+m[3], month(m[2]), +m[1]]
+  return null
+}
+
+/**
+ * The receipt's date as YYYY-MM-DD, if it is a real day, not after today,
+ * and not absurdly old — a misread year ("2062") is no date at all rather
+ * than a wrong one.
+ */
+export const receiptDate = (v: unknown, today: string): string | null => {
+  const t = text(v, 40)
+  const p = t && dateParts(t)
+  if (!p) return null
+  const iso = `${p[0]}-${String(p[1]).padStart(2, '0')}-${String(p[2]).padStart(2, '0')}`
+  const d = new Date(`${iso}T12:00:00Z`)
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== iso) return null
+  const age = new Date(`${today}T12:00:00Z`).getTime() - d.getTime()
+  return age >= 0 && age < 3 * 365 * 86_400_000 ? iso : null
 }
 
 /**

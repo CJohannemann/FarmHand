@@ -106,6 +106,17 @@ check('blank and malformed items are dropped', odd.items.length === 1, JSON.stri
 check('"$18.99" is read as 18.99, and "feed" as Feed', odd.items[0].amount === 18.99 && odd.items[0].kind === 'Feed')
 check('a misread year is no date', scanResultFrom({ date: '2062-10-08' }, ctx).date === null)
 check('nor is a day that does not exist', scanResultFrom({ date: '2026-02-30' }, ctx).date === null)
+
+// However the model writes the date, it comes back as the same day.
+for (const [written, want] of [
+  ['2026-11-08', '2026-11-08'], ['2026-11-08T14:32:00', '2026-11-08'], ['2026/11/8', '2026-11-08'],
+  ['11/08/2026', '2026-11-08'], ['11/8/26', '2026-11-08'], ['11-08-2026', '2026-11-08'],
+  ['Nov 8, 2026', '2026-11-08'], ['November 8 2026', '2026-11-08'], ['Nov. 8th, 2026', '2026-11-08'],
+  ['8 Nov 2026', '2026-11-08'], ['Sept 30, 2026', '2026-09-30'],
+  ['13/08/2026', null], ['Smarch 8, 2026', null], ['yesterday', null], ['', null],
+] as const) {
+  check(`date written "${written}"`, scanResultFrom({ date: written }, ctx).date === want)
+}
 check('a new store is kept as read', scanResultFrom({ store: 'Rural King #212' }, ctx).store === 'Rural King #212')
 check('a reply that is not an object fills nothing',
   JSON.stringify(scanResultFrom('nope', ctx)) === JSON.stringify(

@@ -115,7 +115,7 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
       if (f.supplier) setSupplier(f.supplier)
       if (f.date) setDate(f.date)
       setScanned(r)
-      const missing = [!f.cost && 'the total', !f.kind && 'what it was'].filter(Boolean)
+      const missing = [!f.cost && 'the total', !f.kind && 'what it was', !f.date && 'the date'].filter(Boolean)
       setScanNote(missing.length
         ? `Filled in what could be read — add ${missing.join(' and ')}, then check it before saving.`
         : 'Filled in from the receipt — check it before saving.')
@@ -289,7 +289,9 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
       <NameInput label="Store (optional)" value={supplier} onChange={setSupplier}
         used={storesUsed ?? []} placeholder="Lowe's" noun="store" />
 
-      {date !== todayKey() && (
+      {/* Shown once a receipt is scanned, today or not, so a date that
+          couldn't be read is seen and fixed rather than quietly today. */}
+      {(scanned || date !== todayKey()) && (
         <label className="field">
           <span>Receipt date</span>
           <input type="date" value={date} max={todayKey()} onChange={(e) => setDate(e.target.value || todayKey())} />
