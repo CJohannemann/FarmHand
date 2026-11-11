@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { describeError, supabase, supabaseConfigured } from './supabase'
 import { getFarmId } from '../db/queries'
 import { useAsync } from './useAsync'
+import { useSession } from './useSession'
 
 export type FarmRole = 'owner' | 'manager' | 'member' | 'viewer'
 
@@ -116,4 +117,23 @@ export async function checkStillMember(): Promise<boolean | null> {
     .from('farm_member').select('farm_id').eq('farm_id', farmId).limit(1)
   if (error) { console.error('checkStillMember:', describeError(error)); return null }
   return (data?.length ?? 0) > 0
+}
+
+/**
+ * Whether the person on this phone may change farm-wide settings, like the
+ * receipt-scanning key: the owner or a manager. True on a local-only
+ * install, which has no one else to ask. Null while it is not known yet —
+ * the roster comes from the server, so offline it may never be — and a
+ * caller should then hold back the controls rather than guess.
+ */
+export function useCanManageFarm(): boolean | null {
+  const { session } = useSession()
+  const members = useAsync(
+    () => (supabaseConfigured ? listMembers() : Promise.resolve([] as FarmMember[])),
+    [session?.user.id],
+  )
+  if (!supabaseConfigured) return true
+  if (!session || members.error || !members.data) return null
+  const me = members.data.find((m) => m.userId === session.user.id)
+  return me ? me.role === 'owner' || me.role === 'manager' : false
 }

@@ -3,6 +3,7 @@ import { renamedMemberName } from '../lib/grouping'
 import { measureForUnit } from '../lib/units'
 import { saleCosts, shareLabel, weightSalePrice, type AnimalCost, type CostAnimal, type CostLogRow, type CostLot } from '../lib/saleCost'
 import { MERGE_NAME_SQL, NAME_USAGE_SQL, type NameKind } from './namesSql'
+import { CLEAR_SETTING_SQL, GET_SETTING_SQL, SET_SETTING_SQL } from './settingsSql'
 import type { NameUse } from '../lib/nameMatch'
 import { SALE_COST_ANIMALS_SQL, SALE_COST_LOGS_SQL, SALE_COST_LOTS_SQL } from './saleCostSql'
 import type {
@@ -2822,4 +2823,20 @@ export async function mergeNames(kind: NameKind, from: string, into: string): Pr
   if (!from || !into || from === into) return
   const pg = await db()
   for (const sql of MERGE_NAME_SQL[kind]) await pg.query(sql, [from, into])
+}
+
+// --------------------------------------------------------- farm settings
+
+/** A farm-wide setting's value, or null — see settingsSql.ts. */
+export async function getFarmSetting(setting: string): Promise<string | null> {
+  const pg = await db()
+  const { rows } = await pg.query<{ value: string }>(GET_SETTING_SQL, [setting])
+  return rows[0]?.value || null
+}
+
+/** Sets a farm-wide setting for every member's phone, or clears it (null). */
+export async function setFarmSetting(setting: string, value: string | null): Promise<void> {
+  const pg = await db()
+  await pg.query(CLEAR_SETTING_SQL, [setting])
+  if (value) await pg.query(SET_SETTING_SQL, [crypto.randomUUID(), setting, value, new Date().toISOString()])
 }

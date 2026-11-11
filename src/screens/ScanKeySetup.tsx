@@ -2,18 +2,24 @@ import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import { checkScanKey, ScanError } from '../lib/receiptScan'
 import { getScanKey, setScanKey } from '../lib/scanKey'
+import { useCanManageFarm } from '../lib/members'
 
 /**
- * Setting up receipt scanning: the steps to a free Google AI Studio key,
- * a box to paste it in, and a check that Google takes it before it is
- * saved — a bad key found at the moment of scanning a receipt in the feed
- * store's car park is the worst time to find it.
+ * Setting up receipt scanning for the farm: the steps to a free Google AI
+ * Studio key, a box to paste it in, and a check that Google takes it before
+ * it is saved — a bad key found at the moment of scanning a receipt in the
+ * feed store's car park is the worst time to find it.
+ *
+ * The key is the farm's (lib/scanKey.ts): the owner or a manager sets it
+ * once and every member can scan. Anyone else sees whether it is on, and
+ * who to ask if it is not.
  *
  * Used from the Buy sheet the first time Scan is tapped, and from
- * Settings › Receipt scanning to change or remove it.
+ * Settings › Receipt scanning.
  */
 export function ScanKeySetup({ onSaved }: { onSaved?: () => void }) {
   const { data: current, reload } = useAsync(() => getScanKey(), [])
+  const canManage = useCanManageFarm()
   const [key, setKey] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -37,12 +43,24 @@ export function ScanKeySetup({ onSaved }: { onSaved?: () => void }) {
     }
   }
 
+  if (canManage !== true) {
+    return (
+      <p className="hint">
+        {current
+          ? 'Receipt scanning is set up for this farm — tap Scan a receipt on the Buy sheet.'
+          : canManage === false
+            ? 'Receipt scanning isn’t set up for this farm yet. Ask the farm’s owner or a manager to add a key under Settings › Receipt scanning.'
+            : 'Receipt scanning isn’t set up yet. The farm’s owner or a manager can add a key here once this phone is online.'}
+      </p>
+    )
+  }
+
   return (
     <div>
       <p className="hint">
         Scanning sends the receipt photo to Google's Gemini to read the store,
-        date, total and items. It's free, using your own Google key — make one
-        once, paste it here:
+        date, total and items. It's free, using a Google key you make once.
+        Saved here, it works on every phone on this farm.
       </p>
       <ol className="scan-steps">
         <li>
@@ -53,17 +71,15 @@ export function ScanKeySetup({ onSaved }: { onSaved?: () => void }) {
         <li>Paste it below and tap Save.</li>
       </ol>
       <p className="hint">
-        The free key has a daily limit — plenty for one farm's receipts. On
-        the free tier Google may use what's sent to improve its products, so
-        the photo (with anything on it, like the last digits of a card) goes
-        to Google. The key stays on this phone only; paste it on each phone
-        that scans.
+        The free key has a daily limit, shared by everyone on the farm —
+        plenty for one farm's receipts. On the free tier Google may use what's
+        sent to improve its products, so the photo (with anything on it, like
+        the last digits of a card) goes to Google. Everyone on the farm can
+        use the key, so only share the farm with people you trust with it.
       </p>
 
-      {current && !saved && (
-        <p className="notice">This phone already has a key{current ? ` ending …${current.slice(-4)}` : ''}.</p>
-      )}
-      {saved && <p className="notice">Saved — scanning is on for this phone.</p>}
+      {current && !saved && <p className="notice">Scanning is on for this farm (key ending …{current.slice(-4)}).</p>}
+      {saved && <p className="notice">Saved — scanning is on for everyone on this farm.</p>}
 
       <label className="field">
         <span>{current ? 'Replace the key' : 'Your key'}</span>
@@ -73,9 +89,9 @@ export function ScanKeySetup({ onSaved }: { onSaved?: () => void }) {
       <div className="actions">
         {current && (
           <button type="button" disabled={busy} onClick={async () => {
-            await setScanKey(''); setSaved(false); reload()
+            await setScanKey(null); setSaved(false); reload()
           }}>
-            Remove key
+            Turn off scanning
           </button>
         )}
         <button type="button" className="primary" disabled={busy || !key.trim()} onClick={save}>
