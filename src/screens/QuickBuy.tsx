@@ -62,12 +62,19 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
 
   const resolvedKind = kind === OTHER ? kindOther.trim() : kind
   const forStock = FOR_STOCK_KINDS.includes(resolvedKind)
+  // Projects are what gets built — a barn, a fence — so the picker waits
+  // for building supplies or a kind off the short list (Improvements,
+  // Lumber…). Feed, hay and medicine are not, and showing it before
+  // anything is picked was one more field asking a question nobody had.
+  const showProject = kind === 'Building supplies' || moreKinds
+    || (!!kind && !QUICK_KINDS.includes(kind))
+  const projectPick = showProject ? project : ''
   const ready = Number(cost) > 0 && !!resolvedKind
-    && !(project === NEW_PROJECT && !projectName.trim())
+    && !(projectPick === NEW_PROJECT && !projectName.trim())
 
   const { run, busy, error } = useSave(async () => {
     if (!(materials ?? []).includes(resolvedKind)) await createTerm('material', resolvedKind)
-    const projectId = await resolveProject(project, projectName)
+    const projectId = await resolveProject(projectPick, projectName)
     await createPurchase({
       material: resolvedKind,
       name: quickPurchaseName(resolvedKind, forStock ? forSpecies : null),
@@ -166,8 +173,10 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
         </div>
       )}
 
-      <ProjectSelect value={project} onChange={setProject}
-        newName={projectName} onNewName={setProjectName} />
+      {showProject && (
+        <ProjectSelect value={project} onChange={setProject}
+          newName={projectName} onNewName={setProjectName} />
+      )}
 
       <NameInput label="Store (optional)" value={supplier} onChange={setSupplier}
         used={storesUsed ?? []} placeholder="Lowe's" />
