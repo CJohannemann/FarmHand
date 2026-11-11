@@ -1042,7 +1042,7 @@ function BuyForm({ onDone, onClose, onQuick }: FormProps & { onQuick: () => void
 
       {material === OTHER && (
         <NameInput label="What is it?" value={materialOther} onChange={setMaterialOther}
-          used={kindsUsed ?? []} placeholder="Twine" autoFocus />
+          used={kindsUsed ?? []} placeholder="Twine" autoFocus noun="kind" />
       )}
 
       {SERVICE_MATERIALS.includes(resolvedMaterial) && (
@@ -1065,7 +1065,7 @@ function BuyForm({ onDone, onClose, onQuick }: FormProps & { onQuick: () => void
         </label>
       )}
       <NameInput label="Name it (optional)" value={name} onChange={setName}
-        used={itemsUsed ?? []}
+        used={itemsUsed ?? []} noun="item"
         placeholder={quickPurchaseName(resolvedMaterial || 'Feed', categorizable ? category : null)} />
       <div className="pair">
         <label className="field">
@@ -1105,7 +1105,7 @@ function BuyForm({ onDone, onClose, onQuick }: FormProps & { onQuick: () => void
       </button>
 
       <NameInput label="Store (optional)" value={supplier} onChange={setSupplier}
-        used={storesUsed ?? []} placeholder="Co-op" />
+        used={storesUsed ?? []} placeholder="Co-op" noun="store" />
       <ProjectSelect value={project} onChange={setProject}
         newName={projectName} onNewName={setProjectName} />
       <ReceiptCapture onChange={setReceipt} />

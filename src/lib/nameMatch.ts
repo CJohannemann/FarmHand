@@ -102,18 +102,33 @@ export function similarNames(a: string, b: string): boolean {
 export interface NameUse { name: string; count: number }
 
 /**
- * The names already in use worth offering while something is typed: ones
- * that start the same way, then ones that look alike. Most used first.
- * Empty input offers the most used, so the usual store is one tap.
+ * The names already in use worth offering while something is typed — a
+ * list that narrows with each letter, capitals ignored. In order:
+ *  1. names that start with what was typed ("t" → TSC, Tractor Supply);
+ *  2. names with a later word that does ("s" → Tractor Supply);
+ *  3. names that look alike without matching at all ("Lowse" → Lowe's).
+ * Within each, most used first. Nothing typed offers the most used, so
+ * the usual store is one tap. Empty once the exact name is in the field.
  */
-export function suggestNames(input: string, used: NameUse[], limit = 4): NameUse[] {
+export function suggestNames(input: string, used: NameUse[], limit = 50): NameUse[] {
+  const typed = input.trim().toLowerCase()
   const q = canonical(input)
   const byUse = [...used].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
-  if (!q) return byUse.slice(0, limit)
-  if (used.some((u) => u.name === input.trim())) return []
-  const starts = byUse.filter((u) => canonical(u.name).startsWith(q))
-  const alike = byUse.filter((u) => !starts.includes(u) && similarNames(input, u.name))
-  return [...starts, ...alike].slice(0, limit)
+  if (!typed) return byUse.slice(0, limit)
+  if (used.some((u) => u.name.toLowerCase() === typed)) return []
+  // Plain lower case as well as canonical: canonical drops "The" and folds
+  // plurals, and someone typing "the co" expects "The Co-op".
+  const startsWith = (u: NameUse) => u.name.toLowerCase().startsWith(typed)
+    || (!!q && canonical(u.name).startsWith(q))
+  const wordStarts = (u: NameUse) =>
+    // Apostrophes dropped first, so "Lowe's" is one word and "s" no match.
+    u.name.toLowerCase().replace(/['’`]/g, '').split(/[^a-z0-9]+/).some((w) => w.startsWith(typed))
+    || (!!q && canonicalWords(u.name).some((w) => w.startsWith(q)))
+  const starts = byUse.filter(startsWith)
+  const words = byUse.filter((u) => !starts.includes(u) && wordStarts(u))
+  const alike = byUse.filter((u) => !starts.includes(u) && !words.includes(u)
+    && similarNames(input, u.name))
+  return [...starts, ...words, ...alike].slice(0, limit)
 }
 
 /**

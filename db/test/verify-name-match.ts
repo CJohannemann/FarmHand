@@ -60,6 +60,21 @@ check('"low" offers Lowe\'s', suggestNames('low', stores)[0]?.name === "Lowe's")
 check('"tsc" offers Tractor Supply', suggestNames('tsc', stores)[0]?.name === 'Tractor Supply Co',
   suggestNames('tsc', stores).map((s) => s.name).join())
 check('an exact name already in use needs no suggestion', suggestNames('Wiseway', stores).length === 0)
+check('nor does it in other capitals', suggestNames('wiseway', stores).length === 0)
+
+console.log('\nThe list narrows as you type, capitals ignored')
+const many = ['TSC', 'Tractor Supply', 'Seiters', 'Wiseway', "Lowe's", 'Rural King', 'Tri-County Feed',
+  'Home Depot', 'The Co-op'].map((name, i) => ({ name, count: 20 - i }))
+const names = (input: string) => suggestNames(input, many).map((s) => s.name).join(', ')
+check('"t" — only what starts with T, most used first', names('t') === 'TSC, Tractor Supply, Tri-County Feed, The Co-op', names('t'))
+check('"T" is the same as "t"', names('T') === names('t'))
+check('"tr" narrows further', names('tr') === 'Tractor Supply, Tri-County Feed', names('tr'))
+check('"TRA" is the same as "tra"', names('TRA') === 'Tractor Supply' && names('tra') === 'Tractor Supply', names('TRA'))
+check('a later word counts too, after the names that start with it',
+  names('s') === 'Seiters, Tractor Supply', names('s'))
+check('"co" finds The Co-op by its own word', names('co').includes('The Co-op'), names('co'))
+check('nothing typed: every store, most used first', names('').startsWith('TSC, Tractor Supply, Seiters'))
+check('a letter nothing starts with offers nothing', names('q') === '', names('q'))
 check('"Lowes" — did you mean Lowe\'s?', didYouMean('Lowes', stores) === "Lowe's")
 check('the exact name is not second-guessed', didYouMean("Lowe's", stores) === null)
 check('a genuinely new store is left alone', didYouMean('Rural King', stores) === null)

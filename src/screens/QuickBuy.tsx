@@ -130,7 +130,7 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
       )}
       {kind === OTHER && (
         <NameInput label="What is it?" value={kindOther} onChange={setKindOther}
-          used={kindsUsed ?? []} placeholder="Twine" autoFocus />
+          used={kindsUsed ?? []} placeholder="Twine" autoFocus noun="kind" />
       )}
 
       {/* Which animals it is for is what Analytics adds feed up by — and it
@@ -179,7 +179,7 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
       )}
 
       <NameInput label="Store (optional)" value={supplier} onChange={setSupplier}
-        used={storesUsed ?? []} placeholder="Lowe's" />
+        used={storesUsed ?? []} placeholder="Lowe's" noun="store" />
 
       <ReceiptCapture onChange={setReceipt} />
 
