@@ -4,7 +4,7 @@ import { useAsync } from '../lib/useAsync'
 import {
   CATEGORIZABLE_MATERIALS, createHarvest, createLog, createPurchase, createTerm, expectedBirths,
   listAssets, listContacts, listTerms, lotBalances, lotIsUsedUp, plannedLogs, recentLogs,
-  completeWeightSale, pendingWeightSales, recordDisposition, sellAsset, setLotCategory,
+  completeWeightSale, nameUsage, pendingWeightSales, recordDisposition, sellAsset, setLotCategory,
   type LotBalance, type WeightSale, type WeightSalePart,
 } from '../db/queries'
 import { shareLabel, weightSalePrice } from '../lib/saleCost'
@@ -13,7 +13,8 @@ import type { PreparedImage } from '../lib/image'
 import { useMembersMap } from '../lib/members'
 import { ReceiptCapture } from './ReceiptCapture'
 import { QuickBuy } from './QuickBuy'
-import { SERVICE_MATERIALS } from '../lib/purchaseKinds'
+import { NameInput } from './NameInput'
+import { SERVICE_MATERIALS, quickPurchaseName } from '../lib/purchaseKinds'
 import { NEW_PROJECT, ProjectSelect, resolveProject } from './ProjectSelect'
 import { HARVESTS, tilesFor, type HarvestSpec } from '../lib/tiles'
 import {
@@ -948,6 +949,9 @@ function BuyForm({ onDone, onClose, onQuick }: FormProps & { onQuick: () => void
   const { data: materials } = useAsync(() => listTerms('material'), [])
   const { data: units } = useAsync(() => listTerms('unit'), [])
   const { data: species } = useAsync(() => listTerms('species'), [])
+  const { data: storesUsed } = useAsync(() => nameUsage('store'), [])
+  const { data: itemsUsed } = useAsync(() => nameUsage('item'), [])
+  const { data: kindsUsed } = useAsync(() => nameUsage('kind'), [])
   const resolvedMaterial = material === OTHER ? materialOther.trim() : material
   const categorizable = CATEGORIZABLE_MATERIALS.includes(resolvedMaterial)
 
@@ -959,7 +963,10 @@ function BuyForm({ onDone, onClose, onQuick }: FormProps & { onQuick: () => void
   // A half-typed "Other" has no material yet, which is not a line either.
   const draft = (): PurchaseLine | null => (Number(cost) > 0 && resolvedMaterial ? {
     material: resolvedMaterial, category: categorizable && category ? category : '',
-    name: name.trim() || resolvedMaterial, amount, unit, cost,
+    // Left blank, named the way the quick sheet names it ("Pig feed"), so
+    // the two sheets never disagree about what the same thing is called.
+    name: name.trim() || quickPurchaseName(resolvedMaterial, categorizable ? category : null),
+    amount, unit, cost,
   } : null)
 
   const addItem = () => {
@@ -1034,16 +1041,8 @@ function BuyForm({ onDone, onClose, onQuick }: FormProps & { onQuick: () => void
       </label>
 
       {material === OTHER && (
-        <label className="field">
-          <span>What is it?</span>
-          <input autoFocus value={materialOther}
-            onChange={(e) => setMaterialOther(e.target.value)}
-            placeholder="Twine" />
-          <small className="hint">
-            Saved to your farm's own list — pick it straight from What kind
-            next time.
-          </small>
-        </label>
+        <NameInput label="What is it?" value={materialOther} onChange={setMaterialOther}
+          used={kindsUsed ?? []} placeholder="Twine" autoFocus />
       )}
 
       {SERVICE_MATERIALS.includes(resolvedMaterial) && (
@@ -1065,11 +1064,9 @@ function BuyForm({ onDone, onClose, onQuick }: FormProps & { onQuick: () => void
           </small>
         </label>
       )}
-      <label className="field">
-        <span>Name it</span>
-        <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
-          placeholder="Grower feed — April" />
-      </label>
+      <NameInput label="Name it (optional)" value={name} onChange={setName}
+        used={itemsUsed ?? []}
+        placeholder={quickPurchaseName(resolvedMaterial || 'Feed', categorizable ? category : null)} />
       <div className="pair">
         <label className="field">
           <span>Quantity</span>
@@ -1107,11 +1104,8 @@ function BuyForm({ onDone, onClose, onQuick }: FormProps & { onQuick: () => void
         + Bought something else in the same order
       </button>
 
-      <label className="field">
-        <span>Supplier (optional)</span>
-        <input value={supplier} onChange={(e) => setSupplier(e.target.value)}
-          placeholder="Co-op" />
-      </label>
+      <NameInput label="Store (optional)" value={supplier} onChange={setSupplier}
+        used={storesUsed ?? []} placeholder="Co-op" />
       <ProjectSelect value={project} onChange={setProject}
         newName={projectName} onNewName={setProjectName} />
       <ReceiptCapture onChange={setReceipt} />

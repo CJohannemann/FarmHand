@@ -1095,3 +1095,10 @@ button.primary.danger:disabled { opacity: 0.4; }
 .pickrow input { width: 1.2rem; height: 1.2rem; flex: none; accent-color: var(--accent); }
 .pick-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .pick-amount { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* NameInput: names already in use, under the field. */
+.name-offers { margin-top: 0.4rem; }
+.name-meant {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem;
+  margin-top: 0.4rem; font-size: 0.85rem; color: var(--muted);
+}

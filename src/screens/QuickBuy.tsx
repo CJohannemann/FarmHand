@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import { useSave } from '../lib/useSave'
-import { createPurchase, createTerm, listAssets, listTerms } from '../db/queries'
+import { createPurchase, createTerm, listAssets, listTerms, nameUsage } from '../db/queries'
 import type { PreparedImage } from '../lib/image'
 import {
   FOR_STOCK_KINDS, QUICK_KINDS, SERVICE_MATERIALS, quickPurchaseName,
@@ -15,6 +15,7 @@ import { Sheet } from './Sheet'
 import { OTHER } from './AssetSelect'
 import { ReceiptCapture } from './ReceiptCapture'
 import { NEW_PROJECT, ProjectSelect, resolveProject } from './ProjectSelect'
+import { NameInput } from './NameInput'
 
 /**
  * A receipt, as quickly as it can be put down: what it came to, what it was
@@ -49,6 +50,8 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
 
   const { data: materials } = useAsync(() => listTerms('material'), [])
   const { data: units } = useAsync(() => listTerms('unit'), [])
+  const { data: storesUsed } = useAsync(() => nameUsage('store'), [])
+  const { data: kindsUsed } = useAsync(() => nameUsage('kind'), [])
   const { data: animals } = useAsync(() => listAssets(['animal', 'group']), [])
   // The species this farm keeps, not every species there is: four buttons
   // for what is actually in the barn beat a list of twelve.
@@ -119,11 +122,8 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
         </label>
       )}
       {kind === OTHER && (
-        <label className="field">
-          <span>What is it?</span>
-          <input autoFocus value={kindOther} onChange={(e) => setKindOther(e.target.value)}
-            placeholder="Twine" />
-        </label>
+        <NameInput label="What is it?" value={kindOther} onChange={setKindOther}
+          used={kindsUsed ?? []} placeholder="Twine" autoFocus />
       )}
 
       {/* Which animals it is for is what Analytics adds feed up by — and it
@@ -169,11 +169,8 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
       <ProjectSelect value={project} onChange={setProject}
         newName={projectName} onNewName={setProjectName} />
 
-      <label className="field">
-        <span>Store (optional)</span>
-        <input value={supplier} onChange={(e) => setSupplier(e.target.value)}
-          placeholder="Lowe's" />
-      </label>
+      <NameInput label="Store (optional)" value={supplier} onChange={setSupplier}
+        used={storesUsed ?? []} placeholder="Lowe's" />
 
       <ReceiptCapture onChange={setReceipt} />
 

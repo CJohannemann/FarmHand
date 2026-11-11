@@ -2,6 +2,8 @@ import { db } from './client'
 import { renamedMemberName } from '../lib/grouping'
 import { measureForUnit } from '../lib/units'
 import { saleCosts, shareLabel, weightSalePrice, type AnimalCost, type CostAnimal, type CostLogRow, type CostLot } from '../lib/saleCost'
+import { MERGE_NAME_SQL, NAME_USAGE_SQL, type NameKind } from './namesSql'
+import type { NameUse } from '../lib/nameMatch'
 import { SALE_COST_ANIMALS_SQL, SALE_COST_LOGS_SQL, SALE_COST_LOTS_SQL } from './saleCostSql'
 import type {
   Asset, AssetRole, AssetType, Contact, LogWithDetail, Measure, QuantityInput,
@@ -2793,4 +2795,28 @@ export async function createAnimals(input: {
     )
   }
   return ids
+}
+
+// ------------------------------------------------------------------ names
+
+/**
+ * Each store, item name or kind in use on this farm's purchases, with how
+ * many use it — what the Buy sheet suggests from, and what Settings' Tidy
+ * up names lists. Kinds include the ones not used yet, at zero, so a merge
+ * can go into any kind the farm has.
+ */
+export async function nameUsage(kind: NameKind): Promise<NameUse[]> {
+  const pg = await db()
+  const { rows } = await pg.query<{ name: string; count: number }>(NAME_USAGE_SQL[kind])
+  const used = rows.filter((r) => r.name).map((r) => ({ name: r.name, count: Number(r.count) || 0 }))
+  if (kind !== 'kind') return used
+  const terms = await listTerms('material')
+  return [...used, ...terms.filter((t) => !used.some((u) => u.name === t)).map((t) => ({ name: t, count: 0 }))]
+}
+
+/** Every use of `from` becomes `into` — see MERGE_NAME_SQL. */
+export async function mergeNames(kind: NameKind, from: string, into: string): Promise<void> {
+  if (!from || !into || from === into) return
+  const pg = await db()
+  for (const sql of MERGE_NAME_SQL[kind]) await pg.query(sql, [from, into])
 }
