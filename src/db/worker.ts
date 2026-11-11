@@ -35,7 +35,7 @@ let db: number
  * and all — so migrate() below also needs an explicit, guarded `alter table`
  * for that case (see the edited_by/edited_at addition for the pattern).
  */
-const SCHEMA_VERSION = '7'
+const SCHEMA_VERSION = '8'
 const SCHEMA_VERSION_KEY = 'localSchema'
 
 async function open(): Promise<void> {
@@ -73,6 +73,8 @@ async function migrate(fresh: boolean): Promise<void> {
   // table` just now.
   await addColumnIfMissing('log', 'edited_by', 'text')
   await addColumnIfMissing('log', 'edited_at', 'text')
+  // Version 8 only re-runs migrate() so topUpLocalVocabulary() adds the
+  // 'Building supplies' material to devices set up before it existed.
   // Version 7: a sale's old "processing fee" becomes its butcher cost —
   // see BUTCHER_COST_MIGRATION_SQL. Before anything syncs on this boot,
   // so the corrected price is what goes up.

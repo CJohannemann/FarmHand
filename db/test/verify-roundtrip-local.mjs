@@ -199,7 +199,7 @@ check("A's outbox is now empty",
 // The server seeded its own (unchanged, Postgres-side) vocabulary. If A had
 // pushed its 150 system-vocab rows too the count would rise — it must not.
 const serverTerms = await scount(`select count(*)::int n from term`)
-check('shared vocabulary was not duplicated', serverTerms === 139, `${serverTerms} terms`)
+check('shared vocabulary was not duplicated', serverTerms === 140, `${serverTerms} terms`)
 
 console.log('\nDevice B syncs down')
 const down = await runSync(asLocal(B), remote)

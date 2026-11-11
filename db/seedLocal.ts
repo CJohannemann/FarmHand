@@ -47,7 +47,7 @@ const BREEDS: [name: string, species: string][] = [
 const MATERIALS = [
   'Feed', 'Hay', 'Straw', 'Bedding', 'Seed', 'Fertilizer', 'Compost',
   'Medicine', 'Mineral', 'Fuel', 'Meat', 'Eggs', 'Milk', 'Honey', 'Produce',
-  'Firewood', 'Canning supplies', 'Parts', 'Improvements', 'Utilities',
+  'Firewood', 'Canning supplies', 'Parts', 'Improvements', 'Utilities', 'Building supplies',
 ]
 
 const METHODS = [

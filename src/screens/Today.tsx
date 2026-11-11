@@ -12,6 +12,8 @@ import type { Asset, AssetType, LogWithDetail } from '../db/types'
 import type { PreparedImage } from '../lib/image'
 import { useMembersMap } from '../lib/members'
 import { ReceiptCapture } from './ReceiptCapture'
+import { QuickBuy } from './QuickBuy'
+import { SERVICE_MATERIALS } from '../lib/purchaseKinds'
 import { NEW_PROJECT, ProjectSelect, resolveProject } from './ProjectSelect'
 import { HARVESTS, tilesFor, type HarvestSpec } from '../lib/tiles'
 import {
@@ -247,7 +249,7 @@ export function Today({ onGoToStock, onGoToAnimal }: {
       )}
       {open === 'feed'   && <FeedForm   onDone={done} onClose={() => setOpen(null)} />}
       {open === 'sell'   && <SellForm   onDone={done} onClose={() => setOpen(null)} />}
-      {open === 'buy'    && <BuyForm    onDone={done} onClose={() => setOpen(null)} />}
+      {open === 'buy'    && <BuySheet   onDone={done} onClose={() => setOpen(null)} />}
       {open === 'note'   && <NoteForm   onDone={done} onClose={() => setOpen(null)} />}
       {open === 'plan'   && <ChoreSheet onDone={done} onClose={() => setOpen(null)} />}
       {chore && (
@@ -917,18 +919,17 @@ interface PurchaseLine {
  * $180 receipt of three differently-priced bags isn't three $60 bags.
  */
 /**
- * Bought, but never held — so it must not land in Stores.
- *
- * Everything else on this form becomes a lot you draw down: a bag of feed,
- * a bale, a box of parts. Wiring a barn and the electric bill leave nothing
- * to draw down, and recorded as ordinary purchases they would sit in Stores
- * forever as stock that can never be used up. `origin: 'service'` is the
- * flag that already keeps a vet's call-out and an oil change out of there
- * (see createPurchase), and it is the right one here.
+ * The Buy tile: the quick receipt sheet first (QuickBuy), and the
+ * line-by-line one when a receipt is worth breaking down.
  */
-const SERVICE_MATERIALS = ['Improvements', 'Utilities']
+function BuySheet({ onDone, onClose }: FormProps) {
+  const [detailed, setDetailed] = useState(false)
+  return detailed
+    ? <BuyForm onDone={onDone} onClose={onClose} onQuick={() => setDetailed(false)} />
+    : <QuickBuy onDone={onDone} onClose={onClose} onDetailed={() => setDetailed(true)} />
+}
 
-function BuyForm({ onDone, onClose }: FormProps) {
+function BuyForm({ onDone, onClose, onQuick }: FormProps & { onQuick: () => void }) {
   const [material, setMaterial] = useState('Feed')
   // "Other" reveals this, and typing here adds it to the farm's own list
   // for next time — the same thing the Species picker does when you are
@@ -1003,9 +1004,12 @@ function BuyForm({ onDone, onClose }: FormProps) {
 
   return (
     <Sheet title="Purchase" onClose={onClose}>
+      <button type="button" className="linkish" style={{ marginBottom: '0.75rem' }} onClick={onQuick}>
+        ‹ Just the receipt total
+      </button>
       <p className="hint">
-        Recording what you paid is what lets the app work out cost per unit
-        later.
+        One line per thing bought, each with its own price — for feed or hay
+        you want to track by the pound, or a receipt you want split up.
       </p>
 
       {items.length > 0 && (
