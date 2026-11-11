@@ -1,0 +1,88 @@
+import { useState } from 'react'
+import { useAsync } from '../lib/useAsync'
+import { checkScanKey, ScanError } from '../lib/receiptScan'
+import { getScanKey, setScanKey } from '../lib/scanKey'
+
+/**
+ * Setting up receipt scanning: the steps to a free Google AI Studio key,
+ * a box to paste it in, and a check that Google takes it before it is
+ * saved — a bad key found at the moment of scanning a receipt in the feed
+ * store's car park is the worst time to find it.
+ *
+ * Used from the Buy sheet the first time Scan is tapped, and from
+ * Settings › Receipt scanning to change or remove it.
+ */
+export function ScanKeySetup({ onSaved }: { onSaved?: () => void }) {
+  const { data: current, reload } = useAsync(() => getScanKey(), [])
+  const [key, setKey] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  const save = async () => {
+    setBusy(true); setError(null)
+    try {
+      if (!(await checkScanKey(key))) {
+        setError("Google didn't accept that key. Copy it again from AI Studio — it usually starts with \"AIza\".")
+        return
+      }
+      await setScanKey(key)
+      setKey(''); setSaved(true)
+      reload()
+      onSaved?.()
+    } catch (e) {
+      setError(e instanceof ScanError ? e.message : "Couldn't check the key. Try again.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div>
+      <p className="hint">
+        Scanning sends the receipt photo to Google's Gemini to read the store,
+        date, total and items. It's free, using your own Google key — make one
+        once, paste it here:
+      </p>
+      <ol className="scan-steps">
+        <li>
+          Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
+          aistudio.google.com/apikey</a> and sign in with a Google account.
+        </li>
+        <li>Tap <strong>Create API key</strong>, then copy it.</li>
+        <li>Paste it below and tap Save.</li>
+      </ol>
+      <p className="hint">
+        The free key has a daily limit — plenty for one farm's receipts. On
+        the free tier Google may use what's sent to improve its products, so
+        the photo (with anything on it, like the last digits of a card) goes
+        to Google. The key stays on this phone only; paste it on each phone
+        that scans.
+      </p>
+
+      {current && !saved && (
+        <p className="notice">This phone already has a key{current ? ` ending …${current.slice(-4)}` : ''}.</p>
+      )}
+      {saved && <p className="notice">Saved — scanning is on for this phone.</p>}
+
+      <label className="field">
+        <span>{current ? 'Replace the key' : 'Your key'}</span>
+        <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="AIza…"
+          autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
+      </label>
+      <div className="actions">
+        {current && (
+          <button type="button" disabled={busy} onClick={async () => {
+            await setScanKey(''); setSaved(false); reload()
+          }}>
+            Remove key
+          </button>
+        )}
+        <button type="button" className="primary" disabled={busy || !key.trim()} onClick={save}>
+          {busy ? 'Checking…' : 'Save'}
+        </button>
+      </div>
+      {error && <p className="error">{error}</p>}
+    </div>
+  )
+}

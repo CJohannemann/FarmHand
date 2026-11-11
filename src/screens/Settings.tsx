@@ -9,6 +9,7 @@ import { ago, lastSyncedAt, pendingCount, syncClockTime, syncNow } from '../lib/
 import { getThemePref, setThemePref, type ThemePref } from '../lib/theme'
 import { FarmName } from './Setup'
 import { TidyNames } from './TidyNames'
+import { ScanKeySetup } from './ScanKeySetup'
 import { localFarms, setActiveFarm } from '../db/queries'
 import { deleteAccount, exportEverything } from '../lib/account'
 import { downloadZip } from '../lib/receipts'
@@ -63,6 +64,9 @@ export function Settings() {
       )}
 
       <TidyNames />
+
+      <h2 style={{ marginTop: '1.5rem' }}>Receipt scanning</h2>
+      <ScanKeySetup />
 
       <YourDataPanel email={session?.user.email ?? null} />
 

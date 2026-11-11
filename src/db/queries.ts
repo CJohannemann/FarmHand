@@ -634,6 +634,8 @@ export async function createPurchase(input: {
   receipt?: { data: string; mime: string; byteSize: number; width: number; height: number }
   /** The project this was bought for — a barn, a fence line. See Projects. */
   projectId?: string
+  /** When it was bought, if not now — a receipt scanned days later. */
+  timestamp?: Date
 }): Promise<string> {
   const lotId = await createAsset({
     type: 'lot',
@@ -661,6 +663,7 @@ export async function createPurchase(input: {
     name: input.origin === 'service' ? `Paid for ${input.name}` : `Bought ${input.name}`,
     assets: [{ id: lotId, role: 'subject' }],
     quantities,
+    timestamp: input.timestamp,
     attributes: input.projectId ? { project_id: input.projectId } : undefined,
   })
   if (input.receipt) await addReceipt(logId, input.receipt)

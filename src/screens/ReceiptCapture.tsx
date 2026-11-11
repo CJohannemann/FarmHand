@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { prepareImage, ImageError, dataUrl, type PreparedImage } from '../lib/image'
 
 /**
@@ -17,16 +17,24 @@ import { prepareImage, ImageError, dataUrl, type PreparedImage } from '../lib/im
  * never sees a 5MB camera original. See lib/image.ts for why that cap is
  * what makes storing these in Postgres reasonable.
  */
-export function ReceiptCapture({ onChange, disabled }: {
+export function ReceiptCapture({ onChange, disabled, value }: {
   /** The prepared image, or null when it's been removed. */
   onChange: (image: PreparedImage | null) => void
   disabled?: boolean
+  /**
+   * A photo the form already has — the one just scanned on the Buy sheet,
+   * so a receipt read in is a receipt attached without picking it twice.
+   */
+  value?: PreparedImage | null
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
+  useEffect(() => {
+    if (value !== undefined) setPreview(value ? dataUrl(value.mime, value.data) : null)
+  }, [value])
 
   const take = async (file: File | null | undefined) => {
     if (!file) return

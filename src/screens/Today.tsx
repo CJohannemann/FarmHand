@@ -12,7 +12,7 @@ import type { Asset, AssetType, LogWithDetail } from '../db/types'
 import type { PreparedImage } from '../lib/image'
 import { useMembersMap } from '../lib/members'
 import { ReceiptCapture } from './ReceiptCapture'
-import { QuickBuy } from './QuickBuy'
+import { QuickBuy, type DetailedStart } from './QuickBuy'
 import { NameInput } from './NameInput'
 import { SERVICE_MATERIALS, quickPurchaseName } from '../lib/purchaseKinds'
 import { NEW_PROJECT, ProjectSelect, resolveProject } from './ProjectSelect'
@@ -925,12 +925,20 @@ interface PurchaseLine {
  */
 function BuySheet({ onDone, onClose }: FormProps) {
   const [detailed, setDetailed] = useState(false)
+  // A scanned receipt split by kind, handed from the quick sheet.
+  const [start, setStart] = useState<DetailedStart | undefined>()
   return detailed
-    ? <BuyForm onDone={onDone} onClose={onClose} onQuick={() => setDetailed(false)} />
-    : <QuickBuy onDone={onDone} onClose={onClose} onDetailed={() => setDetailed(true)} />
+    ? <BuyForm onDone={onDone} onClose={onClose} start={start}
+        onQuick={() => { setDetailed(false); setStart(undefined) }} />
+    : <QuickBuy onDone={onDone} onClose={onClose}
+        onDetailed={(st) => { setStart(st); setDetailed(true) }} />
 }
 
-function BuyForm({ onDone, onClose, onQuick }: FormProps & { onQuick: () => void }) {
+function BuyForm({ onDone, onClose, onQuick, start }: FormProps & {
+  onQuick: () => void
+  /** Lines, store, photo and date from a scanned receipt, split by kind. */
+  start?: DetailedStart
+}) {
   const [material, setMaterial] = useState('Feed')
   // "Other" reveals this, and typing here adds it to the farm's own list
   // for next time — the same thing the Species picker does when you are
@@ -941,9 +949,9 @@ function BuyForm({ onDone, onClose, onQuick }: FormProps & { onQuick: () => void
   const [amount, setAmount] = useState('')
   const [unit, setUnit] = useState('lb')
   const [cost, setCost] = useState('')
-  const [items, setItems] = useState<PurchaseLine[]>([])
-  const [receipt, setReceipt] = useState<PreparedImage | null>(null)
-  const [supplier, setSupplier] = useState('')
+  const [items, setItems] = useState<PurchaseLine[]>(start?.lines ?? [])
+  const [receipt, setReceipt] = useState<PreparedImage | null>(start?.receipt ?? null)
+  const [supplier, setSupplier] = useState(start?.supplier ?? '')
   const [project, setProject] = useState('')
   const [projectName, setProjectName] = useState('')
   const { data: materials } = useAsync(() => listTerms('material'), [])
@@ -1000,6 +1008,8 @@ function BuyForm({ onDone, onClose, onQuick }: FormProps & { onQuick: () => void
         category: it.category || undefined,
         receipt: receipt ?? undefined,
         projectId: projectId ?? undefined,
+        // The receipt's own date when a scan read one; noon, so the day holds.
+        timestamp: start?.date ? new Date(`${start.date}T12:00:00`) : undefined,
         // Work on the place, not stock — keeps it out of Stores.
         origin: SERVICE_MATERIALS.includes(it.material) ? 'service' : undefined,
       })
@@ -1108,7 +1118,7 @@ function BuyForm({ onDone, onClose, onQuick }: FormProps & { onQuick: () => void
         used={storesUsed ?? []} placeholder="Co-op" noun="store" />
       <ProjectSelect value={project} onChange={setProject}
         newName={projectName} onNewName={setProjectName} />
-      <ReceiptCapture onChange={setReceipt} />
+      <ReceiptCapture onChange={setReceipt} value={receipt} />
       {items.length > 0 && (
         <p className="hint">
           Supplier, project and receipt apply to all {total} items above.
