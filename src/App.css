@@ -824,6 +824,12 @@ button.farmname {
 .dropzone.over { border-color: var(--accent); border-style: solid; }
 .dropzone.has-image { padding: 0.5rem; }
 .dropzone p { margin: 0; font-size: 0.9rem; }
+.receipt-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; }
+.receipt-buttons button {
+  flex: 1 1 9rem; padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line); border-radius: 0.5rem;
+  background: var(--bg); color: var(--fg); font: inherit; font-size: 0.95rem;
+}
 
 .receipt-thumb {
   display: block;
