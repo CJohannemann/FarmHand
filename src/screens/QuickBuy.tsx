@@ -71,7 +71,7 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
   const scanInput = useRef<HTMLInputElement>(null)
   const [scanning, setScanning] = useState(false)
   const [scanNote, setScanNote] = useState<string | null>(null)
-  const [scanError, setScanError] = useState<string | null>(null)
+  const [scanError, setScanError] = useState<{ message: string; detail: string } | null>(null)
   const [scanned, setScanned] = useState<ScanResult | null>(null)
   const [needKey, setNeedKey] = useState(false)
 
@@ -120,7 +120,8 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
         ? `Filled in what could be read — add ${missing.join(' and ')}, then check it before saving.`
         : 'Filled in from the receipt — check it before saving.')
     } catch (e) {
-      setScanError(e instanceof ScanError ? e.message : "Couldn't read that receipt — fill it in by hand.")
+      setScanError(e instanceof ScanError ? { message: e.message, detail: e.detail }
+        : { message: "Couldn't read that receipt — fill it in by hand.", detail: String(e) })
     } finally {
       setScanning(false)
     }
@@ -136,7 +137,7 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
       setReceipt(image)
       await read(image)
     } catch (e) {
-      setScanError(e instanceof ImageError ? e.message : "That photo couldn't be opened.")
+      setScanError({ message: e instanceof ImageError ? e.message : "That photo couldn't be opened.", detail: '' })
     }
   }
 
@@ -177,12 +178,19 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
       <button type="button" className="scan-button" disabled={scanning}
         onClick={() => scanInput.current?.click()}>
         {scanning ? 'Reading the receipt…' : '📷 Scan a receipt'}
-        {!scanning && <small>Fill this in from a photo</small>}
+        <small>{scanning ? 'This can take up to a minute' : 'Fill this in from a photo'}</small>
       </button>
       <input ref={scanInput} type="file" accept="image/*" hidden
         onChange={(e) => pickScan(e.target.files?.[0])} />
       {scanNote && <p className="notice">{scanNote}</p>}
-      {scanError && <p className="error">{scanError}</p>}
+      {scanError && (
+        <p className="error">
+          {scanError.message}
+          {/* What actually came back, small — so a screenshot of a failed
+              scan says what went wrong, not just that something did. */}
+          {scanError.detail && <small className="scan-detail">{scanError.detail}</small>}
+        </p>
+      )}
       {scanned && isMixed(scanned) && (
         <p className="hint">
           This receipt has different kinds of things on it.{' '}

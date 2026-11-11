@@ -57,14 +57,26 @@ export interface ScanResult {
   items: ScanItem[]
 }
 
-/** A failure phrased for the person holding the phone. */
+/**
+ * A failure phrased for the person holding the phone, plus `detail`: what
+ * actually came back (or didn't), shown small under the message so a
+ * screenshot of it says what went wrong. The first real scan failed with
+ * only "couldn't reach Google" to go on, which could have meant four
+ * different things.
+ */
 export class ScanError extends Error {
-  readonly reason: 'no-key' | 'bad-key' | 'quota' | 'offline' | 'busy' | 'unreadable'
-  constructor(reason: ScanError['reason'], message: string) {
+  readonly reason: 'no-key' | 'bad-key' | 'quota' | 'offline' | 'slow' | 'busy' | 'unreadable'
+  readonly detail: string
+  constructor(reason: ScanError['reason'], message: string, detail = '') {
     super(message)
     this.reason = reason
+    this.detail = detail
   }
 }
+
+/** How long a reading may take. A photo up plus a model reading it can run
+ * well past a page load on one bar of signal. */
+export const SCAN_TIMEOUT_MS = 90_000
 
 export function receiptPrompt(ctx: ScanContext): string {
   return [
@@ -123,7 +135,7 @@ export function receiptSchema(ctx: ScanContext): Record<string, unknown> {
 
 /** The generateContent body: the photo, the prompt, JSON out. */
 export function scanRequestBody(
-  image: { data: string; mime: string }, ctx: ScanContext, withSchema = true,
+  image: { data: string; mime: string }, ctx: ScanContext, withSchema = true, thinkingOff = true,
 ): Record<string, unknown> {
   return {
     contents: [{
@@ -136,6 +148,11 @@ export function scanRequestBody(
       responseMimeType: 'application/json',
       temperature: 0,
       ...(withSchema ? { responseSchema: receiptSchema(ctx) } : {}),
+      // Reading a receipt needs no deliberation, and a Flash model left to
+      // "think" first can take long enough to look like no answer at all.
+      // A model that won't have thinking turned off says so, and is asked
+      // again without this (see scanReceipt).
+      ...(thinkingOff ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
     },
   }
 }
@@ -205,20 +222,37 @@ export function replyJson(reply: unknown): unknown {
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>
 
+/**
+ * A request that got no reply at all, told apart: out of time is not out of
+ * signal, and both used to read as "couldn't reach Google". Whatever the
+ * browser said goes in `detail` either way.
+ */
+function unreached(e: unknown, what: string): ScanError {
+  const name = e instanceof Error ? e.name : 'Error'
+  const detail = `${what}: ${name}: ${e instanceof Error ? e.message : String(e)}`
+  if (name === 'TimeoutError' || name === 'AbortError') {
+    return new ScanError('slow', 'Google took too long to answer. Try again — a closer, flatter photo of the receipt helps.', detail)
+  }
+  return new ScanError('offline', "Couldn't reach Google. Check the phone has signal and try again, or fill it in by hand.", detail)
+}
+
 /** What a failed reply means, for the person. Null: try the next model. */
-async function failure(res: Response): Promise<ScanError | 'next-model' | 'drop-schema'> {
+async function failure(res: Response, model: string):
+  Promise<ScanError | 'next-model' | 'drop-schema' | 'drop-thinking'> {
   let detail = ''
   try { detail = JSON.stringify(await res.json()) } catch { /* not JSON */ }
+  const said = `${model}: HTTP ${res.status} ${detail.slice(0, 300)}`
   if (res.status === 404) return 'next-model'
   if (/API_KEY_INVALID|API key not valid|API key expired/i.test(detail) || res.status === 401 || res.status === 403) {
-    return new ScanError('bad-key', "Google didn't accept the scanning key. Check it under Receipt scanning.")
+    return new ScanError('bad-key', "Google didn't accept the scanning key. Check it under Receipt scanning.", said)
   }
   if (res.status === 429) {
-    return new ScanError('quota', "Google's free limit for this key is used up for now. Try again later, or fill it in by hand.")
+    return new ScanError('quota', "Google's free limit for this key is used up for now. Try again later, or fill it in by hand.", said)
   }
+  if (res.status === 400 && /thinking/i.test(detail)) return 'drop-thinking'
   if (res.status === 400 && /schema|response_schema|responseSchema|enum/i.test(detail)) return 'drop-schema'
-  if (res.status >= 500) return new ScanError('busy', 'Google is busy right now. Try again in a minute.')
-  return new ScanError('unreadable', `Google couldn't read that photo (${res.status}).`)
+  if (res.status >= 500) return new ScanError('busy', 'Google is busy right now. Try again in a minute.', said)
+  return new ScanError('unreadable', `Google couldn't read that photo (${res.status}).`, said)
 }
 
 /**
@@ -232,23 +266,28 @@ export async function scanReceipt(
 ): Promise<ScanResult> {
   if (!key.trim()) throw new ScanError('no-key', 'Add a scanning key first.')
   let withSchema = true
+  let thinkingOff = true
   for (let m = 0; m < SCAN_MODELS.length; m++) {
+    const model = SCAN_MODELS[m]
     let res: Response
     try {
-      res = await fetchImpl(`${GEMINI_BASE}/models/${SCAN_MODELS[m]}:generateContent`, {
+      res = await fetchImpl(`${GEMINI_BASE}/models/${model}:generateContent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key.trim() },
-        body: JSON.stringify(scanRequestBody(image, ctx, withSchema)),
-        signal: AbortSignal.timeout(45_000),
+        body: JSON.stringify(scanRequestBody(image, ctx, withSchema, thinkingOff)),
+        signal: AbortSignal.timeout(SCAN_TIMEOUT_MS),
       })
-    } catch {
-      throw new ScanError('offline', "Couldn't reach Google — scanning needs signal. Fill it in by hand, or try again.")
+    } catch (e) {
+      throw unreached(e, model)
     }
     if (res.ok) return scanResultFrom(replyJson(await res.json()), ctx)
-    const f = await failure(res)
+    const f = await failure(res, model)
     if (f === 'next-model') continue
+    if (f === 'drop-thinking' && thinkingOff) { thinkingOff = false; m--; continue }
     if (f === 'drop-schema' && withSchema) { withSchema = false; m--; continue }
-    if (f === 'drop-schema') throw new ScanError('unreadable', "Google couldn't read that photo.")
+    if (f === 'drop-schema' || f === 'drop-thinking') {
+      throw new ScanError('unreadable', "Google couldn't read that photo.", `${model}: ${f}`)
+    }
     throw f
   }
   throw new ScanError('busy', "Google's receipt reader isn't available right now. Fill it in by hand.")
@@ -264,8 +303,8 @@ export async function checkScanKey(key: string, fetchImpl: Fetch = (u, i) => fet
     res = await fetchImpl(`${GEMINI_BASE}/models?pageSize=1`, {
       headers: { 'x-goog-api-key': key.trim() }, signal: AbortSignal.timeout(15_000),
     })
-  } catch {
-    throw new ScanError('offline', "Couldn't reach Google to check the key — try again with signal.")
+  } catch (e) {
+    throw unreached(e, 'key check')
   }
   return res.ok
 }

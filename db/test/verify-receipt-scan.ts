@@ -137,6 +137,21 @@ console.log('\nWhen it does not work, the person is told why')
   check('a reply that is not JSON says fill it in by hand', e?.reason === 'unreadable')
 }
 
+{
+  const timeout = Object.assign(new Error('The operation timed out.'), { name: 'TimeoutError' })
+  const e = await fails_with(scanReceipt('K', image, ctx, fakeFetch([timeout]).f))
+  check('too slow is not called no signal', e?.reason === 'slow', e?.message)
+  check('and says what happened underneath', !!e?.detail.includes('TimeoutError') && e.detail.includes(SCAN_MODELS[0]), e?.detail)
+}
+{
+  const e = await fails_with(scanReceipt('K', image, ctx, fakeFetch([new TypeError('Load failed')]).f))
+  check('no reply at all carries the browser\'s own words', !!e?.detail.includes('TypeError: Load failed'), e?.detail)
+}
+{
+  const e = await fails_with(scanReceipt('K', image, ctx, fakeFetch([error(429, { error: { status: 'RESOURCE_EXHAUSTED' } })]).f))
+  check('an HTTP failure carries its status', !!e?.detail.includes('HTTP 429'), e?.detail)
+}
+
 console.log('\nIt carries on past what it can')
 {
   const { f, calls } = fakeFetch([error(404, { error: { status: 'NOT_FOUND' } }), reply(wiseway)])
@@ -151,6 +166,19 @@ console.log('\nIt carries on past what it can')
   const second = JSON.parse(String(calls[1].init.body)) as { generationConfig: Record<string, unknown> }
   check('a turned-down schema asks again without it', r.total === 123.64 && !second.generationConfig.responseSchema
     && second.generationConfig.responseMimeType === 'application/json')
+}
+
+{
+  const first = JSON.parse(String(fakeFetch([]).f && JSON.stringify(scanRequestBody(image, ctx)))) as
+    { generationConfig: { thinkingConfig?: { thinkingBudget: number } } }
+  check('thinking is turned off, so the answer comes quickly', first.generationConfig.thinkingConfig?.thinkingBudget === 0)
+  const { f, calls } = fakeFetch([
+    error(400, { error: { message: 'Thinking budget 0 is not supported for this model.' } }), reply(wiseway),
+  ])
+  const r = await scanReceipt('K', image, ctx, f)
+  const second = JSON.parse(String(calls[1].init.body)) as { generationConfig: Record<string, unknown> }
+  check('a model that will not stop thinking is asked again without it',
+    r.total === 123.64 && !second.generationConfig.thinkingConfig && !!second.generationConfig.responseSchema)
 }
 
 console.log('\nChecking a key costs nothing')

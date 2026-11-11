@@ -29,7 +29,7 @@ export function ScanKeySetup({ onSaved }: { onSaved?: () => void }) {
     setBusy(true); setError(null)
     try {
       if (!(await checkScanKey(key))) {
-        setError("Google didn't accept that key. Copy it again from AI Studio — it usually starts with \"AIza\".")
+        setError("Google didn't accept that key. Copy it again from AI Studio with its copy button, so none of it is cut off.")
         return
       }
       await setScanKey(key)
@@ -37,7 +37,7 @@ export function ScanKeySetup({ onSaved }: { onSaved?: () => void }) {
       reload()
       onSaved?.()
     } catch (e) {
-      setError(e instanceof ScanError ? e.message : "Couldn't check the key. Try again.")
+      setError(e instanceof ScanError ? `${e.message}${e.detail ? ` (${e.detail})` : ''}` : "Couldn't check the key. Try again.")
     } finally {
       setBusy(false)
     }
@@ -83,7 +83,7 @@ export function ScanKeySetup({ onSaved }: { onSaved?: () => void }) {
 
       <label className="field">
         <span>{current ? 'Replace the key' : 'Your key'}</span>
-        <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="AIza…"
+        <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="Paste the key here"
           autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
       </label>
       <div className="actions">
