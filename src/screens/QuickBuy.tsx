@@ -3,7 +3,7 @@ import { useAsync } from '../lib/useAsync'
 import { useSave } from '../lib/useSave'
 import { createPurchase, createTerm, listAssets, listTerms, nameUsage } from '../db/queries'
 import { ImageError, prepareImage, type PreparedImage } from '../lib/image'
-import { ScanError, scanReceipt, type ScanResult } from '../lib/receiptScan'
+import { loadScanMemory, saveScanMemory, ScanError, scanReceipt, type ScanResult } from '../lib/receiptScan'
 import { isMixed, linesFromScan, quickFillFromScan, type ScanLine } from '../lib/scanToForm'
 import { getScanKey } from '../lib/scanKey'
 import {
@@ -104,10 +104,11 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
     if (!key) { setNeedKey(true); return }
     setScanning(true); setScanError(null); setScanNote(null)
     try {
+      const mem = loadScanMemory()
       const r = await scanReceipt(key, image, {
         kinds: materials ?? QUICK_KINDS, species, today: todayKey(),
         stores: (storesUsed ?? []).map((u) => u.name),
-      })
+      }, undefined, undefined, mem).finally(() => saveScanMemory(mem))
       const f = quickFillFromScan(r, { quickKinds: QUICK_KINDS, stores: storesUsed ?? [] })
       if (f.cost) setCost(f.cost)
       if (f.kind) { setKind(f.kind); setMoreKinds(f.moreKinds) }

@@ -2,6 +2,7 @@ import { db } from './client'
 import { renamedMemberName } from '../lib/grouping'
 import { measureForUnit } from '../lib/units'
 import { saleCosts, shareLabel, weightSalePrice, type AnimalCost, type CostAnimal, type CostLogRow, type CostLot } from '../lib/saleCost'
+import { purchaseKindChange, purchaseLogName } from '../lib/purchaseKinds'
 import { MERGE_NAME_SQL, NAME_USAGE_SQL, type NameKind } from './namesSql'
 import { CLEAR_SETTING_SQL, GET_SETTING_SQL, SET_SETTING_SQL } from './settingsSql'
 import type { NameUse } from '../lib/nameMatch'
@@ -755,6 +756,8 @@ export interface ProjectPurchase {
   notes: string | null
   supplier: string | null
   material: string | null
+  /** What was bought — the lot's own name, "gates" in "Paid for gates". */
+  item: string | null
   price: number | null
   hasReceipt: boolean
   projectId: string | null
@@ -769,6 +772,8 @@ const projectPurchasesSql = (where: string, tail = '') => `
          (select coalesce(a.attributes->>'material', a.attributes->>'kind', a.attributes->>'species')
             from log_asset la join asset a on a.id = la.asset_id
            where la.log_id = l.id and la.role = 'subject' limit 1) as material,
+         (select a.name from log_asset la join asset a on a.id = la.asset_id
+           where la.log_id = l.id and la.role = 'subject' limit 1) as item,
          (select sum(q.value) from quantity q
            where q.log_id = l.id and q.measure = 'price' and q.deleted_at is null) as price,
          exists (select 1 from receipt r
@@ -782,11 +787,11 @@ const projectPurchasesSql = (where: string, tail = '') => `
 type ProjectPurchaseRow = {
   log_id: string; timestamp: string; name: string | null; notes: string | null
   project_id: string | null; supplier: string | null; material: string | null
-  price: number | null; has_receipt: number | boolean
+  item: string | null; price: number | null; has_receipt: number | boolean
 }
 const toProjectPurchase = (r: ProjectPurchaseRow): ProjectPurchase => ({
   logId: r.log_id, timestamp: r.timestamp, name: r.name, notes: r.notes,
-  supplier: r.supplier, material: r.material,
+  supplier: r.supplier, material: r.material, item: r.item,
   price: r.price != null ? Number(r.price) : null,
   hasReceipt: Number(r.has_receipt) > 0, projectId: r.project_id,
 })
@@ -833,14 +838,14 @@ export interface PurchaseLot {
   name: string
   material: string | null
   category: string | null
+  /** 'service' for money spent on the place (not in Stores), else stock. */
+  origin: string
 }
 
 /**
- * The lot a purchase log bought, if it bought one — a service charge (a vet
- * visit, an oil change) has a subject too, but nothing here needs to read
- * one, so the caller just gets null back rather than a lot that isn't
- * really stock. Used by EditLog to offer the same "For" category field on
- * an old purchase that BuyForm offers on a new one.
+ * The lot a purchase log bought — stock, or a service lot (Building
+ * supplies, a vet visit) that only carries what was paid. Used by EditLog
+ * for "What it was", its kind, and the "For" category on feed.
  */
 export async function purchaseLotFor(logId: string): Promise<PurchaseLot | null> {
   const pg = await db()
@@ -849,7 +854,7 @@ export async function purchaseLotFor(logId: string): Promise<PurchaseLot | null>
        from log_asset la
        join asset a on a.id = la.asset_id
       where la.log_id = $1 and la.role = 'subject' and a.type = 'lot'
-        and a.attributes->>'origin' = 'purchased'`,
+        and coalesce(a.attributes->>'origin', 'purchased') in ('purchased', 'service')`,
     [logId],
   )
   const r = rows[0]
@@ -859,6 +864,7 @@ export async function purchaseLotFor(logId: string): Promise<PurchaseLot | null>
     name: r.name,
     material: (r.attributes?.material as string | undefined) ?? null,
     category: (r.attributes?.category as string | undefined) ?? null,
+    origin: (r.attributes?.origin as string | undefined) ?? 'purchased',
   }
 }
 
@@ -912,6 +918,27 @@ export async function setLotCategory(assetId: string, category: string | null) {
   if (category) attributes.category = category
   else delete attributes.category
   await updateAsset(assetId, { attributes })
+}
+
+/**
+ * Changes what a purchase was and which kind it is filed under, from Edit
+ * record: the lot's name ("gates") and kind (Building supplies), and the
+ * record's own name to match — "Paid for gates". See purchaseKindChange
+ * for what else follows the kind.
+ */
+export async function setPurchaseItem(logId: string, lotId: string, input: { item: string; kind: string }) {
+  const pg = await db()
+  const { rows } = await pg.query<{ attributes: Record<string, unknown>; drawn: number }>(
+    `select a.attributes,
+            (select count(*) from log_asset la join log l on l.id = la.log_id
+              where la.asset_id = a.id and la.log_id <> $2 and l.deleted_at is null) as drawn
+       from asset a where a.id = $1 and a.farm_id = (select id from active_farm)`,
+    [lotId, logId],
+  )
+  if (!rows[0]) return
+  const attributes = purchaseKindChange(rows[0].attributes ?? {}, input.kind, Number(rows[0].drawn) > 0)
+  await updateAsset(lotId, { name: input.item.trim(), attributes })
+  await updateLog(logId, { name: purchaseLogName(attributes.origin, input.item) })
 }
 
 // ---------------------------------------------------------------- harvest

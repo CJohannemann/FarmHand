@@ -38,7 +38,7 @@ const theirs = crypto.randomUUID()
 for (const f of [ours, theirs]) {
   db.prepare(`insert into farm (id, name, created_at, updated_at) values (?,?,?,?)`).run(f, 'F', T, T)
 }
-const use = (farm: string) => {
+const onFarm = (farm: string) => {
   db.exec(`delete from active_farm`)
   db.prepare(`insert into active_farm (id) values (?)`).run(farm)
 }
@@ -54,7 +54,7 @@ const get = () => (sql(GET_SETTING_SQL, [SCAN_KEY_SETTING])[0]?.value as string 
 const live = () => (sql(`select count(*) n from term where vocabulary = $1 and deleted_at is null`, [SCAN_KEY_SETTING])[0] as { n: number }).n
 
 console.log('\nThe farm\'s key')
-use(ours)
+onFarm(ours)
 check('none to start with', get() === null)
 db.exec(`delete from sync_outbox`)
 set('AIzaFIRST')
@@ -77,10 +77,10 @@ check('turned off, there is no key', get() === null && live() === 0)
 
 console.log('\nOne farm\'s key is not another\'s')
 set('AIzaOURS')
-use(theirs)
+onFarm(theirs)
 check('the farm next door on the same phone has none', get() === null)
 set('AIzaTHEIRS')
-use(ours)
+onFarm(ours)
 check('and setting theirs leaves ours alone', get() === 'AIzaOURS')
 
 console.log('\nIt is not part of the farm\'s vocabulary')

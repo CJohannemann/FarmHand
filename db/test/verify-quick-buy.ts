@@ -11,7 +11,7 @@ import { DatabaseSync } from 'node:sqlite'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 import {
-  FOR_STOCK_KINDS, QUICK_KINDS, SERVICE_MATERIALS, quickPurchaseName,
+  FOR_STOCK_KINDS, QUICK_KINDS, SERVICE_MATERIALS, quickPurchaseName, purchaseKindChange, purchaseLogName,
 } from '../../src/lib/purchaseKinds.ts'
 import { seedLocalVocabulary, topUpLocalVocabulary } from '../seedLocal.ts'
 
@@ -51,6 +51,27 @@ db.exec(`delete from term where name = 'Building supplies'`)
 await topUpLocalVocabulary(async (sql, params) => run(sql, params))
 check('and on a device that predates it, after the upgrade top-up',
   (db.prepare(`select count(*) n from term where name = 'Building supplies'`).get() as { n: number }).n === 1)
+
+console.log('\nChanging a purchase\'s kind on Edit record')
+{
+  const gates = { origin: 'service', material: 'Building supplies', supplier: 'TSC' }
+  const asFeed = purchaseKindChange(gates, 'Feed', false)
+  check('the kind changes, other attributes ride through', asFeed.material === 'Feed' && asFeed.supplier === 'TSC')
+  check('Building supplies re-filed as Feed becomes stock', asFeed.origin === 'purchased')
+  const feed = { origin: 'purchased', material: 'Feed', category: 'Pig' }
+  const asLumber = purchaseKindChange(feed, 'Building supplies', false)
+  check('Feed re-filed as Building supplies leaves Stores', asLumber.origin === 'service')
+  check('and drops "For: Pig", which only means something on feed', !('category' in asLumber))
+  check('Feed to Hay keeps it', purchaseKindChange(feed, 'Hay', false).category === 'Pig')
+  check('feed already fed out stays stock', purchaseKindChange(feed, 'Building supplies', true).origin === 'purchased')
+  check('a vet visit\'s cost lot stays one', purchaseKindChange({ origin: 'service', material: 'Medicine' }, 'Feed', true).origin === 'service')
+  check('produce is never turned into a purchase', purchaseKindChange({ origin: 'produced', material: 'Eggs' }, 'Feed', false).origin === 'produced')
+  check('an old lot with no origin is stock', purchaseKindChange({ material: 'Feed' }, 'Utilities', false).origin === 'service')
+  check('the original is not changed', gates.material === 'Building supplies' && feed.category === 'Pig')
+  check('the record reads "Paid for gates"', purchaseLogName('service', ' gates ') === 'Paid for gates')
+  check('or "Bought Pig feed"', purchaseLogName('purchased', 'Pig feed') === 'Bought Pig feed')
+  check('an old lot with no origin is "Bought"', purchaseLogName(undefined, 'Hay') === 'Bought Hay')
+}
 
 console.log(fails === 0 ? '\nAll checks passed.\n' : `\n${fails} FAILED\n`)
 process.exit(fails ? 1 : 0)

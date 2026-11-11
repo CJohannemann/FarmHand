@@ -3,8 +3,8 @@ import { useAsync } from '../lib/useAsync'
 import {
   addReceipt, CATEGORIZABLE_MATERIALS, deleteLog, listTerms, purchaseLotFor, quantitiesFor,
   receiptsForLog, saleTermsFor, serviceCostFor, setLotCategory, setQuantity, setSaleByWeight,
-  setSalePrice, purchaseProjectFor, setPurchasesProject,
-  stampEdited, updateAsset, updateLog,
+  setSalePrice, purchaseProjectFor, setPurchaseItem, setPurchasesProject,
+  stampEdited, updateLog,
 } from '../db/queries'
 import { shareLabel, weightSalePrice } from '../lib/saleCost'
 import type { LogWithDetail, Measure } from '../db/types'
@@ -93,7 +93,13 @@ export function EditLog({
     [log.id, log.type],
   )
   const { data: species } = useAsync(() => listTerms('species'), [])
-  const categorizable = Boolean(lot.data?.material && CATEGORIZABLE_MATERIALS.includes(lot.data.material))
+  const { data: kinds } = useAsync(() => listTerms('material'), [])
+  // The kind it is filed under — Analytics and the tax export add up by it.
+  const [kind, setKind] = useState('')
+  useEffect(() => { setKind(lot.data?.material ?? '') }, [lot.data])
+  const kindOptions = [...new Set([...(kinds ?? []), ...(kind ? [kind] : [])])]
+    .sort((a, b) => a.localeCompare(b))
+  const categorizable = Boolean(kind && CATEGORIZABLE_MATERIALS.includes(kind))
   const [category, setCategory] = useState('')
   useEffect(() => { setCategory(lot.data?.category ?? '') }, [lot.data])
 
@@ -201,8 +207,12 @@ export function EditLog({
       await setLotCategory(lot.data.assetId, category || null)
       changed = true
     }
-    if (lot.data && lotName.trim() && lotName.trim() !== lot.data.name) {
-      await updateAsset(lot.data.assetId, { name: lotName.trim() })
+    if (lot.data && ((lotName.trim() && lotName.trim() !== lot.data.name)
+        || (kind && kind !== (lot.data.material ?? '')))) {
+      // Renames the record with it: "Paid for gates".
+      await setPurchaseItem(log.id, lot.data.assetId, {
+        item: lotName.trim() || lot.data.name, kind: kind || lot.data.material || '',
+      })
       changed = true
     }
     if (serviceCost.data && hasNumericValue(cost)
@@ -235,30 +245,48 @@ export function EditLog({
 
   return (
     <Sheet title="Edit record" onClose={onClose}>
-      <label className="field">
-        <span>What</span>
-        <input value={name} onChange={(e) => setName(e.target.value)}
-          placeholder="Eggs collected" />
-      </label>
+      {/* A purchase is named by what was bought — the record follows it,
+          "Paid for gates" — so it gets "What it was" below instead. */}
+      {!lot.data && (
+        <label className="field">
+          <span>What</span>
+          <input value={name} onChange={(e) => setName(e.target.value)}
+            placeholder="Eggs collected" />
+        </label>
+      )}
 
       <label className="field">
         <span>When</span>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       </label>
 
-      {/* Renaming the record above changes the history entry; this changes
-          what Stores calls it. Two fields because they are two names —
-          "Bought pig feed" reads right in a list of what happened and wrong
-          in a list of what is on hand. */}
+      {/* What was bought, and the kind it is filed under: "Gates", under
+          Building supplies. The kind stays a short list so totals and the
+          tax export add up; the detail goes in the name. */}
       {lot.data && (
-        <label className="field">
-          <span>Name in Stores</span>
-          <input value={lotName} onChange={(e) => setLotName(e.target.value)}
-            placeholder={lot.data.name} />
-          <small className="hint">
-            What this is called under Inventory {'>'} Stores.
-          </small>
-        </label>
+        <>
+          <label className="field">
+            <span>What it was</span>
+            <input value={lotName} onChange={(e) => setLotName(e.target.value)}
+              placeholder={lot.data.name} />
+            <small className="hint">
+              {lot.data.origin === 'service'
+                ? 'Gates, fence posts, a power bill — shows on the record and in Projects.'
+                : 'What it is called in Inventory › Stores and on the record.'}
+            </small>
+          </label>
+          <label className="field">
+            <span>Kind</span>
+            <select value={kind} onChange={(e) => setKind(e.target.value)}>
+              {!kind && <option value="">Not set</option>}
+              {kindOptions.map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
+            <small className="hint">
+              What Analytics adds it up under. Too many kinds? Fold them
+              together in Settings › Tidy up names.
+            </small>
+          </label>
+        </>
       )}
 
       {categorizable && (

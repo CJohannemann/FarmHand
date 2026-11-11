@@ -8,7 +8,7 @@
 //
 //   npm run verify:receipt-scan
 import {
-  SCAN_MODELS, ScanError, checkScanKey, pickScanModels, receiptPrompt, receiptSchema, replyJson, scanReceipt,
+  SCAN_MODELS, ScanError, type ScanMemory, checkScanKey, pickScanModels, receiptPrompt, receiptSchema, replyJson, scanReceipt,
   scanRequestBody, scanResultFrom, type ScanContext,
 } from '../../src/lib/receiptScan.ts'
 import { isMixed, linesFromScan, quickFillFromScan } from '../../src/lib/scanToForm.ts'
@@ -42,8 +42,10 @@ const error = (status: number, body: unknown) => new Response(JSON.stringify(bod
  */
 function fakeFetch(answers: (Response | Error)[], models?: unknown[]) {
   const calls: { url: string; init: RequestInit }[] = []
+  const lists = { n: 0 }
   const f = async (url: string, init: RequestInit) => {
     if (url.includes('/models?pageSize=200')) {
+      lists.n++
       return models ? new Response(JSON.stringify({ models }), { status: 200 }) : new Response('{}', { status: 404 })
     }
     calls.push({ url, init })
@@ -52,7 +54,7 @@ function fakeFetch(answers: (Response | Error)[], models?: unknown[]) {
     if (a instanceof Error) throw a
     return a
   }
-  return { f, calls }
+  return { f, calls, lists }
 }
 const fails_with = async (p: Promise<unknown>) => {
   try { await p; return null } catch (e) { return e instanceof ScanError ? e : null }
@@ -237,6 +239,38 @@ check('an empty list picks nothing (and the built-in names are used)', pickScanM
   check('all of them hanging says so, naming each and how long it waited',
     e?.reason === 'slow' && /gemini-3-flash: no answer in \d+s/.test(e.detail)
     && e.detail.includes('gemini-2.5-flash-lite'), e?.detail)
+}
+
+console.log('\nRemembering what worked, so the next scan is quicker')
+{
+  const vague = () => error(400, { error: { code: 400, message: 'Request contains an invalid argument.', status: 'INVALID_ARGUMENT' } })
+  const mem: ScanMemory = {}
+  const first = fakeFetch([vague(), reply(wiseway)], listed)
+  await scanReceipt('KEY-ONE', image, ctx, first.f, undefined, mem)
+  check('the first scan learns the model and the simpler request that worked',
+    mem.model === 'gemini-3-flash' && mem.step === 1 && mem.models?.length === 3, JSON.stringify(mem))
+  check('and keeps only the end of the key, not the key', mem.keyEnd === 'EY-ONE' && !JSON.stringify(mem).includes('KEY-ONE'))
+  const second = fakeFetch([reply(wiseway)], listed)
+  const r = await scanReceipt('KEY-ONE', image, ctx, second.f, undefined, mem)
+  const body = JSON.parse(String(second.calls[0].init.body)) as { generationConfig: Record<string, unknown> }
+  check('the next scan goes straight to it: one request, no refused first try',
+    r.total === 123.64 && second.calls.length === 1 && !body.generationConfig.thinkingConfig, String(second.calls.length))
+  check('without asking for the model list again', second.lists.n === 0)
+
+  const busy = () => error(503, { error: { status: 'UNAVAILABLE' } })
+  const third = fakeFetch([busy(), reply(wiseway)], listed)
+  await scanReceipt('KEY-ONE', image, ctx, third.f, undefined, mem)
+  check('when that model is busy, the next one answers and is remembered instead',
+    mem.model === 'gemini-2.5-flash-lite' && mem.step === 0, JSON.stringify(mem))
+
+  const other = fakeFetch([reply(wiseway)], listed)
+  await scanReceipt('KEY-TWO', image, ctx, other.f, undefined, mem)
+  check('a new key starts fresh: the model list is fetched again',
+    other.lists.n === 1 && other.calls[0].url.includes('/models/gemini-3-flash:'))
+
+  const down = fakeFetch(Array.from({ length: 9 }, busy), listed)
+  await fails_with(scanReceipt('KEY-TWO', image, ctx, down.f, undefined, mem))
+  check('when nothing answers, the remembered model is forgotten', mem.model === undefined && mem.step === undefined)
 }
 
 console.log('\n"Request contains an invalid argument", naming nothing')

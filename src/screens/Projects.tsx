@@ -5,6 +5,7 @@ import {
   setPurchasesProject, unassignedPurchases, type Project, type ProjectPurchase,
 } from '../db/queries'
 import { formatMoney } from '../lib/numeric'
+import { byKindAndItem } from '../lib/projectBreakdown'
 import { Sheet } from './Sheet'
 import { EditLog } from './EditLog'
 
@@ -114,7 +115,7 @@ function ProjectDetail({ project, onBack, onChanged }: {
   const list = rows ?? []
   const total = list.reduce((t, r) => t + (r.price ?? 0), 0)
   const byStore = useMemo(() => breakdown(list, (r) => r.supplier), [rows])
-  const byKind = useMemo(() => breakdown(list, (r) => r.material), [rows])
+  const byKind = useMemo(() => byKindAndItem(list), [rows])
   const refresh = () => { reload(); onChanged() }
 
   return (
@@ -167,14 +168,22 @@ function ProjectDetail({ project, onBack, onChanged }: {
           </div>
         </>
       )}
-      {byKind.length > 1 && (
+      {list.length > 0 && (
         <>
-          <h2 className="section">By kind</h2>
+          <h2 className="section">What was bought</h2>
           <div className="costbox">
-            {byKind.map(([k, v]) => (
-              <div className="costrow" key={k}><span>{k}</span><span>{formatMoney(v)}</span></div>
+            {byKind.map((g) => (
+              <div key={g.kind}>
+                <div className="costrow kindrow"><span>{g.kind}</span><span>{formatMoney(g.total)}</span></div>
+                {g.items.map(([label, v]) => (
+                  <div className="costrow itemrow" key={label}><span>{label}</span><span>{formatMoney(v)}</span></div>
+                ))}
+              </div>
             ))}
           </div>
+          {byKind.some((g) => g.items.some(([l]) => l.startsWith('From ') || l === 'Not named')) && (
+            <p className="hint">Tap a purchase below to say what it was.</p>
+          )}
         </>
       )}
 

@@ -346,14 +346,46 @@ const REQUEST_STEPS = [
  * detail so a screenshot of a failure shows the whole story.
  */
 /** The key's models to read with — Google's list if it can be had. */
-async function scanModels(key: string, fetchImpl: Fetch): Promise<string[]> {
+/**
+ * What one scan learns for the next: the key's model list, and which model
+ * and form of request Google last answered. Without it every scan paid
+ * for a model-list call and, on a model that turns the full request down,
+ * a refused first try — a second or more each time, for nothing.
+ *
+ * Plain data, so the caller decides where it lives (loadScanMemory below
+ * keeps it on the phone); a fresh {} remembers nothing.
+ */
+export interface ScanMemory {
+  /** The key it was learned with — the last few characters, not the key. */
+  keyEnd?: string
+  models?: string[]
+  /** When the model list was fetched, ms. */
+  at?: number
+  /** The model that last answered, and the REQUEST_STEPS index it took. */
+  model?: string
+  step?: number
+}
+
+const MODELS_FOR_MS = 7 * 86_400_000
+const keyEnd = (key: string) => key.trim().slice(-6)
+
+async function scanModels(key: string, fetchImpl: Fetch, mem: ScanMemory): Promise<string[]> {
+  if (mem.keyEnd !== keyEnd(key)) {
+    // A new key may see different models; nothing learned with the old one holds.
+    for (const k of Object.keys(mem) as (keyof ScanMemory)[]) delete mem[k]
+    mem.keyEnd = keyEnd(key)
+  }
+  if (mem.models?.length && Date.now() - (mem.at ?? 0) < MODELS_FOR_MS) return mem.models
   try {
     const res = await fetchImpl(`${GEMINI_BASE}/models?pageSize=200`, {
       headers: { 'x-goog-api-key': key.trim() }, signal: AbortSignal.timeout(15_000),
     })
     if (res.ok) {
       const picked = pickScanModels(((await res.json()) as { models?: [] }).models ?? [])
-      if (picked.length) return picked
+      if (picked.length) {
+        mem.models = picked; mem.at = Date.now()
+        return picked
+      }
     }
   } catch { /* fall back to the names below */ }
   return SCAN_MODELS
@@ -363,15 +395,21 @@ export async function scanReceipt(
   key: string, image: { data: string; mime: string }, ctx: ScanContext,
   fetchImpl: Fetch = (u, i) => fetch(u, i),
   timeoutMs = SCAN_TIMEOUT_MS,
+  mem: ScanMemory = {},
 ): Promise<ScanResult> {
   if (!key.trim()) throw new ScanError('no-key', 'Add a scanning key first.')
-  const models = await scanModels(key, fetchImpl)
+  const listed = await scanModels(key, fetchImpl, mem)
+  // The model that answered last time goes first, from the step it took.
+  const models = mem.model && listed.includes(mem.model)
+    ? [mem.model, ...listed.filter((m) => m !== mem.model)] : listed
   const started = Date.now()
   const log: string[] = []
   let refused = false
   let hung = false
   for (const model of models) {
-    for (const step of REQUEST_STEPS) {
+    const from = model === mem.model ? Math.min(mem.step ?? 0, REQUEST_STEPS.length - 1) : 0
+    for (let i = from; i < REQUEST_STEPS.length; i++) {
+      const step = REQUEST_STEPS[i]
       const t0 = Date.now()
       let res: Response
       try {
@@ -390,7 +428,11 @@ export async function scanReceipt(
         hung = true
         break
       }
-      if (res.ok) return scanResultFrom(replyJson(await res.json()), ctx)
+      if (res.ok) {
+        const result = scanResultFrom(replyJson(await res.json()), ctx)
+        mem.model = model; mem.step = i
+        return result
+      }
       const { outcome, said } = await failure(res, model)
       if (outcome instanceof ScanError) {
         throw new ScanError(outcome.reason, outcome.message, [...log, said].join(' · '))
@@ -400,12 +442,29 @@ export async function scanReceipt(
       refused = true // 'simplify': the next step, or the next model once out of steps
     }
   }
+  // What answered last time didn't now; start from the top next time.
+  delete mem.model; delete mem.step
   const detail = `${log.join(' · ')} (${Math.round((Date.now() - started) / 1000)}s)`
   if (refused) {
     throw new ScanError('unreadable', "Google turned the request down. Fill this one in by hand, and send the line below to whoever looks after the app.", detail)
   }
   if (hung) throw new ScanError('slow', 'Google took too long to answer. Try again in a bit, or fill it in by hand.', detail)
   throw new ScanError('busy', "Google's receipt reader isn't available right now. Fill it in by hand.", detail)
+}
+
+const MEMORY_KEY = 'farmhand:receiptScan:memory'
+
+/** This phone's ScanMemory — {} where storage isn't available. */
+export function loadScanMemory(): ScanMemory {
+  try {
+    const raw = globalThis.localStorage?.getItem(MEMORY_KEY)
+    const m = raw ? JSON.parse(raw) : {}
+    return m && typeof m === 'object' ? m : {}
+  } catch { return {} }
+}
+
+export function saveScanMemory(mem: ScanMemory): void {
+  try { globalThis.localStorage?.setItem(MEMORY_KEY, JSON.stringify(mem)) } catch { /* only a speed-up */ }
 }
 
 /**

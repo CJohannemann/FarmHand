@@ -36,3 +36,31 @@ export function quickPurchaseName(kind: string, forSpecies?: string | null): str
   if (sp && FOR_STOCK_KINDS.includes(k)) return `${sp} ${k.toLowerCase()}`
   return k
 }
+
+/**
+ * A purchase's lot attributes once its kind is changed on Edit record.
+ *
+ * The kind is `material`. A category ("For: Pig") only means something on
+ * feed, hay and mineral, so it goes with any other kind. Whether it is
+ * stock or money spent on the place (origin, see SERVICE_MATERIALS)
+ * follows the new kind — Building supplies re-filed as Feed shows up in
+ * Stores, Feed re-filed as Building supplies leaves it — but only while
+ * nothing has drawn on it: feed already fed out stays stock, and the cost
+ * lot a vet visit was charged to stays one.
+ */
+export function purchaseKindChange(
+  attrs: Record<string, unknown>, kind: string, drawnOn: boolean,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...attrs, material: kind }
+  if (!FOR_STOCK_KINDS.includes(kind)) delete next.category
+  const origin = (attrs.origin as string | undefined) ?? 'purchased'
+  if (!drawnOn && (origin === 'purchased' || origin === 'service')) {
+    next.origin = SERVICE_MATERIALS.includes(kind) ? 'service' : 'purchased'
+  }
+  return next
+}
+
+/** What the record of buying `item` is called: "Paid for gates", "Bought Pig feed". */
+export function purchaseLogName(origin: unknown, item: string): string {
+  return origin === 'service' ? `Paid for ${item.trim()}` : `Bought ${item.trim()}`
+}
