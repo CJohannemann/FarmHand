@@ -8,7 +8,7 @@
 //
 //   npm run verify:receipt-scan
 import {
-  SCAN_MODELS, ScanError, checkScanKey, receiptPrompt, receiptSchema, replyJson, scanReceipt,
+  SCAN_MODELS, ScanError, checkScanKey, pickScanModels, receiptPrompt, receiptSchema, replyJson, scanReceipt,
   scanRequestBody, scanResultFrom, type ScanContext,
 } from '../../src/lib/receiptScan.ts'
 import { isMixed, linesFromScan, quickFillFromScan } from '../../src/lib/scanToForm.ts'
@@ -34,10 +34,18 @@ const reply = (json: unknown, fence = false) => new Response(JSON.stringify({
 }), { status: 200 })
 const error = (status: number, body: unknown) => new Response(JSON.stringify(body), { status })
 
-/** A fetch that answers from a queue, and records what it was asked. */
-function fakeFetch(answers: (Response | Error)[]) {
+/**
+ * A fetch that answers receipt requests from a queue, and records them.
+ * The model-list request a scan starts with is answered from `models`
+ * (by default a 404, so the built-in names are used); checkScanKey's own
+ * list request goes through the queue like anything else.
+ */
+function fakeFetch(answers: (Response | Error)[], models?: unknown[]) {
   const calls: { url: string; init: RequestInit }[] = []
   const f = async (url: string, init: RequestInit) => {
+    if (url.includes('/models?pageSize=200')) {
+      return models ? new Response(JSON.stringify({ models }), { status: 200 }) : new Response('{}', { status: 404 })
+    }
     calls.push({ url, init })
     const a = answers.shift()
     if (!a) throw new Error('no more answers')
@@ -138,10 +146,10 @@ console.log('\nWhen it does not work, the person is told why')
 }
 
 {
-  const timeout = Object.assign(new Error('The operation timed out.'), { name: 'TimeoutError' })
-  const e = await fails_with(scanReceipt('K', image, ctx, fakeFetch([timeout]).f))
+  const timeout = () => Object.assign(new Error('The operation timed out.'), { name: 'TimeoutError' })
+  const e = await fails_with(scanReceipt('K', image, ctx, fakeFetch(SCAN_MODELS.map(timeout)).f, 5))
   check('too slow is not called no signal', e?.reason === 'slow', e?.message)
-  check('and says what happened underneath', !!e?.detail.includes('TimeoutError') && e.detail.includes(SCAN_MODELS[0]), e?.detail)
+  check('and says which models it waited on', SCAN_MODELS.every((m) => e?.detail.includes(m)), e?.detail)
 }
 {
   const e = await fails_with(scanReceipt('K', image, ctx, fakeFetch([new TypeError('Load failed')]).f))
@@ -179,6 +187,40 @@ console.log('\nIt carries on past what it can')
   const second = JSON.parse(String(calls[1].init.body)) as { generationConfig: Record<string, unknown> }
   check('a model that will not stop thinking is asked again without it',
     r.total === 123.64 && !second.generationConfig.thinkingConfig && !!second.generationConfig.responseSchema)
+}
+
+console.log('\nWhich models: the ones this key has, not names guessed in advance')
+const listed = [
+  { name: 'models/gemini-flash-latest', supportedGenerationMethods: ['generateContent'] },
+  { name: 'models/gemini-3-flash', supportedGenerationMethods: ['generateContent', 'countTokens'] },
+  { name: 'models/gemini-3-flash-preview-11-2026', supportedGenerationMethods: ['generateContent'] },
+  { name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] },
+  { name: 'models/gemini-2.5-flash-lite', supportedGenerationMethods: ['generateContent'] },
+  { name: 'models/gemini-2.5-flash-image', supportedGenerationMethods: ['generateContent'] },
+  { name: 'models/gemini-2.5-flash-preview-tts', supportedGenerationMethods: ['generateContent'] },
+  { name: 'models/gemini-2.5-pro', supportedGenerationMethods: ['generateContent'] },
+  { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] },
+]
+const picked = pickScanModels(listed)
+check('newest stable Flash first, then a Flash-Lite, then the next Flash',
+  picked.join() === 'gemini-3-flash,gemini-2.5-flash-lite,gemini-2.5-flash', picked.join())
+check('never an image, speech, Pro or embedding model, nor the alias that hung',
+  !picked.some((m) => /image|tts|pro|embedding|latest/.test(m)))
+check('an empty list picks nothing (and the built-in names are used)', pickScanModels([]).length === 0)
+{
+  const { f, calls } = fakeFetch([reply(wiseway)], listed)
+  await scanReceipt('K', image, ctx, f)
+  check('a scan uses the first model from the key\'s own list', calls[0].url.includes('/models/gemini-3-flash:'))
+}
+{
+  const timeout = () => Object.assign(new Error('Fetch is aborted'), { name: 'AbortError' })
+  const { f, calls } = fakeFetch([timeout(), reply(wiseway)], listed)
+  const r = await scanReceipt('K', image, ctx, f, 5)
+  check('a model that hangs is left for the next', r.total === 123.64 && calls[1].url.includes('gemini-2.5-flash-lite'))
+  const all = fakeFetch([timeout(), timeout(), timeout()], listed)
+  const e = await fails_with(scanReceipt('K', image, ctx, all.f, 5))
+  check('all of them hanging says so, naming each and how long it waited',
+    e?.reason === 'slow' && /gemini-3-flash \d+s/.test(e.detail) && /in all/.test(e.detail), e?.detail)
 }
 
 console.log('\nChecking a key costs nothing')

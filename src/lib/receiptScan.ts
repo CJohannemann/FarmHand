@@ -23,11 +23,44 @@
 export const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta'
 
 /**
- * Tried in order. The "-latest" alias follows Google's current Flash model,
- * so this keeps working as models are retired; the named one is there in
- * case the alias is ever withdrawn. Flash is what the free tier offers.
+ * Tried only if Google's own list of the key's models can't be had (see
+ * pickScanModels, which is what normally decides). Named models before the
+ * "-latest" alias: the alias was the one the first real scan sat waiting
+ * on until it gave up.
  */
-export const SCAN_MODELS = ['gemini-flash-latest', 'gemini-2.5-flash']
+export const SCAN_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest']
+
+/**
+ * The models to read a receipt with, from Google's list of what this key
+ * can use — rather than names guessed in advance, which go stale as Google
+ * retires and renames models (and one of which hung). Flash models that
+ * can generateContent, stable before preview, newest first; one Flash-Lite
+ * among them as the quick fallback; nothing for images, speech, live
+ * audio, embeddings or experiments. At most three.
+ */
+export function pickScanModels(
+  models: { name?: string; supportedGenerationMethods?: string[] }[],
+): string[] {
+  const version = (id: string) => Number(id.match(/gemini-(\d+(?:\.\d+)?)/)?.[1] ?? 0)
+  const usable = models
+    .map((m) => ({ id: String(m.name ?? '').replace(/^models\//, ''), methods: m.supportedGenerationMethods ?? [] }))
+    .filter((m) => m.id.includes('flash') && m.methods.includes('generateContent')
+      && !/image|tts|audio|live|embed|exp|thinking|8b/.test(m.id))
+  const rank = (id: string) => [
+    /preview/.test(id) ? 1 : 0,              // stable first
+    /latest/.test(id) ? 1 : 0,               // named before aliases
+    -version(id),                            // newest first
+    id.length,                               // "gemini-2.5-flash" before its dated twins
+  ]
+  const sorted = usable.map((m) => m.id).sort((a, b) => {
+    const [ra, rb] = [rank(a), rank(b)]
+    for (let i = 0; i < ra.length; i++) if (ra[i] !== rb[i]) return ra[i] - rb[i]
+    return a.localeCompare(b)
+  })
+  const full = sorted.filter((id) => !id.includes('lite'))
+  const lite = sorted.filter((id) => id.includes('lite'))
+  return [...new Set([full[0], lite[0], full[1], lite[1]].filter(Boolean) as string[])].slice(0, 3)
+}
 
 /** What the form needs to know about this farm to read a receipt for it. */
 export interface ScanContext {
@@ -74,9 +107,13 @@ export class ScanError extends Error {
   }
 }
 
-/** How long a reading may take. A photo up plus a model reading it can run
- * well past a page load on one bar of signal. */
-export const SCAN_TIMEOUT_MS = 90_000
+/**
+ * How long one model is given before the next is tried. Reading a receipt
+ * takes a working model seconds; one that has not answered in this long
+ * is stuck, and waiting on it longer only made the first real scan sit
+ * for a minute and a half before failing.
+ */
+export const SCAN_TIMEOUT_MS = 40_000
 
 export function receiptPrompt(ctx: ScanContext): string {
   return [
@@ -260,25 +297,48 @@ async function failure(res: Response, model: string):
  * the reply schema down, asks once more without it (the prompt describes
  * the same JSON). Throws ScanError, phrased for the person.
  */
+/** The key's models to read with — Google's list if it can be had. */
+async function scanModels(key: string, fetchImpl: Fetch): Promise<string[]> {
+  try {
+    const res = await fetchImpl(`${GEMINI_BASE}/models?pageSize=200`, {
+      headers: { 'x-goog-api-key': key.trim() }, signal: AbortSignal.timeout(15_000),
+    })
+    if (res.ok) {
+      const picked = pickScanModels(((await res.json()) as { models?: [] }).models ?? [])
+      if (picked.length) return picked
+    }
+  } catch { /* fall back to the names below */ }
+  return SCAN_MODELS
+}
+
 export async function scanReceipt(
   key: string, image: { data: string; mime: string }, ctx: ScanContext,
   fetchImpl: Fetch = (u, i) => fetch(u, i),
+  timeoutMs = SCAN_TIMEOUT_MS,
 ): Promise<ScanResult> {
   if (!key.trim()) throw new ScanError('no-key', 'Add a scanning key first.')
+  const models = await scanModels(key, fetchImpl)
+  const started = Date.now()
+  const tried: string[] = []
   let withSchema = true
   let thinkingOff = true
-  for (let m = 0; m < SCAN_MODELS.length; m++) {
-    const model = SCAN_MODELS[m]
+  for (let m = 0; m < models.length; m++) {
+    const model = models[m]
+    const t0 = Date.now()
     let res: Response
     try {
       res = await fetchImpl(`${GEMINI_BASE}/models/${model}:generateContent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key.trim() },
         body: JSON.stringify(scanRequestBody(image, ctx, withSchema, thinkingOff)),
-        signal: AbortSignal.timeout(SCAN_TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
       })
     } catch (e) {
-      throw unreached(e, model)
+      const secs = Math.round((Date.now() - t0) / 1000)
+      const err = unreached(e, `${model} after ${secs}s`)
+      // A stuck model: try the next. No signal: no point trying another.
+      if (err.reason === 'slow') { tried.push(`${model} ${secs}s`); continue }
+      throw err
     }
     if (res.ok) return scanResultFrom(replyJson(await res.json()), ctx)
     const f = await failure(res, model)
@@ -290,7 +350,12 @@ export async function scanReceipt(
     }
     throw f
   }
-  throw new ScanError('busy', "Google's receipt reader isn't available right now. Fill it in by hand.")
+  if (tried.length) {
+    throw new ScanError('slow', 'Google took too long to answer. Try again in a bit, or fill it in by hand.',
+      `no answer from ${tried.join(', ')} (${Math.round((Date.now() - started) / 1000)}s in all)`)
+  }
+  throw new ScanError('busy', "Google's receipt reader isn't available right now. Fill it in by hand.",
+    `models tried: ${models.join(', ')}`)
 }
 
 /**
