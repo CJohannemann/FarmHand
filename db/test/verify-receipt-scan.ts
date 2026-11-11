@@ -135,8 +135,12 @@ console.log('\nWhen it does not work, the person is told why')
   check('no signal says so', e?.reason === 'offline')
 }
 {
-  const e = await fails_with(scanReceipt('K', image, ctx, fakeFetch([error(503, { error: { status: 'UNAVAILABLE' } })]).f))
-  check('Google overloaded says try again', e?.reason === 'busy')
+  const busy = () => error(503, { error: { status: 'UNAVAILABLE' } })
+  const e = await fails_with(scanReceipt('K', image, ctx, fakeFetch(SCAN_MODELS.map(busy)).f))
+  check('every model overloaded says try again', e?.reason === 'busy', e?.message)
+  const { f, calls } = fakeFetch([busy(), reply(wiseway)])
+  const r = await scanReceipt('K', image, ctx, f)
+  check('one model overloaded moves on to the next', r.total === 123.64 && calls[1].url.includes(SCAN_MODELS[1]))
 }
 {
   const e = await fails_with(scanReceipt('K', image, ctx, fakeFetch([
@@ -167,13 +171,13 @@ console.log('\nIt carries on past what it can')
   check('a retired model moves on to the next', r.total === 123.64 && calls[1].url.includes(SCAN_MODELS[1]))
 }
 {
-  const { f, calls } = fakeFetch([
-    error(400, { error: { message: 'Invalid JSON payload: unknown field responseSchema' } }), reply(wiseway, true),
-  ])
+  const refuse = () => error(400, { error: { message: 'Invalid JSON payload: unknown field responseSchema' } })
+  const { f, calls } = fakeFetch([refuse(), refuse(), reply(wiseway, true)])
   const r = await scanReceipt('K', image, ctx, f)
-  const second = JSON.parse(String(calls[1].init.body)) as { generationConfig: Record<string, unknown> }
-  check('a turned-down schema asks again without it', r.total === 123.64 && !second.generationConfig.responseSchema
-    && second.generationConfig.responseMimeType === 'application/json')
+  const third = JSON.parse(String(calls[2].init.body)) as { generationConfig: Record<string, unknown> }
+  check('a turned-down schema is left out in the end, same model',
+    r.total === 123.64 && !third.generationConfig.responseSchema && calls[2].url === calls[0].url
+    && third.generationConfig.responseMimeType === 'application/json')
 }
 
 {
@@ -220,7 +224,27 @@ check('an empty list picks nothing (and the built-in names are used)', pickScanM
   const all = fakeFetch([timeout(), timeout(), timeout()], listed)
   const e = await fails_with(scanReceipt('K', image, ctx, all.f, 5))
   check('all of them hanging says so, naming each and how long it waited',
-    e?.reason === 'slow' && /gemini-3-flash \d+s/.test(e.detail) && /in all/.test(e.detail), e?.detail)
+    e?.reason === 'slow' && /gemini-3-flash: no answer in \d+s/.test(e.detail)
+    && e.detail.includes('gemini-2.5-flash-lite'), e?.detail)
+}
+
+console.log('\n"Request contains an invalid argument", naming nothing')
+{
+  // Exactly the reply the first scan to reach gemini-3.5-flash-lite got.
+  const vague = () => error(400, { error: { code: 400, message: 'Request contains an invalid argument.', status: 'INVALID_ARGUMENT' } })
+  const { f, calls } = fakeFetch([vague(), reply(wiseway)])
+  const r = await scanReceipt('K', image, ctx, f)
+  const second = JSON.parse(String(calls[1].init.body)) as { generationConfig: Record<string, unknown> }
+  check('is asked again without the thinking setting, same model',
+    r.total === 123.64 && calls[1].url === calls[0].url && !second.generationConfig.thinkingConfig
+    && !!second.generationConfig.responseSchema)
+  const all = fakeFetch(Array.from({ length: SCAN_MODELS.length * 3 }, vague))
+  const e = await fails_with(scanReceipt('K', image, ctx, all.f))
+  check('every model and every simpler request turned down: tried them all',
+    all.calls.length === SCAN_MODELS.length * 3, String(all.calls.length))
+  check('and the detail lists each attempt',
+    e?.reason === 'unreadable' && (e.detail.match(/HTTP 400/g) ?? []).length === SCAN_MODELS.length * 3
+    && e.detail.includes('without the schema'), e?.detail.slice(0, 160))
 }
 
 console.log('\nChecking a key costs nothing')
