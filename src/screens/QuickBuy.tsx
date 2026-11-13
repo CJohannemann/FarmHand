@@ -94,6 +94,16 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
   const resolvedKind = kind === OTHER ? kindOther.trim() : kind
   const forStock = FOR_STOCK_KINDS.includes(resolvedKind)
   const purchaseName = quickPurchaseName(resolvedKind, forStock ? forSpecies : null, name)
+  // How much was bought, for anything that sits in Stores to be used up —
+  // feed by the pound, filters by the each. Not for building supplies and
+  // the like, which are money spent and never on hand (SERVICE_MATERIALS).
+  // Left blank, Stores says "amount not recorded" rather than a number.
+  const showAmount = !!resolvedKind && !SERVICE_MATERIALS.includes(resolvedKind)
+  const defaultUnit = (k: string) => FOR_STOCK_KINDS.includes(k) ? 'lb' : 'each'
+  const pickKind = (k: string) => {
+    setKind(k)
+    if (!amount) setUnit(defaultUnit(k))
+  }
   // Projects are what gets built — a barn, a fence — so the picker waits
   // for building supplies or a kind off the short list (Improvements,
   // Lumber…). Feed, hay and medicine are not, and showing it before
@@ -114,10 +124,12 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
         kinds: materials ?? QUICK_KINDS, species, today: todayKey(),
         stores: (storesUsed ?? []).map((u) => u.name),
       }, undefined, undefined, mem).finally(() => saveScanMemory(mem))
-      const f = quickFillFromScan(r, { quickKinds: QUICK_KINDS, stores: storesUsed ?? [] })
+      const f = quickFillFromScan(r, { quickKinds: QUICK_KINDS, stores: storesUsed ?? [], units: units ?? [] })
       if (f.cost) setCost(f.cost)
       if (f.kind) { setKind(f.kind); setMoreKinds(f.moreKinds) }
       setName(f.name)
+      setAmount(f.amount)
+      setUnit(f.unit || defaultUnit(f.kind))
       setForSpecies(f.forSpecies)
       if (f.supplier) setSupplier(f.supplier)
       if (f.date) setDate(f.date)
@@ -155,8 +167,8 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
       material: resolvedKind,
       name: purchaseName,
       cost: Number(cost),
-      amount: forStock && Number(amount) > 0 ? Number(amount) : undefined,
-      unit: forStock ? unit : undefined,
+      amount: showAmount && Number(amount) > 0 ? Number(amount) : undefined,
+      unit: showAmount ? unit : undefined,
       supplier: supplier.trim() || undefined,
       category: forStock && forSpecies ? forSpecies : undefined,
       receipt: receipt ?? undefined,
@@ -202,9 +214,9 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
         <p className="hint">
           This receipt has different kinds of things on it.{' '}
           <button type="button" className="linkish" onClick={() => onDetailed({
-            lines: linesFromScan(scanned), supplier, receipt, date,
+            lines: linesFromScan(scanned, units ?? []), supplier, receipt, date,
           })}>
-            Split it into {linesFromScan(scanned).length} lines
+            Split it into {linesFromScan(scanned, units ?? []).length} lines
           </button>
         </p>
       )}
@@ -221,7 +233,7 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
         <div className="chipwrap">
           {QUICK_KINDS.map((k) => (
             <button key={k} type="button" className={kind === k ? 'chip on' : 'chip'}
-              onClick={() => { setKind(k); setMoreKinds(false) }}>
+              onClick={() => { pickKind(k); setMoreKinds(false) }}>
               {k}
             </button>
           ))}
@@ -236,7 +248,7 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
       {moreKinds && (
         <label className="field">
           <span>Which?</span>
-          <select value={kind} onChange={(e) => setKind(e.target.value)}>
+          <select value={kind} onChange={(e) => pickKind(e.target.value)}>
             <option value="">— pick one —</option>
             {otherKinds.map((m) => <option key={m} value={m}>{m}</option>)}
             <option value={OTHER}>Not listed — add it</option>
@@ -246,6 +258,13 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
       {kind === OTHER && (
         <NameInput label="What is it?" value={kindOther} onChange={setKindOther}
           used={kindsUsed ?? []} placeholder="Twine" autoFocus noun="kind" />
+      )}
+
+      {/* Feed is named for its animal, below; everything else by what it
+          is, so Stores lists "Fuel filter" and not one more "Parts". */}
+      {!!resolvedKind && !forStock && (
+        <NameInput label="Name (optional)" value={name} onChange={setName}
+          used={itemsUsed ?? []} placeholder={resolvedKind} noun="item" />
       )}
 
       {/* Which animals it is for is what Analytics adds feed up by — and it
@@ -267,13 +286,13 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
           </div>
         </div>
       )}
-      {forStock && (
+      {showAmount && (
         <div className="pair">
           <label className="field">
             <span>How much (optional)</span>
             <input type="number" inputMode="decimal" min="0" value={amount}
               onChange={onNumericChange(setAmount)} onWheel={ignoreScrollOnNumberInput}
-              onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="50" />
+              onKeyDown={ignoreArrowKeysOnNumberInput} placeholder={forStock ? '50' : '1'} />
           </label>
           <label className="field">
             <span>Unit</span>
@@ -286,13 +305,6 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
             </select>
           </label>
         </div>
-      )}
-
-      {/* Feed is named for its animal, above; everything else by what it
-          is, so Stores lists "Fuel filter" and not one more "Parts". */}
-      {!!resolvedKind && !forStock && (
-        <NameInput label="Name (optional)" value={name} onChange={setName}
-          used={itemsUsed ?? []} placeholder={resolvedKind} noun="item" />
       )}
 
       {showProject && (

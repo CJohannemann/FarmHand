@@ -11,7 +11,7 @@ import {
   SCAN_MODELS, ScanError, type ScanMemory, checkScanKey, pickScanModels, receiptPrompt, receiptSchema, replyJson, scanReceipt,
   scanRequestBody, scanResultFrom, type ScanContext,
 } from '../../src/lib/receiptScan.ts'
-import { isMixed, linesFromScan, quickFillFromScan, scanItemName } from '../../src/lib/scanToForm.ts'
+import { farmUnit, isMixed, linesFromScan, quickFillFromScan, scanAmount, scanItemName } from '../../src/lib/scanToForm.ts'
 import { QUICK_KINDS } from '../../src/lib/purchaseKinds.ts'
 
 let fails = 0
@@ -314,7 +314,7 @@ check('any other kind opens "Something else"', fill({ kind: 'Improvements' }).mo
 check('feed for pigs comes with its animal', fill({ kind: 'Feed', forSpecies: 'Pig' }).forSpecies === 'Pig')
 check('lumber does not, whatever was read', fill({ kind: 'Building supplies', forSpecies: 'Pig' }).forSpecies === '')
 check('nothing read leaves the form blank', JSON.stringify(fill({})) ===
-  JSON.stringify({ cost: '', kind: '', moreKinds: false, forSpecies: '', supplier: '', date: '', name: '' }))
+  JSON.stringify({ cost: '', kind: '', moreKinds: false, forSpecies: '', supplier: '', date: '', name: '', amount: '', unit: '' }))
 
 console.log('\nA scanned purchase is named for what was bought')
 {
@@ -332,6 +332,35 @@ console.log('\nA scanned purchase is named for what was bought')
   check('feed keeps its shared name', fill({ kind: 'Feed', forSpecies: 'Pig', items: [item('Hog grower 50 lb', 'Feed')] }).name === '')
   check('no items read, no name', fill({ kind: 'Parts' }).name === '')
   check('a long one is cut short', scanItemName(parts(item('x'.repeat(80))), 'Parts').length === 60)
+}
+
+console.log('\nHow much was bought')
+{
+  const units = ['lb', 'oz', 'gal', 'qt', 'each', 'Round Bale']
+  const it = (description: string, kind: string, quantity: number | null, unit: string | null) =>
+    ({ description, amount: 5, kind, quantity, unit })
+  const r = (kind: string, ...items: ReturnType<typeof it>[]) => ({ ...base, kind, items }) as never
+  check('receipts\' units become the farm\'s', farmUnit('EA', units) === 'each' && farmUnit('Gallons', units) === 'gal'
+    && farmUnit('LBS', units) === 'lb' && farmUnit('round bale', units) === 'Round Bale')
+  check('a unit the farm does not use is none', farmUnit('bag', units) === null && farmUnit('', units) === null)
+  check('two fuel filters and an oil filter are 3 each',
+    JSON.stringify(scanAmount(r('Parts', it('Fuel filter', 'Parts', 2, 'ea'), it('Oil filter', 'Parts', 1, 'each')), 'Parts', units))
+    === JSON.stringify({ amount: '3', unit: 'each' }))
+  check('a part with no count printed is one', scanAmount(r('Parts', it('Belt', 'Parts', null, null)), 'Parts', units)?.amount === '1')
+  check('diesel by the gallon', JSON.stringify(scanAmount(r('Fuel', it('Diesel', 'Fuel', 12.5, 'GAL')), 'Fuel', units))
+    === JSON.stringify({ amount: '12.5', unit: 'gal' }))
+  check('feed with its weight read', JSON.stringify(scanAmount(r('Feed', it('Hog grower', 'Feed', 100, 'lb')), 'Feed', units))
+    === JSON.stringify({ amount: '100', unit: 'lb' }))
+  check('feed with no weight read is not guessed', scanAmount(r('Feed', it('Hog grower', 'Feed', null, null)), 'Feed', units) === null)
+  check('gallons and pounds are not added together',
+    scanAmount(r('Medicine', it('Wormer', 'Medicine', 1, 'gal'), it('Salve', 'Medicine', 2, 'lb')), 'Medicine', units) === null)
+  check('a unit the farm does not use leaves it blank', scanAmount(r('Parts', it('Chain', 'Parts', 3, 'bag')), 'Parts', units) === null)
+  check('another kind\'s items are not counted',
+    scanAmount(r('Parts', it('Filter', 'Parts', 1, 'ea'), it('Feed', 'Feed', 50, 'lb')), 'Parts', units)?.amount === '1')
+  const f = quickFillFromScan(r('Parts', it('Fuel filter', 'Parts', 1, 'ea')), { quickKinds: QUICK_KINDS, stores: [], units })
+  check('the Buy sheet gets it', f.amount === '1' && f.unit === 'each', JSON.stringify(f))
+  const lumber = quickFillFromScan(r('Building supplies', it('2x6', 'Building supplies', 12, 'ea')), { quickKinds: QUICK_KINDS, stores: [], units })
+  check('but not for building supplies, which are never on hand', lumber.amount === '' && lumber.unit === '')
 }
 
 console.log('\nA mixed receipt, split by kind')

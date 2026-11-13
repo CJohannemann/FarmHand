@@ -3,7 +3,7 @@
  * hold. Pure, so db/test/verify-receipt-scan.ts covers it.
  */
 import { didYouMean, type NameUse } from './nameMatch.ts'
-import { FOR_STOCK_KINDS, quickPurchaseName } from './purchaseKinds.ts'
+import { FOR_STOCK_KINDS, SERVICE_MATERIALS, quickPurchaseName } from './purchaseKinds.ts'
 import type { ScanResult } from './receiptScan.ts'
 
 export interface ScanFill {
@@ -17,6 +17,55 @@ export interface ScanFill {
   date: string
   /** What was bought, from the receipt's items — see scanItemName. */
   name: string
+  /** How much was bought, and in which of the farm's units — see scanAmount. */
+  amount: string
+  unit: string
+}
+
+/** How receipts write units, as the farm's unit list writes them. */
+const UNIT_ALIASES: Record<string, string> = {
+  ea: 'each', each: 'each', pc: 'each', pcs: 'each', piece: 'each', pieces: 'each', unit: 'each',
+  units: 'each', ct: 'each', count: 'each', qty: 'each',
+  lb: 'lb', lbs: 'lb', pound: 'lb', pounds: 'lb', '#': 'lb',
+  oz: 'oz', ounce: 'oz', ounces: 'oz',
+  gal: 'gal', gals: 'gal', gallon: 'gal', gallons: 'gal',
+  qt: 'qt', qts: 'qt', quart: 'qt', quarts: 'qt',
+  pt: 'pt', pint: 'pt', pints: 'pt',
+  kg: 'kg', ton: 'ton', tons: 'ton',
+}
+
+/** `raw` as one of the farm's `units`, or null if it is none of them. */
+export function farmUnit(raw: string | null | undefined, units: string[]): string | null {
+  const t = String(raw ?? '').trim().toLowerCase().replace(/\.$/, '')
+  if (!t) return null
+  const want = UNIT_ALIASES[t] ?? t
+  return units.find((u) => u.toLowerCase() === want.toLowerCase()) ?? null
+}
+
+/**
+ * How much of `kind` a scanned receipt bought: the items of that kind
+ * added up — two fuel filters and an oil filter are 3 each. Only when every
+ * one of them was read with a quantity in one of the farm's units, and the
+ * same unit throughout; otherwise nothing, for the person to fill in,
+ * rather than a sum of gallons and pounds that looks right.
+ *
+ * A part or a bottle with no count printed is one of it. Feed with no
+ * quantity is not guessed at: a bag's weight is the whole point there.
+ */
+export function scanAmount(r: ScanResult, kind: string, units: string[]): { amount: string; unit: string } | null {
+  const mine = r.items.filter((i) => (i.kind ?? r.kind) === kind)
+  if (!kind || mine.length === 0) return null
+  const counted = !FOR_STOCK_KINDS.includes(kind)
+  let unit: string | null = null
+  let total = 0
+  for (const it of mine) {
+    const u = farmUnit(it.unit ?? (counted ? 'each' : null), units)
+    const q = it.quantity ?? (counted ? 1 : null)
+    if (!u || q == null || (unit && u !== unit)) return null
+    unit = u
+    total += q
+  }
+  return unit ? { amount: String(Math.round(total * 1000) / 1000), unit } : null
 }
 
 /**
@@ -48,7 +97,7 @@ export function scanItemName(r: ScanResult, kind: string): string {
  * for the person to fill in.
  */
 export function quickFillFromScan(
-  r: ScanResult, opts: { quickKinds: string[]; stores: NameUse[] },
+  r: ScanResult, opts: { quickKinds: string[]; stores: NameUse[]; units?: string[] },
 ): ScanFill {
   const store = r.store
     ? opts.stores.find((s) => s.name.toLowerCase() === r.store!.toLowerCase())?.name
@@ -63,6 +112,8 @@ export function quickFillFromScan(
     supplier: store,
     date: r.date ?? '',
     name: scanItemName(r, kind),
+    ...(SERVICE_MATERIALS.includes(kind) ? null : scanAmount(r, kind, opts.units ?? []))
+      ?? { amount: '', unit: '' },
   }
 }
 
@@ -94,7 +145,7 @@ export function isMixed(r: ScanResult): boolean {
  * what each kind's items came to, so they add up to what was paid to the
  * cent; the last line takes the rounding.
  */
-export function linesFromScan(r: ScanResult): ScanLine[] {
+export function linesFromScan(r: ScanResult, units: string[] = []): ScanLine[] {
   const byKind = new Map<string, number>()
   for (const it of r.items) {
     const k = it.kind ?? r.kind
@@ -112,7 +163,8 @@ export function linesFromScan(r: ScanResult): ScanLine[] {
     const species = FOR_STOCK_KINDS.includes(k) ? r.forSpecies ?? '' : ''
     return {
       material: k, category: species, name: quickPurchaseName(k, species, scanItemName(r, k)),
-      amount: '', unit: 'lb', cost: (cents / 100).toFixed(2),
+      ...(SERVICE_MATERIALS.includes(k) ? null : scanAmount(r, k, units)) ?? { amount: '', unit: 'lb' },
+      cost: (cents / 100).toFixed(2),
     }
   })
 }

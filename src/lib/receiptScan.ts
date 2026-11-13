@@ -78,6 +78,10 @@ export interface ScanItem {
   description: string
   amount: number | null
   kind: string | null
+  /** How much of it the line bought — 2 filters, 12.5 gal, 100 lb. */
+  quantity: number | null
+  /** The quantity's unit as the receipt gives it ("ea", "GAL"), or null. */
+  unit: string | null
 }
 
 export interface ScanResult {
@@ -136,6 +140,10 @@ export function receiptPrompt(ctx: ScanContext): string {
     '- items: each line item, in order: a short plain description (expand abbreviations where obvious,',
     '  e.g. "16% HOG GRWR 50#" → "16% hog grower feed, 50 lb"), its line total as a number, and its kind',
     '  from the same list (or null). At most 30 items. Skip tax, subtotal, payment and change lines.',
+    '  Also its quantity: how many or how much the line bought, as a number ("2 @ 7.05" is 2,',
+    '  "12.500 GAL" is 12.5, one item with no count shown is 1), and that quantity\'s unit: "each" for',
+    '  things counted, otherwise as printed (lb, gal, qt, oz). Bagged feed with the bag size shown is',
+    '  its total weight: 2 bags of 50 lb is quantity 100, unit "lb". null for either if unsure.',
   ].join('\n')
 }
 
@@ -163,6 +171,8 @@ export function receiptSchema(ctx: ScanContext): Record<string, unknown> {
             description: { type: 'STRING' },
             amount: { type: 'NUMBER', nullable: true },
             kind,
+            quantity: { type: 'NUMBER', nullable: true },
+            unit: { type: 'STRING', nullable: true },
           },
           required: ['description'],
         },
@@ -199,6 +209,10 @@ export function scanRequestBody(
 const money = (v: unknown): number | null => {
   const n = typeof v === 'string' ? Number(v.replace(/[$,\s]/g, '')) : Number(v)
   return Number.isFinite(n) && n > 0 && n < 1_000_000 ? Math.round(n * 100) / 100 : null
+}
+const howMuch = (v: unknown): number | null => {
+  const n = typeof v === 'string' ? Number(v.replace(/[,\s]/g, '')) : Number(v)
+  return Number.isFinite(n) && n > 0 && n < 100_000 ? Math.round(n * 1000) / 1000 : null
 }
 const text = (v: unknown, max: number): string | null => {
   if (typeof v !== 'string') return null
@@ -258,7 +272,10 @@ export function scanResultFrom(raw: unknown, ctx: ScanContext): ScanResult {
   const items = (Array.isArray(o.items) ? o.items : []).slice(0, 30).flatMap((it): ScanItem[] => {
     const r = (it && typeof it === 'object' ? it : {}) as Record<string, unknown>
     const description = text(r.description, 120)
-    return description ? [{ description, amount: money(r.amount), kind: oneOf(r.kind, ctx.kinds) }] : []
+    return description ? [{
+      description, amount: money(r.amount), kind: oneOf(r.kind, ctx.kinds),
+      quantity: howMuch(r.quantity), unit: text(r.unit, 20),
+    }] : []
   })
   const kind = oneOf(o.kind, ctx.kinds)
   return {
