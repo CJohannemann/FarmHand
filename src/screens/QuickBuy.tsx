@@ -289,7 +289,7 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
       {showAmount && (
         <div className="pair">
           <label className="field">
-            <span>How much (optional)</span>
+            <span>Quantity (optional)</span>
             <input type="number" inputMode="decimal" min="0" value={amount}
               onChange={onNumericChange(setAmount)} onWheel={ignoreScrollOnNumberInput}
               onKeyDown={ignoreArrowKeysOnNumberInput} placeholder={forStock ? '50' : '1'} />
