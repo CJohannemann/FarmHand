@@ -99,6 +99,10 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
   // the like, which are money spent and never on hand (SERVICE_MATERIALS).
   // Left blank, Stores says "amount not recorded" rather than a number.
   const showAmount = !!resolvedKind && !SERVICE_MATERIALS.includes(resolvedKind)
+  // Left blank, a part or a bottle is one of it: nobody buys a fuel filter
+  // and owns none. Feed is the exception — 1 lb of a 50 lb bag would be a
+  // wrong number that looks right, so blank stays "amount not recorded".
+  const boughtOne = !forStock
   const defaultUnit = (k: string) => FOR_STOCK_KINDS.includes(k) ? 'lb' : 'each'
   const pickKind = (k: string) => {
     setKind(k)
@@ -167,7 +171,7 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
       material: resolvedKind,
       name: purchaseName,
       cost: Number(cost),
-      amount: showAmount && Number(amount) > 0 ? Number(amount) : undefined,
+      amount: !showAmount ? undefined : Number(amount) > 0 ? Number(amount) : boughtOne ? 1 : undefined,
       unit: showAmount ? unit : undefined,
       supplier: supplier.trim() || undefined,
       category: forStock && forSpecies ? forSpecies : undefined,
