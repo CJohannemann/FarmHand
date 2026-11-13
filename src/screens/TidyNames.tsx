@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useAsync } from '../lib/useAsync'
-import { mergeNames, nameUsage } from '../db/queries'
+import { getFarmSetting, mergeNames, nameUsage, setFarmSetting } from '../db/queries'
+import { NOT_SAME_NAMES_SETTING } from '../db/settingsSql'
 import type { NameKind } from '../db/namesSql'
-import { likelyDuplicates } from '../lib/nameMatch'
+import { likelyDuplicates, notSameKey } from '../lib/nameMatch'
 
 const KINDS: { id: NameKind; label: string; one: string; hint: string }[] = [
   { id: 'item', label: 'Items', one: 'item',
@@ -23,13 +24,32 @@ const KINDS: { id: NameKind; label: string; one: string; hint: string }[] = [
  * store breakdown, all under the one name, on every device on the account.
  *
  * Nothing merges without a tap. Look-alikes are only suggestions — "Not
- * the same" hides one for now — and any name can be merged into any other
+ * the same" hides one for good, on every phone — and any name can be merged into any other
  * by hand from the full list.
  */
+/** The farm's "Not the same" answers — see NOT_SAME_NAMES_SETTING. */
+async function readNotSame(): Promise<string[]> {
+  try {
+    const v = JSON.parse((await getFarmSetting(NOT_SAME_NAMES_SETTING)) ?? '[]')
+    return Array.isArray(v) ? v.filter((k): k is string => typeof k === 'string') : []
+  } catch { return [] }
+}
+
 export function TidyNames() {
   const [kind, setKind] = useState<NameKind>('item')
   const { data: used, reload } = useAsync(() => nameUsage(kind), [kind])
+  // "Not the same" is kept with the farm, so a pair answered once stays
+  // answered — after leaving this screen, and on everyone else's phone.
+  const notSame = useAsync(readNotSame, [])
   const [dismissed, setDismissed] = useState<string[]>([])
+  const answered = [...(notSame.data ?? []), ...dismissed]
+  const markNotSame = async (a: string, b: string) => {
+    const key = notSameKey(kind, a, b)
+    setDismissed((d) => [...d, key])
+    // Read fresh, so an answer given on another phone meanwhile is kept.
+    const saved = await readNotSame()
+    if (!saved.includes(key)) await setFarmSetting(NOT_SAME_NAMES_SETTING, JSON.stringify([...saved, key]))
+  }
   const [picking, setPicking] = useState<string | null>(null)
   const [into, setInto] = useState('')
   const [busy, setBusy] = useState(false)
@@ -38,7 +58,7 @@ export function TidyNames() {
 
   const names = [...(used ?? [])].sort((a, b) => a.name.localeCompare(b.name))
   const pairs = likelyDuplicates(used ?? [])
-    .filter((p) => !dismissed.includes(`${kind}:${p.from.name}→${p.into.name}`))
+    .filter((p) => !answered.includes(notSameKey(kind, p.from.name, p.into.name)))
 
   const merge = async (from: string, to: string) => {
     setBusy(true)
@@ -78,7 +98,7 @@ export function TidyNames() {
                   <strong>{p.from.name}</strong> ({p.from.count}) → <strong>{p.into.name}</strong> ({p.into.count})
                 </span>
                 <span className="actions">
-                  <button onClick={() => setDismissed((d) => [...d, `${kind}:${p.from.name}→${p.into.name}`])}>
+                  <button onClick={() => markNotSame(p.from.name, p.into.name)}>
                     Not the same
                   </button>
                   <button className="primary" disabled={busy} onClick={() => merge(p.from.name, p.into.name)}>

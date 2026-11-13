@@ -9,7 +9,7 @@
 //
 //   npm run verify:name-match
 import {
-  canonical, didYouMean, likelyDuplicates, similarNames, suggestNames,
+  canonical, didYouMean, likelyDuplicates, notSameKey, similarNames, suggestNames,
 } from '../../src/lib/nameMatch.ts'
 
 let fails = 0
@@ -90,6 +90,14 @@ const pairs = dups.map((d) => `${d.from.name}→${d.into.name}`).sort()
 check('finds both pairs, merging the less used into the more used',
   pairs.join(' | ') === "Hog feed→Pig feed | Lowes→Lowe's", pairs.join(' | '))
 check('and leaves chicken feed out of it', !pairs.some((p) => p.includes('Chicken')))
+
+console.log('\n"Not the same" stays answered')
+check('either way round is the same answer',
+  notSameKey('item', 'Pig feeder', 'Pig feed') === notSameKey('item', 'Pig feed', 'Pig feeder'))
+check('capitals and stray spaces do not matter',
+  notSameKey('item', ' pig FEEDER', 'Pig feed') === notSameKey('item', 'Pig feeder', 'Pig feed'))
+check('an item answer is not a store answer',
+  notSameKey('item', 'Lowes', "Lowe's") !== notSameKey('store', 'Lowes', "Lowe's"))
 
 console.log(fails === 0 ? '\nAll checks passed.\n' : `\n${fails} FAILED\n`)
 process.exit(fails ? 1 : 0)

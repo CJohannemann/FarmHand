@@ -156,3 +156,14 @@ export function likelyDuplicates(used: NameUse[]): { from: NameUse; into: NameUs
   }
   return out
 }
+
+/**
+ * How a "Not the same" answer is kept: the two names, whichever way round
+ * they were offered, so the pair stays answered when one of them later
+ * gets more uses and the suggestion would flip direction. Case is ignored
+ * the way similarNames ignores it.
+ */
+export function notSameKey(kind: string, a: string, b: string): string {
+  const [x, y] = [a.trim().toLowerCase(), b.trim().toLowerCase()].sort()
+  return `${kind}:${x}|${y}`
+}

@@ -39,3 +39,10 @@ export const SET_SETTING_SQL = `
 
 /** The vocabulary the scanning key is kept under. */
 export const SCAN_KEY_SETTING = 'setting:receipt-scan-key'
+
+/**
+ * The look-alike names someone has said are not the same ("Pig feeder" is
+ * not "Pig feed"), so Tidy up names stops offering them — on every phone
+ * on the farm. A JSON array of notSameKey()s (lib/nameMatch.ts).
+ */
+export const NOT_SAME_NAMES_SETTING = 'setting:not-same-names'
