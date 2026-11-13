@@ -1,8 +1,12 @@
 import { useState } from 'react'
-import { deleteAsset, recordDisposition, type LotBalance } from '../db/queries'
+import { createLog, deleteAsset, recordDisposition, type LotBalance } from '../db/queries'
 import {
-  formatQty as round, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
+  formatMoney, formatQty as round, ignoreArrowKeysOnNumberInput, ignoreScrollOnNumberInput, onNumericChange,
 } from '../lib/numeric'
+import { measureForUnit } from '../lib/units'
+import { useFarmTimezone } from '../lib/weather'
+import { logDate } from './LogList'
+import { AssetSelect } from './AssetSelect'
 import { Sheet } from './Sheet'
 
 const KINDS = [
@@ -17,31 +21,81 @@ const KINDS = [
 type Kind = typeof KINDS[number]['id']
 
 /**
+ * The same choices for something bought — a filter, a bottle of wormer —
+ * in its own words. "Ate it" and "fed it to livestock" are for what the
+ * farm grew; nobody eats an air filter.
+ */
+const BOUGHT_KINDS: { id: Kind; label: string }[] = [
+  { id: 'home_use', label: 'Used it' },
+  { id: 'sold',     label: 'Sold it' },
+  { id: 'given',    label: 'Gave it away' },
+  { id: 'traded',   label: 'Traded it' },
+  { id: 'lost',     label: 'Lost or broken' },
+]
+
+/** What can be named as what a bought thing was used on. */
+const USED_ON = ['equipment', 'animal', 'group', 'structure', 'land'] as const
+
+/**
  * Drawing down a lot — what used to be the whole point of a separate Stores
  * tab. That tab listed the same lots the Stock tab already did, so it is
  * gone and this sheet opens from the lot's row on Stock instead.
+ *
+ * Something bought gets fewer questions than something grown. What it cost
+ * is already on its purchase, so that is shown rather than asked ("what
+ * would it have cost to buy" is for eggs, to weigh raising them against the
+ * shop). A counted thing starts at one, so using the one air filter on hand
+ * is a single tap. And it can be put down as used on the tractor (or an
+ * animal, a building): logged on that tractor's record the way Maintenance's
+ * "From stores?" logs it, so the filter's cost lands on the tractor.
  */
 export function TakeFromLot({
   lot, onClose, onDone,
 }: { lot: LotBalance; onClose: () => void; onDone: () => void }) {
+  const bought = lot.origin === 'purchased'
+  const counted = measureForUnit(lot.unit) === 'count'
+  const remaining = Number(lot.remaining)
+  const cameIn = Number(lot.came_in)
+  const paid = lot.paid == null ? null : Number(lot.paid)
+  const timeZone = useFarmTimezone()
+
   const [kind, setKind] = useState<Kind>('home_use')
-  const [amount, setAmount] = useState('')
+  const [amount, setAmount] = useState(
+    counted && remaining > 0 ? String(Math.min(1, remaining)) : '')
   const [value, setValue] = useState('')
+  const [usedOn, setUsedOn] = useState('')
   const [busy, setBusy] = useState(false)
   const [confirming, setConfirming] = useState(false)
 
   const n = Number(amount)
-  const over = n > lot.remaining + 0.001
+  const over = n > remaining + 0.001
+  const kinds = bought ? BOUGHT_KINDS : KINDS
+  const onSomething = bought && kind === 'home_use' && !!usedOn
+  // What this much of it cost, from what was paid for all of it.
+  const share = paid != null && cameIn > 0 && n > 0 ? paid * (n / cameIn) : null
 
   const save = async () => {
     setBusy(true)
-    await recordDisposition({
-      lotId: lot.id,
-      kind,
-      amount: n,
-      unit: lot.unit ?? 'lb',
-      value: Number(value) || undefined,
-    })
+    const unit = lot.unit ?? 'lb'
+    if (onSomething) {
+      await createLog({
+        type: 'input_application',
+        name: lot.name,
+        assets: [
+          { id: usedOn, role: 'subject' },
+          { id: lot.id, role: 'input', amount: n, unit },
+        ],
+        quantities: [],
+      })
+    } else {
+      await recordDisposition({
+        lotId: lot.id,
+        kind,
+        amount: n,
+        unit,
+        value: Number(value) || undefined,
+      })
+    }
     setBusy(false)
     onDone()
   }
@@ -62,20 +116,39 @@ export function TakeFromLot({
           <span>{round(lot.went_out)} {lot.unit ?? ''}</span></div>
         <div className="costrow strong"><span>Left</span>
           <span>{round(lot.remaining)} {lot.unit ?? ''}</span></div>
+        {paid != null && (
+          <div className="costrow"><span>Paid</span>
+            <span>
+              {formatMoney(paid)}
+              {lot.acquired ? ` · ${logDate(lot.acquired, timeZone)}` : ''}
+              {lot.supplier ? ` · ${lot.supplier}` : ''}
+            </span></div>
+        )}
       </div>
 
       <label className="field" style={{ marginTop: '1.25rem' }}>
         <span>What happened to it?</span>
         <select value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
-          {KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
+          {kinds.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
         </select>
       </label>
 
+      {bought && kind === 'home_use' && (
+        <AssetSelect value={usedOn} onChange={setUsedOn} types={[...USED_ON]}
+          label="Used on (optional)" />
+      )}
+
       <label className="field">
         <span>Quantity ({lot.unit ?? 'lb'})</span>
-        <input type="number" inputMode="decimal" min="0" autoFocus value={amount}
+        <input type="number" inputMode="decimal" min="0" autoFocus={!amount} value={amount}
           onChange={onNumericChange(setAmount)} onWheel={ignoreScrollOnNumberInput}
-          onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="20" />
+          onKeyDown={ignoreArrowKeysOnNumberInput} placeholder={counted ? '1' : '20'} />
+        {share != null && !over && (
+          <small className="hint">
+            {n >= cameIn - 0.001 ? `All of it — ${formatMoney(share)}.` : `${formatMoney(share)} of what was paid.`}
+            {onSomething && ' Charged to what it was used on.'}
+          </small>
+        )}
         {over && (
           <small className="hint warn">
             That is more than the {round(lot.remaining)} {lot.unit ?? ''} left.
@@ -84,20 +157,24 @@ export function TakeFromLot({
         )}
       </label>
 
-      <label className="field">
-        <span>
-          {kind === 'sold' ? 'What you got paid ($)' : 'What it would have cost to buy ($)'}
-        </span>
-        <input type="number" inputMode="decimal" min="0" value={value}
-          onChange={onNumericChange(setValue)} onWheel={ignoreScrollOnNumberInput}
-          onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="89.80" />
-        {kind === 'home_use' && (
-          <small className="hint">
-            Optional. Putting the shop price here is what lets the app tell you
-            whether raising it beat buying it.
-          </small>
-        )}
-      </label>
+      {/* Bought, its cost is already known (above): only a sale has a
+          price to ask for. */}
+      {(!bought || kind === 'sold') && (
+        <label className="field">
+          <span>
+            {kind === 'sold' ? 'What you got paid ($)' : 'What it would have cost to buy ($)'}
+          </span>
+          <input type="number" inputMode="decimal" min="0" value={value}
+            onChange={onNumericChange(setValue)} onWheel={ignoreScrollOnNumberInput}
+            onKeyDown={ignoreArrowKeysOnNumberInput} placeholder="Optional" />
+          {kind === 'home_use' && (
+            <small className="hint">
+              Optional. Putting the shop price here is what lets the app tell you
+              whether raising it beat buying it.
+            </small>
+          )}
+        </label>
+      )}
 
       <button className="primary" disabled={busy || !(n > 0)} onClick={save}>
         Save

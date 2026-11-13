@@ -1892,6 +1892,13 @@ export interface LotBalance {
    */
   acquired: string | null
   supplier: string | null
+  /**
+   * What was paid for it, from its purchase record — null for a lot nobody
+   * paid for (a harvest, eggs) or bought with no price put down. So the
+   * sheet that takes some out can say what that share cost, months later,
+   * without anyone having to remember.
+   */
+  paid: number | null
   /** Which stock it was bought for, where that was set — see createPurchase. */
   category: string | null
 }
@@ -1950,6 +1957,15 @@ export async function lotBalances(): Promise<LotBalance[]> {
            or (l.type in ('harvest','processing') and la.role = 'output')
         group by la.asset_id
      ),
+     paid as (
+       select la.asset_id as lot_id, sum(q.value) as amount
+         from log_asset la
+         join log l on l.id = la.log_id and l.deleted_at is null
+              and l.type = 'purchase' and la.role = 'subject'
+         join quantity q on q.log_id = l.id and q.deleted_at is null
+              and q.measure = 'price'
+        group by la.asset_id
+     ),
      taken as (
        select la.asset_id as lot_id, sum(q.value) as amount
          from log_asset la
@@ -1972,6 +1988,7 @@ export async function lotBalances(): Promise<LotBalance[]> {
             a.attributes->>'supplier' as supplier,
             a.attributes->>'category' as category,
             acq.at as acquired,
+            p.amount as paid,
             coalesce(c.amount, 0)                                as came_in,
             coalesce(t.amount, 0) + coalesce(u.amount, 0)        as went_out,
             coalesce(c.amount, 0) - coalesce(t.amount, 0)
@@ -1980,6 +1997,7 @@ export async function lotBalances(): Promise<LotBalance[]> {
        from asset a
        left join came     c on c.lot_id = a.id
        left join acquired acq on acq.lot_id = a.id
+       left join paid     p on p.lot_id = a.id
        left join taken    t on t.lot_id = a.id
        left join consumed u on u.lot_id = a.id
       where a.type = 'lot' and a.deleted_at is null
