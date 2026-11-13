@@ -11,7 +11,7 @@ import {
   SCAN_MODELS, ScanError, type ScanMemory, checkScanKey, pickScanModels, receiptPrompt, receiptSchema, replyJson, scanReceipt,
   scanRequestBody, scanResultFrom, type ScanContext,
 } from '../../src/lib/receiptScan.ts'
-import { isMixed, linesFromScan, quickFillFromScan } from '../../src/lib/scanToForm.ts'
+import { isMixed, linesFromScan, quickFillFromScan, scanItemName } from '../../src/lib/scanToForm.ts'
 import { QUICK_KINDS } from '../../src/lib/purchaseKinds.ts'
 
 let fails = 0
@@ -314,7 +314,25 @@ check('any other kind opens "Something else"', fill({ kind: 'Improvements' }).mo
 check('feed for pigs comes with its animal', fill({ kind: 'Feed', forSpecies: 'Pig' }).forSpecies === 'Pig')
 check('lumber does not, whatever was read', fill({ kind: 'Building supplies', forSpecies: 'Pig' }).forSpecies === '')
 check('nothing read leaves the form blank', JSON.stringify(fill({})) ===
-  JSON.stringify({ cost: '', kind: '', moreKinds: false, forSpecies: '', supplier: '', date: '' }))
+  JSON.stringify({ cost: '', kind: '', moreKinds: false, forSpecies: '', supplier: '', date: '', name: '' }))
+
+console.log('\nA scanned purchase is named for what was bought')
+{
+  const item = (description: string, kind: string | null = 'Parts') => ({ description, amount: 5, kind })
+  const parts = (...items: ReturnType<typeof item>[]) => ({ ...base, kind: 'Parts', items }) as never
+  check('one part is its own name', fill({ kind: 'Parts', items: [item('Fuel filter')] }).name === 'Fuel filter')
+  check('two are both named', scanItemName(parts(item('Fuel filter'), item('Oil filter')), 'Parts')
+    === 'Fuel filter and Oil filter')
+  check('more than two say how many more', scanItemName(parts(item('Fuel filter'), item('Oil filter'), item('Belt')), 'Parts')
+    === 'Fuel filter and 2 more')
+  check('the same item twice is one', scanItemName(parts(item('Shear pin'), item('Shear pin')), 'Parts') === 'Shear pin')
+  check('an item of no kind read goes with the receipt\'s', scanItemName(parts(item('Grease', null)), 'Parts') === 'Grease')
+  check('another kind\'s items do not name it',
+    scanItemName(parts(item('Fuel filter'), item('Bolts', 'Building supplies')), 'Parts') === 'Fuel filter')
+  check('feed keeps its shared name', fill({ kind: 'Feed', forSpecies: 'Pig', items: [item('Hog grower 50 lb', 'Feed')] }).name === '')
+  check('no items read, no name', fill({ kind: 'Parts' }).name === '')
+  check('a long one is cut short', scanItemName(parts(item('x'.repeat(80))), 'Parts').length === 60)
+}
 
 console.log('\nA mixed receipt, split by kind')
 const mixed = {

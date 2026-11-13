@@ -31,9 +31,11 @@ import { ScanKeySetup } from './ScanKeySetup'
  * first person handed it. A receipt photo already itemises the nails and
  * the 2x6s; the farm needs the total and where it went.
  *
- * Nothing here is typed that someone else could type differently: the kind
- * is picked, the purchase is named from it ("Pig feed", see
- * quickPurchaseName), and only the store is free text.
+ * Little here is typed that someone else could type differently: the kind
+ * is picked and feed is named from it ("Pig feed", see quickPurchaseName).
+ * Anything else can carry its own name — "Fuel filter" rather than a row
+ * in Stores that says only "Parts" — filled in from a scanned receipt, and
+ * offered from the names already used, like the store.
  */
 /** What the detailed sheet opens with when a scanned receipt is split. */
 export interface DetailedStart {
@@ -62,6 +64,7 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
   const [project, setProject] = useState('')
   const [projectName, setProjectName] = useState('')
   const [supplier, setSupplier] = useState('')
+  const [name, setName] = useState('')
   const [receipt, setReceipt] = useState<PreparedImage | null>(null)
   const [moreKinds, setMoreKinds] = useState(false)
   // The receipt's own date, once a scan has read one; until then, today.
@@ -79,6 +82,7 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
   const { data: units } = useAsync(() => listTerms('unit'), [])
   const { data: storesUsed } = useAsync(() => nameUsage('store'), [])
   const { data: kindsUsed } = useAsync(() => nameUsage('kind'), [])
+  const { data: itemsUsed } = useAsync(() => nameUsage('item'), [])
   const { data: animals } = useAsync(() => listAssets(['animal', 'group']), [])
   // The species this farm keeps, not every species there is: four buttons
   // for what is actually in the barn beat a list of twelve.
@@ -89,6 +93,7 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
 
   const resolvedKind = kind === OTHER ? kindOther.trim() : kind
   const forStock = FOR_STOCK_KINDS.includes(resolvedKind)
+  const purchaseName = quickPurchaseName(resolvedKind, forStock ? forSpecies : null, name)
   // Projects are what gets built — a barn, a fence — so the picker waits
   // for building supplies or a kind off the short list (Improvements,
   // Lumber…). Feed, hay and medicine are not, and showing it before
@@ -112,6 +117,7 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
       const f = quickFillFromScan(r, { quickKinds: QUICK_KINDS, stores: storesUsed ?? [] })
       if (f.cost) setCost(f.cost)
       if (f.kind) { setKind(f.kind); setMoreKinds(f.moreKinds) }
+      setName(f.name)
       setForSpecies(f.forSpecies)
       if (f.supplier) setSupplier(f.supplier)
       if (f.date) setDate(f.date)
@@ -147,7 +153,7 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
     const projectId = await resolveProject(projectPick, projectName)
     await createPurchase({
       material: resolvedKind,
-      name: quickPurchaseName(resolvedKind, forStock ? forSpecies : null),
+      name: purchaseName,
       cost: Number(cost),
       amount: forStock && Number(amount) > 0 ? Number(amount) : undefined,
       unit: forStock ? unit : undefined,
@@ -282,6 +288,13 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
         </div>
       )}
 
+      {/* Feed is named for its animal, above; everything else by what it
+          is, so Stores lists "Fuel filter" and not one more "Parts". */}
+      {!!resolvedKind && !forStock && (
+        <NameInput label="Name (optional)" value={name} onChange={setName}
+          used={itemsUsed ?? []} placeholder={resolvedKind} noun="item" />
+      )}
+
       {showProject && (
         <ProjectSelect value={project} onChange={setProject}
           newName={projectName} onNewName={setProjectName} />
@@ -304,7 +317,7 @@ export function QuickBuy({ onDone, onClose, onDetailed }: {
       <button className="primary" disabled={busy || !ready} onClick={run}>
         {busy ? 'Saving…'
           : resolvedKind && Number(cost) > 0
-            ? `Save ${quickPurchaseName(resolvedKind, forStock ? forSpecies : null)} · ${formatMoney(Number(cost))}`
+            ? `Save ${purchaseName} · ${formatMoney(Number(cost))}`
             : 'Save'}
       </button>
       {error && <p className="error">{error}</p>}

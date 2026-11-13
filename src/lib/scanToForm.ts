@@ -15,6 +15,30 @@ export interface ScanFill {
   supplier: string
   /** YYYY-MM-DD, or '' when the receipt's date could not be read. */
   date: string
+  /** What was bought, from the receipt's items — see scanItemName. */
+  name: string
+}
+
+/**
+ * What a scanned purchase of `kind` is called, from the items read off the
+ * receipt: "Fuel filter" for one, "Fuel filter and Oil filter" for two,
+ * "Fuel filter and 2 more" for more. Only the items of that kind (or of no
+ * kind read) count, so the bolts on a parts receipt don't name the filter.
+ * '' for feed, hay and mineral, which keep their shared names (see
+ * quickPurchaseName), and when no item was read.
+ */
+export function scanItemName(r: ScanResult, kind: string): string {
+  if (!kind || FOR_STOCK_KINDS.includes(kind)) return ''
+  const names = [...new Set(r.items
+    .filter((i) => (i.kind ?? r.kind) === kind)
+    .map((i) => i.description.trim())
+    .filter(Boolean))]
+  if (names.length === 0) return ''
+  const first = names[0].charAt(0).toUpperCase() + names[0].slice(1)
+  const name = names.length === 1 ? first
+    : names.length === 2 ? `${first} and ${names[1]}`
+    : `${first} and ${names.length - 1} more`
+  return name.length <= 60 ? name : `${name.slice(0, 59).trimEnd()}…`
 }
 
 /**
@@ -38,6 +62,7 @@ export function quickFillFromScan(
     forSpecies: kind && FOR_STOCK_KINDS.includes(kind) ? r.forSpecies ?? '' : '',
     supplier: store,
     date: r.date ?? '',
+    name: scanItemName(r, kind),
   }
 }
 
@@ -86,7 +111,7 @@ export function linesFromScan(r: ScanResult): ScanLine[] {
     left -= cents
     const species = FOR_STOCK_KINDS.includes(k) ? r.forSpecies ?? '' : ''
     return {
-      material: k, category: species, name: quickPurchaseName(k, species),
+      material: k, category: species, name: quickPurchaseName(k, species, scanItemName(r, k)),
       amount: '', unit: 'lb', cost: (cents / 100).toFixed(2),
     }
   })

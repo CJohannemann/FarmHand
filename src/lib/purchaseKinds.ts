@@ -29,12 +29,18 @@ export const FOR_STOCK_KINDS = ['Feed', 'Hay', 'Mineral']
  * Feed for pigs is "Pig feed"; hay with no animal named is "Hay"; anything
  * else is just its kind. The species is lower-cased into the phrase only
  * after its first letter, so "Pig feed", not "Pig Feed".
+ *
+ * `name` is what the thing itself is called — a fuel filter, a tube of
+ * wormer — read off a scanned receipt or typed in. It names everything but
+ * feed, hay and mineral: a Parts row in Stores that says only "Parts" can't
+ * be told from the next one, while feed keeps its one shared name because
+ * that is what the Feed picker lists. Blank, it is the kind.
  */
-export function quickPurchaseName(kind: string, forSpecies?: string | null): string {
+export function quickPurchaseName(kind: string, forSpecies?: string | null, name?: string | null): string {
   const k = kind.trim()
   const sp = forSpecies?.trim()
-  if (sp && FOR_STOCK_KINDS.includes(k)) return `${sp} ${k.toLowerCase()}`
-  return k
+  if (FOR_STOCK_KINDS.includes(k)) return sp ? `${sp} ${k.toLowerCase()}` : k
+  return name?.trim() || k
 }
 
 /**

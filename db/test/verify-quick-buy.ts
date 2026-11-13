@@ -30,6 +30,10 @@ check('feed for everything is just "Feed"', quickPurchaseName('Feed', '') === 'F
 check('a kind that is not for one animal ignores the animal',
   quickPurchaseName('Building supplies', 'Pig') === 'Building supplies')
 check('stray spaces are not part of the name', quickPurchaseName(' Feed ', ' Pig ') === 'Pig feed')
+check('a part takes its own name', quickPurchaseName('Parts', null, 'Fuel filter') === 'Fuel filter')
+check('a blank name is the kind', quickPurchaseName('Parts', null, '  ') === 'Parts')
+check('feed ignores a name — the Feed picker lists one shared name',
+  quickPurchaseName('Feed', 'Pig', 'Hog grower 50 lb') === 'Pig feed')
 
 console.log('\nLumber is money spent, not stock')
 check('building supplies stay out of Stores', SERVICE_MATERIALS.includes('Building supplies'))
