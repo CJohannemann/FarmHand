@@ -192,7 +192,7 @@ console.log('\nHeats')
     cow('2026-11-02', '2026-10-12')?.kind === 'heat')
   check('no heat on record, nothing to say', cow(null) === null && cow(null, '2026-11-01')?.kind === 'return')
 
-  check('Today shows it from 3 days ahead', heatIsNear({ days: 3 }) && !heatIsNear({ days: 4 }))
+  check('Today shows it from a week ahead', heatIsNear({ days: 7 }) && !heatIsNear({ days: 8 }))
   check('until 2 days after', heatIsNear({ days: -2 }) && !heatIsNear({ days: -3 }))
 
   check('days between heats, in any order',

@@ -9,6 +9,7 @@ import { inviteLinkCode } from './lib/inviteLink'
 import { navigate, useRoute } from './lib/route'
 import { db, getSyncState, setSyncState } from './db/client'
 import { setCurrentUser } from './db/queries'
+import { keepAlertsRegistered } from './lib/push'
 import { consumeWipeIfPending, ensureCutover, type CutoverResult } from './db/cutover'
 import { Today } from './screens/Today'
 import { Stock } from './screens/Stock'
@@ -54,6 +55,9 @@ export default function App() {
   const { session, checking, recovery, clearRecovery, linkError: badLink, clearLinkError } = useSession()
   // Every new log records who made it — see setCurrentUser's own comment.
   useEffect(() => { setCurrentUser(session?.user.id ?? null) }, [session])
+  // A phone that turned alerts on stays known to the server, under whoever
+  // is signed in on it now — see keepAlertsRegistered.
+  useEffect(() => { if (session) void keepAlertsRegistered() }, [session])
   const route = useRoute()
   const [link, setLink] = useState<FarmLink | null>(null)
   const [linkError, setLinkError] = useState<string | null>(null)

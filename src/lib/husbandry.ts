@@ -340,11 +340,13 @@ const addDays = (from: Date | string, days: number): Date | null => {
 }
 
 /**
- * How many days before an expected heat Today starts showing it, and how
- * long after. A heat lasts a day or two and comes a day or two either side
- * of the date, so this is the window someone should be watching her.
+ * How many days before an expected heat Today starts showing it (and the
+ * phone notification goes out — see lib/heatAlerts.ts), and how long
+ * after. A week ahead is time to plan: have the bull in, book the AI tech,
+ * move her up. After the date, a heat lasts a day or two and comes a day
+ * or two late, so she stays listed while she still wants watching.
  */
-export const HEAT_LEAD_DAYS = 3
+export const HEAT_LEAD_DAYS = 7
 export const HEAT_GRACE_DAYS = 2
 
 /**

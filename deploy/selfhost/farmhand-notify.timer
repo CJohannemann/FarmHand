@@ -1,0 +1,14 @@
+[Unit]
+Description=Send FarmHand's phone notifications once a day
+
+[Timer]
+# 13:20 UTC: early morning across the US (7:20 Central in winter), so a
+# heat alert is there when the day starts. Persistent= catches a day the
+# server was off, and the alert is still sent only once.
+OnCalendar=*-*-* 13:20:00 UTC
+Persistent=true
+RandomizedDelaySec=2min
+Unit=farmhand-notify.service
+
+[Install]
+WantedBy=timers.target

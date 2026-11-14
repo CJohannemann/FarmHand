@@ -1,0 +1,12 @@
+[Unit]
+Description=Send FarmHand's phone notifications (heats coming up)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Adjust User= and WorkingDirectory= if FarmHand isn't cloned under this
+# user's home, the same as farmhand-disk-check.service.
+User=ubuntu
+WorkingDirectory=/home/ubuntu/FarmHand/deploy/selfhost
+ExecStart=/usr/bin/env bash notify.sh

@@ -13,6 +13,7 @@ import { ScanKeySetup } from './ScanKeySetup'
 import { localFarms, setActiveFarm } from '../db/queries'
 import { deleteAccount, exportEverything } from '../lib/account'
 import { downloadZip } from '../lib/receipts'
+import { alertsOn, needsHomeScreen, pushPermission, pushSupported, turnOffAlerts, turnOnAlerts } from '../lib/push'
 
 const ROLE_LABEL: Record<FarmRole, string> = {
   owner: 'Owner', manager: 'Manager', member: 'Member', viewer: 'Viewer',
@@ -47,6 +48,8 @@ export function Settings() {
 
       <AppearancePanel />
 
+      <AlertsPanel />
+
       <SyncPanel />
 
       {isOwner && <InvitePanel onCreated={members.reload} />}
@@ -72,6 +75,62 @@ export function Settings() {
 
       <ContactPanel />
     </div>
+  )
+}
+
+/**
+ * Phone alerts: a heat coming up in a week, sent by the server once a day
+ * (deploy/selfhost/send-notifications.ts). Per phone, not per account —
+ * each phone that should buzz turns it on once.
+ */
+function AlertsPanel() {
+  const on = useAsync(() => alertsOn(), [])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const homeScreen = needsHomeScreen()
+  // A build without the key, or a browser with no notifications at all:
+  // nothing to offer, and nothing worth explaining.
+  if (!pushSupported && !homeScreen) return null
+
+  const act = async (fn: () => Promise<void>) => {
+    setBusy(true); setError(null)
+    try { await fn(); on.reload() } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
+  return (
+    <>
+      <h2 style={{ marginTop: '1.5rem' }}>Phone alerts</h2>
+      <p className="hint">
+        A notification on this phone a week before an animal is due to come
+        into heat, so there's time to plan.
+      </p>
+      {homeScreen ? (
+        <p className="notice">
+          On an iPhone, alerts need FarmHand on your home screen: in Safari tap
+          Share, then <strong>Add to Home Screen</strong>, and open it from there
+          to turn them on.
+        </p>
+      ) : on.data ? (
+        <>
+          <p className="notice">Alerts are on for this phone.</p>
+          <div className="actions">
+            <button type="button" disabled={busy} onClick={() => act(turnOffAlerts)}>Turn off alerts</button>
+          </div>
+        </>
+      ) : pushPermission() === 'denied' ? (
+        <p className="notice">
+          Notifications are blocked for FarmHand on this phone. Allow them in the
+          phone's Settings, then come back here.
+        </p>
+      ) : (
+        <div className="actions">
+          <button type="button" className="primary" disabled={busy || on.loading} onClick={() => act(turnOnAlerts)}>
+            {busy ? 'Turning on…' : 'Turn on alerts'}
+          </button>
+        </div>
+      )}
+      {error && <p className="error">{error}</p>}
+    </>
   )
 }
 

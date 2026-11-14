@@ -293,6 +293,101 @@ on its own, for a hotfix at 6am. Just merge `main` back into `dev`
 afterwards, or the next promotion will refuse as a non-fast-forward.
 
 
+## Phone notifications
+
+A notification on everyone's phone a week before an animal is due to come
+into heat. A daily timer runs `deploy/selfhost/notify.sh`, which runs
+`send-notifications.ts`: it works out who is a week from a heat (the same
+arithmetic the app shows, from `src/lib/heatAlerts.ts`) and sends each one
+once, to every phone on that farm that turned alerts on. The same setup as
+PropertyManagement's push notifications.
+
+### One-time setup, on the VPS
+
+**1. Node 22.6 or newer.** The sender is TypeScript, run directly by Node.
+
+```bash
+node --version
+```
+
+**2. Pull, and add the two notification tables** (`db/migrations/020_push_notifications.sql`;
+safe to run again, like every migration):
+
+```bash
+cd ~/FarmHand
+git pull
+bash deploy/selfhost/apply-migrations.sh
+```
+
+**3. Make the key pair** that lets phones trust these notifications:
+
+```bash
+cd ~/FarmHand/deploy/selfhost
+node generate-vapid-keys.mjs
+```
+
+It prints two lines. Paste both into `~/FarmHand/deploy/selfhost/.env`,
+and add a contact address push services can reach:
+
+```
+VAPID_PUBLIC_KEY=B...
+VAPID_PRIVATE_KEY=...
+VAPID_SUBJECT=mailto:you@example.com
+```
+
+Then the **public** key only, under a different name, into the app's own
+`~/FarmHand/.env` (the app needs it to turn alerts on; never put the
+private key there):
+
+```
+VITE_VAPID_PUBLIC_KEY=B...   # the same value as VAPID_PUBLIC_KEY
+```
+
+**4. Deploy**, so the app is built with that key (and `web-push` is
+installed for the sender):
+
+```bash
+cd ~/FarmHand
+bash deploy/deploy.sh
+```
+
+**5. Check it,** sending nothing:
+
+```bash
+cd ~/FarmHand/deploy/selfhost
+bash notify.sh --dry-run
+```
+
+It lists any heat due in the next week ("would send: Daisy may come into
+heat — Around Sat, Nov 21 …"), or prints nothing when none is.
+
+**6. Turn on the daily timer** (13:20 UTC, early morning in the US):
+
+```bash
+sudo cp ~/FarmHand/deploy/selfhost/farmhand-notify.service /etc/systemd/system/
+sudo cp ~/FarmHand/deploy/selfhost/farmhand-notify.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now farmhand-notify.timer
+```
+
+### On each phone
+
+On an iPhone, FarmHand has to be on the home screen: open
+farmhandmanager.com in Safari, tap Share, then **Add to Home Screen**, and
+open it from that icon. Then **Settings › Phone alerts › Turn on alerts**,
+and Allow. Each phone that should get alerts does this once.
+
+### Afterwards
+
+```bash
+systemctl list-timers farmhand-notify.timer      # next run
+journalctl -u farmhand-notify.service -n 50      # what it sent
+bash ~/FarmHand/deploy/selfhost/notify.sh        # run it now, by hand
+```
+
+An empty log is normal: nothing due that day. Each heat is sent once, so
+running it by hand never sends the same alert twice.
+
 ## Space
 
 The local-database engine (PGlite) ships an ~8MB WASM build plus a ~5MB
