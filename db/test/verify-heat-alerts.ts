@@ -2,7 +2,7 @@
 // it says, and that each is sent once (src/lib/heatAlerts.ts).
 //
 //   npm run verify:heat-alerts
-import { heatAlerts } from '../../src/lib/heatAlerts.ts'
+import { heatAlerts, heatTracking } from '../../src/lib/heatAlerts.ts'
 
 let fails = 0
 const check = (label: string, ok: boolean, detail = '') => {
@@ -39,6 +39,21 @@ check('and says what no heat means', !!r?.body.includes('most likely settled'))
 console.log('\nOnly what cycles')
 check('no alert for a species with no cycle', heatAlerts([cow('2026-10-31', null, { species: 'Rabbit' })], now).length === 0)
 check('ewes on their own 17 days', heatAlerts([cow('2026-11-04', null, { species: 'Sheep' })], now)[0]?.key === 'F:A:heat:2026-11-21')
+
+console.log('\nThe dry run says where each animal stands')
+{
+  const t = (lastHeat: string | null, lastBred: string | null = null, extra = {}) => heatTracking(cow(lastHeat, lastBred, extra), now)
+  const inHeatToday = t('2026-11-14', null, { name: 'Rosie', species: 'Pig' })
+  check('in heat today: the next one, and the day the alert goes out',
+    inHeatToday === 'Rosie (Pig): next heat around Sat, Dec 5 (in 21 days) — alert goes out Sat, Nov 28', inHeatToday)
+  check('a week out: alert due now', t('2026-10-31').endsWith('— alert due now'), t('2026-10-31'))
+  check('just past: no alert', t('2026-10-22').includes('(2 days ago) — past, no alert'), t('2026-10-22'))
+  check('yesterday, not "1 days ago"', t('2026-10-23').includes('(yesterday)'), t('2026-10-23'))
+  check('after breeding: the return check', t('2026-11-10', '2026-11-10').startsWith('Daisy (Cattle): watch for a return around Tue, Dec 1'), t('2026-11-10', '2026-11-10'))
+  check('bred long ago: settled', t('2026-09-01', '2026-09-01').includes('most likely settled'), t('2026-09-01', '2026-09-01'))
+  check('heat long ago: too old to predict', t('2026-04-01').includes('too long ago to predict'), t('2026-04-01'))
+  check('a species with no cycle says so', t('2026-11-01', null, { species: 'Rabbit' }).includes('no heat cycle known'))
+}
 
 console.log(fails === 0 ? '\nAll checks passed.\n' : `\n${fails} FAILED\n`)
 process.exit(fails ? 1 : 0)

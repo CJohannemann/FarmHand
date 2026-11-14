@@ -12,7 +12,7 @@
  * Dates are the farm's: the sender runs this with the process set to the
  * farm's timezone, so "in 7 days" is counted from the farm's today.
  */
-import { HEAT_LEAD_DAYS, heatOutlook, heatSentence } from './husbandry.ts'
+import { HEAT_LEAD_DAYS, daysUntil, heatCycleFor, heatOutlook, heatSentence } from './husbandry.ts'
 
 export interface HeatAlertAnimal {
   farmId: string
@@ -51,4 +51,35 @@ export function heatAlerts(animals: HeatAlertAnimal[], now: Date = new Date()): 
     })
   }
   return out
+}
+
+/**
+ * Where one animal stands, in a line — what `notify.sh --dry-run` lists
+ * for every animal it tracks, so running it always shows the server can
+ * see her, even in a week with nothing to send:
+ *
+ *   Rosie (Pig): next heat around Sat, Dec 5 (in 21 days) — alert goes out Sat, Nov 28
+ *   Daisy (Cattle): watch for a return around Sat, Nov 21 (in 7 days) — alert due now
+ *   Bess (Cattle): last heat Apr 1 — too long ago to predict the next
+ */
+export function heatTracking(a: HeatAlertAnimal, now: Date = new Date()): string {
+  const fmt = (d: Date) => d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const who = `${a.name} (${a.species ?? 'no species'})`
+  const o = heatOutlook(a, now)
+  if (!o) {
+    if (!heatCycleFor(a.species)) return `${who}: no heat cycle known for this species — not tracked`
+    // Bred at (or after) that heat — the same test heatOutlook uses.
+    if (a.lastBred && a.lastHeat && daysUntil(new Date(a.lastHeat), new Date(a.lastBred)) <= 1) {
+      return `${who}: bred, and the return-to-heat check has passed — most likely settled`
+    }
+    return `${who}: last heat ${a.lastHeat ? fmt(new Date(a.lastHeat)) : 'unknown'} — too long ago to predict the next`
+  }
+  const what = o.kind === 'return' ? 'watch for a return' : 'next heat'
+  const when = o.days === 0 ? 'today' : o.days === 1 ? 'tomorrow' : o.days === -1 ? 'yesterday'
+    : o.days < 0 ? `${-o.days} days ago` : `in ${o.days} days`
+  const alertOn = new Date(o.date.getFullYear(), o.date.getMonth(), o.date.getDate() - HEAT_LEAD_DAYS, 12)
+  const alert = o.days < 0 ? 'past, no alert'
+    : o.days <= HEAT_LEAD_DAYS ? 'alert due now'
+    : `alert goes out ${fmt(alertOn)}`
+  return `${who}: ${what} around ${fmt(o.date)} (${when}) — ${alert}`
 }

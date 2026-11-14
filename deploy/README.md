@@ -353,8 +353,18 @@ cd ~/FarmHand/deploy/selfhost
 bash notify.sh --dry-run
 ```
 
-It lists any heat due in the next week ("would send: Daisy may come into
-heat — Around Sat, Nov 21 …"), or prints nothing when none is.
+It lists every animal with a heat recorded, and where each stands, then
+anything due to be sent:
+
+```
+CL Jo Farms — 1 phone with alerts on
+  Rosie (Pig): next heat around Sat, Dec 5 (in 21 days) — alert goes out Sat, Nov 28
+  Daisy (Cattle): next heat around Sat, Nov 21 (in 7 days) — alert due now
+would send: Daisy may come into heat — Around Sat, Nov 21 (in 7 days). …
+```
+
+An animal missing from the list means the server can't see her heat yet:
+it wasn't recorded with **In heat**, or the phone hasn't synced.
 
 **6. Turn on the daily timer** (13:20 UTC, early morning in the US):
 

@@ -10,21 +10,25 @@
 // and referenced as :'name', never put into the SQL string.
 //
 //   node --experimental-strip-types send-notifications.ts
-//   node --experimental-strip-types send-notifications.ts --dry-run   # say what would go, send nothing
+//   node --experimental-strip-types send-notifications.ts --dry-run   # list every animal tracked and what
+//                                                                    # would go; send nothing
 
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import webpush from 'web-push'
-import { heatAlerts, type HeatAlertAnimal } from '../../src/lib/heatAlerts.ts'
+import { heatAlerts, heatTracking, type HeatAlertAnimal } from '../../src/lib/heatAlerts.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DRY = process.argv.includes('--dry-run')
 
 function loadEnv(path: string): Record<string, string> {
   const env: Record<string, string> = {}
-  for (const line of readFileSync(path, 'utf8').split('\n')) {
+  // Missing reads as empty: a dry run needs nothing from it, and a real
+  // send stops below with what to do.
+  const text = existsSync(path) ? readFileSync(path, 'utf8') : ''
+  for (const line of text.split('\n')) {
     const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/)
     if (m) env[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2')
   }
@@ -61,10 +65,12 @@ if (!DRY) {
 
 // Every animal with a heat on record, on a farm where somebody has a phone
 // to send to: her last heat and last breeding, and her farm's timezone.
-interface Row extends HeatAlertAnimal { timezone: string | null }
+interface Row extends HeatAlertAnimal { timezone: string | null; farmName: string; phones: number }
 const animals: Row[] = JSON.parse(psql(`
   select coalesce(jsonb_agg(r), '[]') from (
-    select a.farm_id as "farmId", f.timezone, a.id as "assetId", a.name,
+    select a.farm_id as "farmId", f.timezone, f.name as "farmName", a.id as "assetId", a.name,
+           (select count(*) from push_subscription ps join farm_member fm on fm.user_id = ps.user_id
+             where fm.farm_id = a.farm_id) as phones,
            a.attributes->>'species' as species,
            max(case when l.type = 'heat' then l.timestamp end) as "lastHeat",
            max(case when l.type = 'breeding' then l.timestamp end) as "lastBred"
@@ -76,7 +82,7 @@ const animals: Row[] = JSON.parse(psql(`
      where a.type = 'animal' and a.status = 'active' and a.deleted_at is null
        ${DRY ? '' : `and exists (select 1 from farm_member fm join push_subscription ps on ps.user_id = fm.user_id
                                   where fm.farm_id = a.farm_id)`}
-     group by a.farm_id, f.timezone, a.id, a.name, a.attributes
+     group by a.farm_id, f.timezone, f.name, a.id, a.name, a.attributes
     having max(case when l.type = 'heat' then l.timestamp end) is not null
   ) r;`).trim())
 
@@ -91,14 +97,37 @@ const due = [...byZone].flatMap(([tz, rows]) => {
   process.env.TZ = tz
   return heatAlerts(rows)
 })
+
+// The dry run lists everything it is tracking, farm by farm, so a week
+// with nothing to send still shows the server can see each animal.
+if (DRY) {
+  if (animals.length === 0) {
+    console.log('No animals with a heat recorded yet. (Recorded on a phone that hasn\'t synced? It shows here once it has.)')
+  }
+  const farms = new Map<string, Row[]>()
+  for (const a of animals) farms.set(a.farmId, [...(farms.get(a.farmId) ?? []), a])
+  for (const rows of farms.values()) {
+    const { farmName, phones } = rows[0]
+    process.env.TZ = rows[0].timezone || 'UTC'
+    console.log(`${farmName} — ${Number(phones) === 0 ? 'no phone has alerts turned on yet'
+      : `${phones} phone${Number(phones) === 1 ? '' : 's'} with alerts on`}`)
+    for (const a of rows) console.log(`  ${heatTracking(a)}`)
+  }
+}
 if (due.length === 0) process.exit(0)
 
 let pushed = 0
 for (const alert of due) {
   const already = psql(`select 1 from push_sent where key = :'key';`, { key: alert.key }).trim()
-  if (already) continue
+  if (already) {
+    if (DRY) console.log(`already sent: ${alert.title}`)
+    continue
+  }
   if (DRY) {
-    console.log(`would send: ${alert.title} — ${alert.body}`)
+    const phones = Number(animals.find((x) => x.farmId === alert.farmId)?.phones ?? 0)
+    console.log(phones > 0
+      ? `would send: ${alert.title} — ${alert.body}`
+      : `would send, once a phone has alerts on: ${alert.title} — ${alert.body}`)
     continue
   }
   const subs: { id: string; endpoint: string; p256dh: string; auth: string }[] = JSON.parse(psql(`
