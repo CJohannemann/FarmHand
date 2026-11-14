@@ -298,3 +298,116 @@ export function gestationSentence(species: string): string | null {
     ? `${species} eggs take ${term.phrase} to hatch.`
     : `${pluralSpecies(species)} carry ${term.phrase}.`
 }
+
+/* ----------------------------------------------------------------- heat */
+
+/**
+ * How often a female comes back into heat when she isn't bred, in days:
+ * the working figures a farm plans around. A cow, a sow, a doe goat and a
+ * mare run about three weeks, a ewe a little less, a jenny a little more.
+ * Individuals vary by a day or two either way, which is why the dates built
+ * on these are "around", never "on".
+ *
+ * Left out on purpose: rabbits, alpacas and llamas ovulate when bred rather
+ * than on a cycle, and birds don't have heats at all. A species missing
+ * here gets no In heat button rather than a made-up date.
+ */
+export const HEAT_CYCLE: Record<string, { days: number; phrase: string }> = {
+  Cattle: { days: 21, phrase: 'about every 3 weeks' },
+  Bison:  { days: 21, phrase: 'about every 3 weeks' },
+  Pig:    { days: 21, phrase: 'about every 3 weeks' },
+  Goat:   { days: 21, phrase: 'about every 3 weeks' },
+  Horse:  { days: 21, phrase: 'about every 3 weeks' },
+  Sheep:  { days: 17, phrase: 'about every 17 days' },
+  Donkey: { days: 23, phrase: 'about every 3 weeks' },
+}
+
+export function heatCycleFor(species: string | undefined | null): { days: number; phrase: string } | null {
+  return HEAT_CYCLE[String(species ?? '')] ?? null
+}
+
+/** "Cows come into heat about every 3 weeks." */
+export function heatSentence(species: string): string | null {
+  const c = heatCycleFor(species)
+  return c ? `${pluralSpecies(species)} come into heat ${c.phrase}.` : null
+}
+
+/** `from` plus `days`, at noon — see dueDate for why noon. */
+const addDays = (from: Date | string, days: number): Date | null => {
+  const d = new Date(from)
+  if (Number.isNaN(d.getTime())) return null
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, 12)
+}
+
+/**
+ * How many days before an expected heat Today starts showing it, and how
+ * long after. A heat lasts a day or two and comes a day or two either side
+ * of the date, so this is the window someone should be watching her.
+ */
+export const HEAT_LEAD_DAYS = 3
+export const HEAT_GRACE_DAYS = 2
+
+/**
+ * Heats that went unrecorded are still worth predicting from the last one
+ * that was — up to this many cycles on. Past that the record is too old to
+ * say anything about her, and a guess built on it would only be noise.
+ */
+export const HEAT_MAX_CYCLES = 3
+
+/**
+ * What to watch her for next, from her last recorded heat and her last
+ * breeding:
+ *
+ *   - 'return' — she was bred at (or after) her last heat. One cycle on is
+ *     when she would come back into heat if it didn't take. If she doesn't,
+ *     she has most likely settled; once that window is past this says
+ *     nothing more, and her due date takes over.
+ *   - 'heat' — not bred since. Her next heat, one cycle after the last,
+ *     carried forward a cycle at a time when heats in between weren't
+ *     written down (up to HEAT_MAX_CYCLES).
+ *
+ * null for a species with no cycle (see HEAT_CYCLE), for an animal with
+ * neither on record, and once a return-to-heat check has passed.
+ */
+export function heatOutlook(
+  row: { species: string | null; lastHeat: string | null; lastBred: string | null },
+  now: Date = new Date(),
+): { kind: 'heat' | 'return'; date: Date; days: number; cycle: number } | null {
+  const cycle = heatCycleFor(row.species)
+  if (!cycle) return null
+  const heat = row.lastHeat ? new Date(row.lastHeat) : null
+  const bred = row.lastBred ? new Date(row.lastBred) : null
+  // Bred at that heat counts as bred after it: a heat seen in the evening
+  // and a breeding the next morning are the same heat.
+  const bredSince = !!bred && (!heat || daysUntil(heat, bred) <= 1)
+  if (bredSince) {
+    const date = addDays(bred!, cycle.days)
+    if (!date) return null
+    const days = daysUntil(date, now)
+    return days < -HEAT_GRACE_DAYS ? null : { kind: 'return', date, days, cycle: cycle.days }
+  }
+  if (!heat) return null
+  for (let k = 1; k <= HEAT_MAX_CYCLES; k++) {
+    const date = addDays(heat, cycle.days * k)
+    if (!date) return null
+    const days = daysUntil(date, now)
+    if (days >= -HEAT_GRACE_DAYS) return { kind: 'heat', date, days, cycle: cycle.days }
+  }
+  return null
+}
+
+/** Whether Today should be showing it: inside the days she wants watching. */
+export function heatIsNear(o: { days: number }): boolean {
+  return o.days <= HEAT_LEAD_DAYS && o.days >= -HEAT_GRACE_DAYS
+}
+
+/**
+ * The days between one recorded heat and the next, oldest first — "21, 22,
+ * 20" says she is regular; "21, 42" says a heat was missed (or not seen).
+ * Takes the heats in any order.
+ */
+export function heatIntervals(heats: (string | Date)[]): number[] {
+  const t = heats.map((h) => new Date(h)).filter((d) => !Number.isNaN(d.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime())
+  return t.slice(1).map((d, i) => daysUntil(d, t[i]))
+}

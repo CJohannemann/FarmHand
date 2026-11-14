@@ -23,7 +23,7 @@ export function dueText(iso: string): { text: string; late: boolean } {
   }
 }
 
-/** A birth the farm is expecting soon — see Today's own `births`. */
+/** A birth the farm is expecting soon, or a heat to watch for — see Today's own `births`. */
 export interface BirthRow {
   assetId: string
   species: string | null
@@ -76,7 +76,7 @@ export function TaskList({
   return (
     <ul className="tasklist">
       {births.map((b) => (
-        <li key={b.assetId} className={b.late ? 'late' : ''}>
+        <li key={`${b.assetId}:${b.title}`} className={b.late ? 'late' : ''}>
           <span className="task-glyph" aria-hidden="true">{speciesGlyph(b.species)}</span>
           <button className="task-body" onClick={() => onOpenAnimal?.(b.assetId)}>
             <span className="task-name">{b.title}</span>

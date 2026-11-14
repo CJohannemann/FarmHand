@@ -8,6 +8,8 @@ const LABELS: Record<string, string> = {
   input_application: 'Feeding',
   observation: 'Note',
   birth: 'Birth',
+  breeding: 'Bred',
+  heat: 'Heat',
   death: 'Death',
   movement: 'Moved',
   purchase: 'Purchase',

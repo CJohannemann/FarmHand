@@ -2138,6 +2138,40 @@ export async function expectedBirths(): Promise<ExpectedBirth[]> {
   return rows
 }
 
+/** One animal's heat record — see heatRecords(). */
+export interface HeatRecord {
+  assetId: string
+  name: string
+  species: string | null
+  lastHeat: string | null
+  lastBred: string | null
+}
+
+/**
+ * Every animal still on the farm with a heat or a breeding on record: her
+ * last of each. As with expectedBirths(), no dates are worked out here —
+ * how long a cycle runs is husbandry (heatOutlook in lib/husbandry.ts).
+ */
+export async function heatRecords(): Promise<HeatRecord[]> {
+  const pg = await db()
+  const { rows } = await pg.query<HeatRecord>(
+    `select a.id as "assetId", a.name as "name",
+            a.attributes->>'species' as "species",
+            max(case when l.type = 'heat' then l.timestamp end) as "lastHeat",
+            max(case when l.type = 'breeding' then l.timestamp end) as "lastBred"
+       from asset a
+       join log_asset la on la.asset_id = a.id and la.role = 'subject'
+       join log l on l.id = la.log_id and l.type in ('heat', 'breeding')
+            and l.status = 'done' and l.deleted_at is null
+            and l.farm_id = (select id from active_farm)
+      where a.type = 'animal' and a.status = 'active' and a.deleted_at is null
+        and a.farm_id = (select id from active_farm)
+      group by a.id, a.name, a.attributes
+     having max(case when l.type = 'heat' then l.timestamp end) is not null`,
+  )
+  return rows
+}
+
 export async function planTask(input: {
   name: string
   due: Date

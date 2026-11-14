@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
-  CATEGORIZABLE_MATERIALS, createHarvest, createLog, createPurchase, createTerm, expectedBirths,
+  CATEGORIZABLE_MATERIALS, createHarvest, createLog, createPurchase, createTerm, expectedBirths, heatRecords,
   listAssets, listContacts, listTerms, lotBalances, lotIsUsedUp, plannedLogs, recentLogs,
   completeWeightSale, nameUsage, pendingWeightSales, recordDisposition, sellAsset, setLotCategory,
   type LotBalance, type WeightSale, type WeightSalePart,
@@ -21,7 +21,7 @@ import {
   formatMoney, formatQty, ignoreArrowKeysOnNumberInput,
   ignoreScrollOnNumberInput, onNumericChange,
 } from '../lib/numeric'
-import { dueLabel, pluralSpecies, upcomingBirth } from '../lib/husbandry'
+import { dueLabel, heatIsNear, heatOutlook, pluralSpecies, upcomingBirth } from '../lib/husbandry'
 import { groupUnits } from '../lib/units'
 import { getFarmLocation } from '../lib/weather'
 import { Sheet } from './Sheet'
@@ -69,6 +69,9 @@ export function Today({ onGoToStock, onGoToAnimal }: {
   // date with it, and a breeding deleted takes its row off the list.
   // Nothing to keep in step, and nothing left behind.
   const births = useAsync(() => expectedBirths(), [])
+  // Heats to watch for — worked out from the heat and breeding logs the
+  // same way, so a heat recorded or deleted moves these with it.
+  const heats = useAsync(() => heatRecords(), [])
   const assets = useAsync(() => listAssets(), [])
   // Animals sold by hanging weight whose weight is not back yet. Easy to
   // forget otherwise: the animal has left, nothing on the farm is waiting
@@ -86,7 +89,7 @@ export function Today({ onGoToStock, onGoToAnimal }: {
 
   const done = () => {
     setOpen(null); setChore(null)
-    recent.reload(); tasks.reload(); assets.reload(); births.reload(); weightSales.reload()
+    recent.reload(); tasks.reload(); assets.reload(); births.reload(); heats.reload(); weightSales.reload()
   }
 
   const dueRows: BirthRow[] = (births.data ?? [])
@@ -104,6 +107,20 @@ export function Today({ onGoToStock, onGoToAnimal }: {
       late: b.days < 0,
     }))
 
+  // Only inside the few days she wants watching — see heatIsNear.
+  const heatRows: BirthRow[] = (heats.data ?? [])
+    .map((h) => ({ h, o: heatOutlook(h) }))
+    .filter((x) => x.o !== null && heatIsNear(x.o))
+    .sort((a, b) => a.o!.days - b.o!.days)
+    .map(({ h, o }) => ({
+      assetId: h.assetId,
+      species: h.species,
+      title: o!.kind === 'return' ? `Watch ${h.name} for a return to heat` : `${h.name} may come into heat`,
+      when: `around ${o!.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${
+        o!.days < 0 ? (o!.days === -1 ? 'yesterday' : `${-o!.days} days ago`) : dueLabel(o!.days)}`,
+      late: false,
+    }))
+
   // What the Calendar card says it is holding. Counted off what this screen
   // has already loaded rather than a query of its own — the point is a
   // reason to tap, not a second source of truth.
@@ -119,6 +136,8 @@ export function Today({ onGoToStock, onGoToAnimal }: {
       ? `${choresThisMonth} ${choresThisMonth === 1 ? 'chore' : 'chores'}` : '',
     birthsComing > 0
       ? `${birthsComing} due to give birth` : '',
+    heatRows.length > 0
+      ? `${heatRows.length} to watch for heat` : '',
   ].filter(Boolean).join(' · ')
 
   if (searching) {
@@ -204,12 +223,12 @@ export function Today({ onGoToStock, onGoToAnimal }: {
       <h2 className="section">Farm chores</h2>
       <TaskList
         tasks={tasks.data ?? []}
-        births={dueRows}
+        births={[...dueRows, ...heatRows]}
         onOpen={setChore}
         onOpenAnimal={onGoToAnimal}
         onChanged={() => { tasks.reload(); recent.reload() }}
       />
-      {!tasks.loading && (tasks.data ?? []).length === 0 && dueRows.length === 0 && (
+      {!tasks.loading && (tasks.data ?? []).length === 0 && dueRows.length === 0 && heatRows.length === 0 && (
         <p className="empty">
           Nothing on the list. Tap <strong>Chore</strong> above to add one —
           fencing, worming, a vet appointment, anything that needs doing.

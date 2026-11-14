@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSave } from '../lib/useSave'
 import { useAsync } from '../lib/useAsync'
 import {
@@ -15,8 +15,8 @@ import { HARVESTS, producibleMaterial, type HarvestSpec } from '../lib/tiles'
 import { rollingDaily } from '../lib/production'
 import { groupUnits, measureForUnit } from '../lib/units'
 import {
-  dueDate, dueLabel, daysUntil, gestationFor, gestationSentence, sexRole,
-  OVERDUE_GRACE_DAYS, type Gestation,
+  dueDate, dueLabel, daysUntil, gestationFor, gestationSentence, heatCycleFor, heatIntervals,
+  heatOutlook, heatSentence, sexRole, OVERDUE_GRACE_DAYS, type Gestation,
 } from '../lib/husbandry'
 import {
   formatMoney, formatQty, hasNumericValue, ignoreArrowKeysOnNumberInput,
@@ -48,7 +48,7 @@ function perDayUnit(spec: HarvestSpec): string {
 const EVENT_LABELS: Record<string, string> = {
   harvest: 'Harvest', weight: 'Weight', input_application: 'Fed',
   observation: 'Note', purchase: 'Bought', birth: 'Birth', death: 'Death',
-  breeding: 'Bred',
+  breeding: 'Bred', heat: 'In heat',
   disposition: 'Used', movement: 'Moved', processing: 'Processed',
 }
 
@@ -63,7 +63,7 @@ export function AssetDetail({
 }) {
   const [sheet, setSheet] = useState<
     | 'harvest' | 'pull' | 'closeout' | 'edit' | 'treat' | 'split' | 'weigh'
-    | 'maintain' | 'retire' | 'addmember' | 'bred' | null
+    | 'maintain' | 'retire' | 'addmember' | 'bred' | 'heat' | null
   >(null)
   const [editingLog, setEditingLog] = useState<AssetEvent | null>(null)
 
@@ -140,6 +140,9 @@ export function AssetDetail({
   // "unknown" as a different claim from "wrong".
   const breedable = asset.type === 'animal' && !!term
     && !['sire', 'neither'].includes(sexRole(species, String(asset.attributes?.sex ?? '')))
+  // The same females, for the species that cycle (see HEAT_CYCLE): no
+  // In heat button on a hen or a doe rabbit.
+  const heatable = breedable && !!heatCycleFor(species)
 
   const refresh = () => {
     setSheet(null)
@@ -158,6 +161,14 @@ export function AssetDetail({
   // See OVERDUE_GRACE_DAYS: the log is permanent, this panel is not. Nor
   // is anything closed out still expecting.
   const expecting = asset.status === 'active' && due != null && dueIn >= -OVERDUE_GRACE_DAYS
+  // Her heats, newest first, and what to watch her for next. Nothing while
+  // she is expecting past the point a return to heat would show: by then
+  // the due date is the story.
+  const heats = (events.data ?? []).filter((e) => e.type === 'heat')
+  const outlook = heatable && heats.length > 0
+    ? heatOutlook({ species, lastHeat: heats[0].timestamp, lastBred: bredEvent?.timestamp ?? null })
+    : null
+  const gaps = heatIntervals(heats.map((h) => h.timestamp))
   // From the log list, not `c!.purchaseCost > 0` — a $0 purchase (born on
   // the farm, cost nothing) is a real recorded fact, not the absence of
   // one, and a plain amount check can't tell those apart.
@@ -257,6 +268,31 @@ export function AssetDetail({
           </div>
           <p className="hint">
             {gestationSentence(species)} A few days either side of the date is normal.
+          </p>
+        </>
+      )}
+
+      {heatable && heats.length > 0 && asset.status === 'active' && (
+        <>
+          <h2 className="section">Heat</h2>
+          <div className="costbox">
+            <Row label="Last in heat" value={shortDate(heats[0].timestamp)} />
+            {outlook && (
+              <Row strong
+                label={outlook.kind === 'return' ? 'Watch for a return' : 'Next heat'}
+                value={`around ${shortDate(outlook.date)} · ${heatDueLabel(outlook.days)}`} />
+            )}
+            {heats.length > 1 && (
+              <Row label="Past heats" value={heats.slice(1, 5).map((h) => shortDate(h.timestamp)).join(' · ')} />
+            )}
+            {gaps.length > 0 && (
+              <Row label="Days between" value={gaps.slice(-4).join(', ')} />
+            )}
+          </div>
+          <p className="hint">
+            {outlook?.kind === 'return'
+              ? `Bred ${shortDate(bredEvent!.timestamp)}. If she doesn't come back into heat around then, she has most likely settled.`
+              : heatSentence(species)}
           </p>
         </>
       )}
@@ -386,6 +422,9 @@ export function AssetDetail({
             {term!.kind === 'incubation' ? 'Set eggs' : 'Bred'}
           </button>
         )}
+        {asset.status === 'active' && heatable && (
+          <button onClick={() => setSheet('heat')}>In heat</button>
+        )}
         {asset.status === 'active' && equipment && (
           <button onClick={() => setSheet('maintain')}>Maintenance</button>
         )}
@@ -465,6 +504,10 @@ export function AssetDetail({
       )}
       {sheet === 'weigh' && (
         <WeightForm asset={asset} onClose={() => setSheet(null)} onDone={refresh} />
+      )}
+      {sheet === 'heat' && (
+        <HeatForm asset={asset} onClose={() => setSheet(null)} onDone={refresh}
+          onBred={() => setSheet('bred')} />
       )}
       {sheet === 'bred' && term && (
         <BredForm asset={asset} term={term} onClose={() => setSheet(null)} onDone={refresh} />
@@ -662,6 +705,74 @@ function BredForm({ asset, term, onDone, onClose }: {
       </p>
       <button className="primary" disabled={busy || !date} onClick={run}>
         {busy ? 'Saving…' : 'Save'}
+      </button>
+      {error && <p className="error">{error}</p>}
+    </Sheet>
+  )
+}
+
+/** "in 3 days", "today", "2 days ago" — a heat is never "overdue". */
+function heatDueLabel(days: number): string {
+  if (days < 0) return days === -1 ? 'yesterday' : `${-days} days ago`
+  return dueLabel(days)
+}
+
+/**
+ * She's in heat: a date (today, or when it was seen) and a note. What
+ * matters afterwards is the next one, so that is shown before saving —
+ * the same way Bred shows the due date. Breeding her at this heat is one
+ * more tap: "Save, and she was bred" goes on to the Bred sheet.
+ */
+function HeatForm({ asset, onDone, onClose, onBred }: {
+  asset: Asset; onDone: () => void; onClose: () => void; onBred: () => void
+}) {
+  const species = String(asset.attributes?.species ?? '')
+  const [date, setDate] = useState(() => {
+    const d = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  })
+  const [notes, setNotes] = useState('')
+  // A ref, not state: it is set and read in the same tap, before any re-render.
+  const thenBred = useRef(false)
+  const when = new Date(`${date}T12:00:00`)
+  const next = heatOutlook({ species, lastHeat: when.toISOString(), lastBred: null }, when)
+
+  const save = async () => {
+    await createLog({
+      type: 'heat',
+      name: 'In heat',
+      timestamp: when,
+      notes: notes.trim() || undefined,
+      assets: [{ id: asset.id, role: 'subject' as const }],
+    })
+    if (thenBred.current) onBred()
+    else onDone()
+  }
+  const { run, busy, error } = useSave(save)
+
+  return (
+    <Sheet title={`${asset.name} in heat`} onClose={onClose}>
+      <label className="field">
+        <span>When</span>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      </label>
+      <label className="field">
+        <span>Notes (optional)</span>
+        <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)}
+          placeholder="Standing for the bull, bawling" />
+      </label>
+      {next && (
+        <div className="costbox">
+          <Row strong label="Next heat, if not bred" value={`around ${shortDate(next.date)}`} />
+        </div>
+      )}
+      <p className="hint">{heatSentence(species)}</p>
+      <button className="primary" disabled={busy || !date} onClick={() => { thenBred.current = false; run() }}>
+        {busy ? 'Saving…' : 'Save'}
+      </button>
+      <button type="button" disabled={busy || !date} onClick={() => { thenBred.current = true; run() }}>
+        Save, and she was bred
       </button>
       {error && <p className="error">{error}</p>}
     </Sheet>

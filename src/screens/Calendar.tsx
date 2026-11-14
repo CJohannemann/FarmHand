@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useAsync } from '../lib/useAsync'
 import {
-  completeTask, expectedBirths, loggedEvents, plannedLogs,
+  completeTask, expectedBirths, heatRecords, loggedEvents, plannedLogs,
 } from '../db/queries'
 import type { LogWithDetail } from '../db/types'
 import {
-  dueDate, dueLabel, daysUntil, gestationFor, speciesGlyph,
+  dueDate, dueLabel, daysUntil, gestationFor, heatOutlook, speciesGlyph,
 } from '../lib/husbandry'
 import { useFarmTimezone } from '../lib/weather'
 import { dayKeyOf } from './LogList'
@@ -41,11 +41,12 @@ interface DayEvents {
 
 interface DueRow {
   assetId: string
-  name: string
   species: string | null
-  /** "due to farrow" — this species' own word, not "give birth". */
-  verb: string
+  /** "Sadie due to farrow", "Daisy may come into heat". */
+  title: string
   days: number
+  /** A heat is "around" a day, and never overdue. */
+  heat?: boolean
 }
 
 const emptyDay = (): DayEvents => ({ chores: [], past: [], due: [] })
@@ -78,12 +79,13 @@ export function Calendar({ onBack, onOpenAnimal }: {
   // expectedBirths are unbounded by date — cheap, and the alternative is a
   // ranged query for each, which would have to re-derive due dates in SQL.
   const data = useAsync(async () => {
-    const [planned, births, logged] = await Promise.all([
+    const [planned, births, heats, logged] = await Promise.all([
       plannedLogs(),
       expectedBirths(),
+      heatRecords(),
       loggedEvents(monthStart, monthEnd),
     ])
-    return { planned, births, logged }
+    return { planned, births, heats, logged }
   }, [monthStart.getTime()])
 
   const days = useMemo(() => {
@@ -112,10 +114,22 @@ export function Calendar({ onBack, onOpenAnimal }: {
       if (!due || !term) continue
       at(dayKeyOf(due, timeZone)).due.push({
         assetId: b.assetId,
-        name: b.name,
         species: b.species,
-        verb: term.verb,
+        title: `${b.name} due to ${term.verb}`,
         days: daysUntil(due),
+      })
+    }
+    // Her next expected heat, or the day to watch for a return after
+    // breeding — one date each, the way heatOutlook works it out.
+    for (const h of data.data?.heats ?? []) {
+      const o = heatOutlook(h)
+      if (!o) continue
+      at(dayKeyOf(o.date, timeZone)).due.push({
+        assetId: h.assetId,
+        species: h.species,
+        title: o.kind === 'return' ? `Watch ${h.name} for a return to heat` : `${h.name} may come into heat`,
+        days: o.days,
+        heat: true,
       })
     }
     return map
@@ -196,11 +210,13 @@ export function Calendar({ onBack, onOpenAnimal }: {
           {chosen && (
             <ul className="tasklist">
               {chosen.due.map((b) => (
-                <li key={`due-${b.assetId}`} className={b.days < 0 ? 'late' : ''}>
+                <li key={`due-${b.assetId}:${b.title}`} className={b.days < 0 && !b.heat ? 'late' : ''}>
                   <span className="task-glyph" aria-hidden="true">{speciesGlyph(b.species)}</span>
                   <button className="task-body" onClick={() => onOpenAnimal(b.assetId)}>
-                    <span className="task-name">{b.name} due to {b.verb}</span>
-                    <span className="task-when">{dueLabel(b.days)}</span>
+                    <span className="task-name">{b.title}</span>
+                    <span className="task-when">
+                      {b.heat && b.days < 0 ? `${-b.days} ${b.days === -1 ? 'day' : 'days'} ago` : dueLabel(b.days)}
+                    </span>
                   </button>
                   <span className="chev" aria-hidden="true">›</span>
                 </li>

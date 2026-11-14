@@ -9,7 +9,8 @@
 //   npm run verify:husbandry
 import {
   GENERIC_SEX_TERMS, GESTATION, SEX_TERMS, daysUntil, dueDate, dueLabel, gestationFor,
-  gestationSentence, pluralSpecies, purposeLabel, sexTermsFor, speciesGlyph,
+  gestationSentence, heatCycleFor, heatIntervals, heatIsNear, heatOutlook, heatSentence,
+  pluralSpecies, purposeLabel, sexTermsFor, speciesGlyph,
 } from '../../src/lib/husbandry.ts'
 import { SPECIES_PURPOSES } from '../../src/lib/tiles.ts'
 
@@ -162,6 +163,43 @@ check('birds incubate, mammals gestate',
   GESTATION.Chicken.kind === 'incubation' && GESTATION.Cattle.kind === 'gestation')
 check('a hen is not "due to calve"',
   GESTATION.Chicken.verb === 'hatch' && GESTATION.Cattle.verb === 'calve')
+
+console.log('\nHeats')
+{
+  const day = (d: string) => new Date(`${d}T12:00:00`)
+  const ymd = (d: Date | undefined) => d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : 'none'
+  const now = day('2026-11-14')
+  const cow = (lastHeat: string | null, lastBred: string | null = null) =>
+    heatOutlook({ species: 'Cattle', lastHeat: lastHeat && day(lastHeat).toISOString(), lastBred: lastBred && day(lastBred).toISOString() }, now)
+
+  check('cows, sows, does and mares cycle in about 3 weeks', ['Cattle', 'Pig', 'Goat', 'Horse'].every((s) => heatCycleFor(s)?.days === 21))
+  check('ewes a little sooner', heatCycleFor('Sheep')?.days === 17)
+  check('no cycle for a hen, a doe rabbit or an alpaca',
+    !heatCycleFor('Chicken') && !heatCycleFor('Rabbit') && !heatCycleFor('Alpaca') && !heatCycleFor('Unicorn'))
+  check('the sentence says where the date comes from', heatSentence('Cattle') === 'Cattle come into heat about every 3 weeks.', heatSentence('Cattle') ?? '')
+
+  const next = cow('2026-11-02')
+  check('next heat is one cycle on', next?.kind === 'heat' && ymd(next?.date) === '2026-11-23' && next?.days === 9, ymd(next?.date))
+  const missed = cow('2026-10-01')
+  check('an unrecorded heat is carried forward a cycle', ymd(missed?.date) === '2026-11-12' && missed?.days === -2, ymd(missed?.date))
+  check('but not forever: a heat from last spring predicts nothing', cow('2026-04-01') === null)
+
+  const bred = cow('2026-11-02', '2026-11-03')
+  check('bred the morning after: watch for a return one cycle after breeding',
+    bred?.kind === 'return' && ymd(bred?.date) === '2026-11-24', `${bred?.kind} ${ymd(bred?.date)}`)
+  check('a return check that has passed says nothing more (she settled)', cow('2026-10-01', '2026-10-01') === null)
+  check('a breeding before the last heat does not count — she came back',
+    cow('2026-11-02', '2026-10-12')?.kind === 'heat')
+  check('no heat on record, nothing to say', cow(null) === null && cow(null, '2026-11-01')?.kind === 'return')
+
+  check('Today shows it from 3 days ahead', heatIsNear({ days: 3 }) && !heatIsNear({ days: 4 }))
+  check('until 2 days after', heatIsNear({ days: -2 }) && !heatIsNear({ days: -3 }))
+
+  check('days between heats, in any order',
+    heatIntervals([day('2026-11-02'), day('2026-10-12'), day('2026-09-21')]).join(',') === '21,21',
+    heatIntervals([day('2026-11-02'), day('2026-10-12'), day('2026-09-21')]).join(','))
+  check('one heat has no intervals', heatIntervals([day('2026-11-02')]).length === 0)
+}
 
 console.log(fails === 0 ? '\nAll checks passed.\n' : `\n${fails} FAILED\n`)
 process.exit(fails ? 1 : 0)
