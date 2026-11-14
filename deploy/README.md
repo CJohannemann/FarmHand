@@ -319,29 +319,24 @@ git pull
 bash deploy/selfhost/apply-migrations.sh
 ```
 
-**3. Make the key pair** that lets phones trust these notifications:
+**3. Make the notification keys.** Phones only accept a notification
+signed by the server they signed up with; this makes that signature's key
+pair and saves it where it goes (both halves in
+`deploy/selfhost/.env`, the public half in the app's `.env`). Nothing to
+copy or type:
 
 ```bash
 cd ~/FarmHand/deploy/selfhost
 node generate-vapid-keys.mjs
 ```
 
-It prints two lines. Paste both into `~/FarmHand/deploy/selfhost/.env`,
-and add a contact address push services can reach:
+Run it again any time: once the keys exist it leaves them alone, since new
+keys would stop every phone that already turned alerts on.
 
-```
-VAPID_PUBLIC_KEY=B...
-VAPID_PRIVATE_KEY=...
-VAPID_SUBJECT=mailto:you@example.com
-```
-
-Then the **public** key only, under a different name, into the app's own
-`~/FarmHand/.env` (the app needs it to turn alerts on; never put the
-private key there):
-
-```
-VITE_VAPID_PUBLIC_KEY=B...   # the same value as VAPID_PUBLIC_KEY
-```
+Apple's and Google's notification services also ask for a contact address
+for whoever runs the server. That's taken from the farm owner's account
+email, so there's nothing to set. (Only to use a different address, add
+`VAPID_SUBJECT=mailto:someone@example.com` to `deploy/selfhost/.env`.)
 
 **4. Deploy**, so the app is built with that key (and `web-push` is
 installed for the sender):

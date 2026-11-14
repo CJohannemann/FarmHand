@@ -39,11 +39,24 @@ function psql(sql: string, vars: Record<string, string> = {}): string {
 
 const env = loadEnv(join(HERE, '.env'))
 if (!DRY) {
-  if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY || !env.VAPID_SUBJECT) {
-    console.error('VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT are not all set in deploy/selfhost/.env — nothing to send with.')
+  if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) {
+    console.error('No notification keys in deploy/selfhost/.env yet — run: node generate-vapid-keys.mjs')
     process.exit(1)
   }
-  webpush.setVapidDetails(env.VAPID_SUBJECT, env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY)
+  // Push services (Apple's, Google's) want a contact for whoever runs the
+  // server sending to them, in case something goes wrong. Not who the
+  // alerts go to. It's the account email of the person who set FarmHand
+  // up — the first farm owner — unless VAPID_SUBJECT says otherwise.
+  const owner = psql(`
+    select u.email from farm_member fm join auth.users u on u.id = fm.user_id
+     where fm.role = 'owner' and u.email is not null
+     order by fm.created_at limit 1;`).trim()
+  const subject = env.VAPID_SUBJECT || (owner ? `mailto:${owner}` : '')
+  if (!subject) {
+    console.error('No farm owner with an email to give push services as a contact — set VAPID_SUBJECT=mailto:… in deploy/selfhost/.env.')
+    process.exit(1)
+  }
+  webpush.setVapidDetails(subject, env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY)
 }
 
 // Every animal with a heat on record, on a farm where somebody has a phone
