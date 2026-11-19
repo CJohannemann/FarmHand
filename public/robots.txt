@@ -1,0 +1,6 @@
+# Farm Hand Manager — farm record keeping. Everything public is the front
+# page; the app behind sign-in has nothing for a crawler.
+User-agent: *
+Allow: /
+
+Sitemap: https://farmhandmanager.com/sitemap.xml
