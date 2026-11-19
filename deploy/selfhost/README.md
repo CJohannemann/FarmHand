@@ -167,6 +167,27 @@ curl -i "https://api.farmhandmanager.com/rest/v1/asset?select=id&limit=1" -H "ap
 
 Same expectation as step 6 — `200` and `[]`/rows.
 
+### A page at the address itself (added later)
+
+`https://api.farmhandmanager.com/` on its own used to show nginx's bare
+"404 Not Found", which gives a work network's web filter nothing to
+classify, so it isolates or blocks the address the app signs in through.
+`nginx-farmhand-api-about.conf` serves a short page saying what it is,
+at the root only. A fresh install gets it from the config above. An
+install from before it needs one line added to the live file — not a
+fresh copy of the config, which would drop certbot's HTTPS lines:
+
+```bash
+grep -q nginx-farmhand-api-about /etc/nginx/sites-available/farmhand-api || \
+  sudo sed -i '0,/server_name api.farmhandmanager.com;/s||&\n    include /home/ubuntu/FarmHand/deploy/selfhost/nginx-farmhand-api-about.conf;|' \
+  /etc/nginx/sites-available/farmhand-api
+sudo nginx -t && sudo systemctl reload nginx
+curl -s https://api.farmhandmanager.com/ | grep '<title>'
+```
+
+(Safe to run twice: it only adds the line if it isn't there. The path
+assumes FarmHand is in `/home/ubuntu/FarmHand`, as the systemd units do.)
+
 ## 8. Point FarmHand at it
 
 ```bash
