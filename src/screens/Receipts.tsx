@@ -18,7 +18,12 @@ import { ImageViewer } from './ImageViewer'
  */
 export function Receipts() {
   const { data: years, loading } = useAsync(() => receiptYears(), [])
-  const [open, setOpen] = useState<number | null>(null)
+  // The newest year starts open. Folded shut, the tab was a lone "2026 ▸"
+  // that read as "no receipts here" to someone who had just scanned three —
+  // the receipts were one tap away under a heading nobody thought to tap.
+  // `undefined` = not chosen yet (newest open); `null` = all folded by hand.
+  const [chosen, setOpen] = useState<number | null | undefined>(undefined)
+  const open = chosen === undefined ? years?.[0] ?? null : chosen
 
   if (loading) return <p className="muted">Loading receipts…</p>
   if (!years?.length) {
